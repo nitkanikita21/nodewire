@@ -82,14 +82,14 @@ class CombinedModifier(
 }
 
 /**
- * Marker for modifier elements that affect layout (size, padding, margin,
- * flex, position). Implementations apply themselves to a YogaNode.
- *
- * The actual `applyTo(YogaNode)` method lives in the layout module to keep
- * Modifier core decoupled from Yoga at this layer — but every `LayoutModifier`
- * implementation has to know how to project itself onto a YogaNode.
+ * Modifier elements that affect layout (size, padding, margin, flex, position).
+ * Implementations project themselves onto a [org.appliedenergistics.yoga.YogaNode],
+ * which is the only layout backend we use. UiNode collects these via [Modifier.foldIn]
+ * and calls [applyTo] in order so later elements in the chain win.
  */
-interface LayoutModifierElement<Self : LayoutModifierElement<Self>> : Modifier.Element<Self>
+interface LayoutModifierElement<Self : LayoutModifierElement<Self>> : Modifier.Element<Self> {
+    fun applyTo(yoga: org.appliedenergistics.yoga.YogaNode)
+}
 
 /**
  * Marker for modifier elements that affect rendering only (background,
