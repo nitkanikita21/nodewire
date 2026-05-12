@@ -4,3 +4,15 @@ out/
 run/
 .idea/
 *.iml
+# IDE
+*.ipr
+*.iws
+.vscode/
+
+# Forge / FG
+forge*changelog.txt
+logs/
+crash-reports/
+
+# Local symlinks
+run/mods
