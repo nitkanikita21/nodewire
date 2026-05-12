@@ -1,0 +1,5 @@
+{
+  "variants": {
+    "": { "model": "nodewire:block/logic_block" }
+  }
+}
