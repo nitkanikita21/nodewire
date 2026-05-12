@@ -1,8 +1,10 @@
 pluginManagement {
     repositories {
         gradlePluginPortal()
+        mavenCentral()
         maven("https://maven.minecraftforge.net/") { name = "MinecraftForge" }
         maven("https://maven.parchmentmc.org/") { name = "ParchmentMC" }
+        maven("https://thedarkcolour.github.io/KotlinForForge/") { name = "Kotlin for Forge" }
     }
 }
 

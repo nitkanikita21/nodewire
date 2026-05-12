@@ -70,10 +70,17 @@ configure<UserDevExtension> {
     }
 }
 
+// Exclude deprecated kotlin-stdlib-common (merged into kotlin-stdlib in 2.0+)
+// ForgeGradle restricts compileClasspath to Forge maven, which lacks this artifact
+configurations.all {
+    exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib-common")
+}
+
 dependencies {
     "minecraft"("net.minecraftforge:forge:${minecraftVersion}-${forgeVersion}")
 
     // Kotlin for Forge — Kotlin runtime + entrypoint loader
+    // KFF 4.12.0 requires Kotlin 2.2.x; use 4.11.0 which is compatible with Kotlin 2.0.x
     implementation("thedarkcolour:kotlinforforge:${kffVersion}")
 
     // Valkyrien Skies 2 — hard runtime dep, used at compile-time for ship APIs
