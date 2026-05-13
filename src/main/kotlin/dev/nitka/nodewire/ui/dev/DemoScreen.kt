@@ -14,6 +14,8 @@ import dev.nitka.nodewire.ui.components.Surface
 import dev.nitka.nodewire.ui.components.SurfaceDefaults
 import dev.nitka.nodewire.ui.components.Text
 import dev.nitka.nodewire.ui.components.Tooltip
+import dev.nitka.nodewire.ui.canvas.NodeCanvas
+import dev.nitka.nodewire.ui.canvas.rememberCanvasState
 import dev.nitka.nodewire.ui.core.Modifier
 import dev.nitka.nodewire.ui.core.NwComposeScreen
 import dev.nitka.nodewire.ui.layout.Alignment
@@ -21,10 +23,14 @@ import dev.nitka.nodewire.ui.layout.Arrangement
 import dev.nitka.nodewire.ui.layout.Box
 import dev.nitka.nodewire.ui.layout.Column
 import dev.nitka.nodewire.ui.layout.Row
+import dev.nitka.nodewire.ui.modifier.layout.absolutePosition
 import dev.nitka.nodewire.ui.modifier.layout.fillMaxSize
+import dev.nitka.nodewire.ui.modifier.layout.fillMaxWidth
 import dev.nitka.nodewire.ui.modifier.layout.padding
 import dev.nitka.nodewire.ui.modifier.layout.size
 import dev.nitka.nodewire.ui.modifier.style.background
+import dev.nitka.nodewire.ui.scroll.rememberScrollState
+import dev.nitka.nodewire.ui.scroll.verticalScroll
 import dev.nitka.nodewire.ui.theme.NwTheme
 import dev.nitka.nodewire.ui.theme.NwThemeProvider
 import net.minecraft.network.chat.Component
@@ -41,34 +47,48 @@ class DemoScreen : NwComposeScreen(Component.literal("Nodewire Demo")) {
     override fun Content() {
         NwThemeProvider {
             var clicks by remember { mutableStateOf(0) }
+            val scroll = rememberScrollState()
+            // Outer Column: full-screen background + scroll container, no padding.
+            // Inner Column: padding + spacing, sizes naturally vertically.
+            // Splitting the concerns means padding/spacing aren't entangled with
+            // the scroll viewport's own dimensions.
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(NwTheme.dimens.space16)
-                    .background(NwTheme.colors.background),
-                verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space12),
-                horizontalAlignment = Alignment.Start,
+                    .background(NwTheme.colors.background)
+                    .verticalScroll(scroll),
             ) {
-                Text("Nodewire UI", style = NwTheme.typography.title)
-                Text(
-                    "Compose-runtime + Yoga + GuiGraphics. Phase 12.",
-                    style = NwTheme.typography.body.copy(color = NwTheme.colors.onSurfaceMuted),
-                )
-                Divider()
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(NwTheme.dimens.space16),
+                    verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space12),
+                    horizontalAlignment = Alignment.Start,
+                ) {
+                    Text("Nodewire UI", style = NwTheme.typography.title)
+                    Text(
+                        "Compose-runtime + Yoga + GuiGraphics. Phase 12.",
+                        style = NwTheme.typography.body.copy(color = NwTheme.colors.onSurfaceMuted),
+                    )
+                    Divider()
 
-                TypographySection()
-                Divider()
+                    TypographySection()
+                    Divider()
 
-                PinPalette()
-                Divider()
+                    PinPalette()
+                    Divider()
 
-                ButtonGallery(clicks = clicks, onClick = { clicks++ })
-                Divider()
+                    ButtonGallery(clicks = clicks, onClick = { clicks++ })
+                    Divider()
 
-                TooltipDemo()
-                Divider()
+                    TooltipDemo()
+                    Divider()
 
-                DialogDemo()
+                    DialogDemo()
+                    Divider()
+
+                    NodeCanvasDemo()
+                }
             }
         }
     }
@@ -162,6 +182,42 @@ class DemoScreen : NwComposeScreen(Component.literal("Nodewire Demo")) {
                 Button(onClick = onClick, style = ButtonDefaults.ghost()) { Text("Ghost") }
                 Button(onClick = onClick, style = ButtonDefaults.danger()) { Text("Danger") }
                 Button(onClick = onClick, enabled = false) { Text("Disabled") }
+            }
+        }
+    }
+
+    @Composable
+    private fun NodeCanvasDemo() {
+        val canvas = rememberCanvasState()
+        Column(verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space4)) {
+            Text("Node canvas (middle-drag to pan, wheel to zoom)", style = NwTheme.typography.subtitle)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .size(400, 220),
+            ) {
+                NodeCanvas(state = canvas, modifier = Modifier.fillMaxSize()) {
+                    DemoNodeCard(0, 0, "Input", NwTheme.colors.pinFloat)
+                    DemoNodeCard(160, 60, "Add", NwTheme.colors.accent)
+                    DemoNodeCard(320, 30, "Output", NwTheme.colors.success)
+                    DemoNodeCard(80, 160, "Const", NwTheme.colors.pinInt)
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun DemoNodeCard(worldX: Int, worldY: Int, label: String, accent: dev.nitka.nodewire.ui.render.Color) {
+        Surface(
+            modifier = Modifier.absolutePosition(worldX, worldY).size(96, 48),
+            style = SurfaceDefaults.outlined(),
+        ) {
+            Column(
+                modifier = Modifier.padding(NwTheme.dimens.space6),
+                verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space4),
+            ) {
+                Text(label, style = NwTheme.typography.caption)
+                Box(modifier = Modifier.size(10).background(accent))
             }
         }
     }

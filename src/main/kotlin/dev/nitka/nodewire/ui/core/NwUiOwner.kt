@@ -7,6 +7,7 @@ import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.Recomposer
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.snapshots.Snapshot
+import dev.nitka.nodewire.ui.canvas.CanvasModifier
 import dev.nitka.nodewire.ui.input.PointerEvent
 import dev.nitka.nodewire.ui.input.PointerHandler
 import dev.nitka.nodewire.ui.input.absoluteOffset
@@ -18,6 +19,8 @@ import dev.nitka.nodewire.ui.modifier.input.OnPositionedModifier
 import dev.nitka.nodewire.ui.modifier.input.OnSizeChangedModifier
 import dev.nitka.nodewire.ui.render.NwCanvas
 import dev.nitka.nodewire.ui.render.renderWalk
+import dev.nitka.nodewire.ui.scroll.ScrollAxis
+import dev.nitka.nodewire.ui.scroll.ScrollModifier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -130,6 +133,21 @@ class NwUiOwner {
                     mod.lastCoords = coords
                     mod.callback(coords)
                 }
+                is CanvasModifier -> mod.state.advance()
+                is ScrollModifier -> {
+                    // contentSize = furthest child edge along the scroll axis.
+                    // maxValue is the deepest the user can scroll before content
+                    // would leave the viewport entirely.
+                    val contentSize = if (mod.axis == ScrollAxis.Vertical) {
+                        node.children.maxOfOrNull { it.layoutY + it.layoutHeight } ?: 0
+                    } else {
+                        node.children.maxOfOrNull { it.layoutX + it.layoutWidth } ?: 0
+                    }
+                    val viewport = if (mod.axis == ScrollAxis.Vertical) node.layoutHeight else node.layoutWidth
+                    mod.state.maxValue = (contentSize - viewport).coerceAtLeast(0)
+                    // Frame tick for the easing animation.
+                    mod.state.advance()
+                }
             }
         }
         for (child in node.children) postLayoutWalk(child, screenX, screenY)
@@ -223,7 +241,28 @@ class NwUiOwner {
         if (x !in absX until (absX + node.layoutWidth)) return
         if (y !in absY until (absY + node.layoutHeight)) return
         if (node.inputModifiers.any { it is OnHoverModifier }) sink.add(node)
-        for (child in node.children) collectHoveredOnHoverNodes(child, x, y, absX, absY, sink)
+        // Match HitTester: subtract this node's scroll offset before descending,
+        // so children's bounds are checked at their on-screen positions (not logical).
+        val scrolls = node.inputModifiers.filterIsInstance<ScrollModifier>()
+        val scrollX = scrolls.firstOrNull { it.axis == ScrollAxis.Horizontal }?.state?.value ?: 0
+        val scrollY = scrolls.firstOrNull { it.axis == ScrollAxis.Vertical }?.state?.value ?: 0
+        val canvasMod = node.inputModifiers.filterIsInstance<CanvasModifier>().firstOrNull()
+        if (canvasMod != null) {
+            // Same inverse transform as HitTester: hand children world-space
+            // coords, with their parent offset reset to zero.
+            val z = canvasMod.state.zoom
+            val px = canvasMod.state.panX
+            val py = canvasMod.state.panY
+            val worldX = ((x - absX) / z - px).toInt()
+            val worldY = ((y - absY) / z - py).toInt()
+            for (child in node.children) {
+                collectHoveredOnHoverNodes(child, worldX, worldY, 0, 0, sink)
+            }
+        } else {
+            for (child in node.children) {
+                collectHoveredOnHoverNodes(child, x, y, absX - scrollX, absY - scrollY, sink)
+            }
+        }
     }
 
     fun dispose() {

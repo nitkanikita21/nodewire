@@ -43,7 +43,7 @@ data class NwColors(
 ) {
     companion object {
         val Dark = NwColors(
-            background     = Color(0xE0_10_10_14.toInt()),
+            background     = Color(0xB3_10_10_14.toInt()),
             surface        = Color(0xFF_1C_1C_22.toInt()),
             surfaceHover   = Color(0xFF_24_24_2C.toInt()),
             surfacePressed = Color(0xFF_18_18_1E.toInt()),

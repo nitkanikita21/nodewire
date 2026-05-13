@@ -128,7 +128,7 @@ fun Button(
             when (ev) {
                 is PointerEvent.Press -> {
                     if (enabled) pressed = true
-                    enabled // consume so drag-focus routes Release back here
+                    enabled
                 }
                 is PointerEvent.Release -> {
                     val wasPressed = pressed

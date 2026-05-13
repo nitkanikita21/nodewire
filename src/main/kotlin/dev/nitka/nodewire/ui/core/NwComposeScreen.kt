@@ -9,6 +9,7 @@ import net.minecraft.client.Minecraft
 import net.minecraft.client.gui.GuiGraphics
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.network.chat.Component
+import net.minecraft.resources.ResourceLocation
 
 /**
  * Subclass this to write a screen with `@Composable` content. Override
@@ -25,11 +26,28 @@ abstract class NwComposeScreen(title: Component) : Screen(title) {
 
     private val owner = NwUiOwner()
 
+    /**
+     * Blur the game world behind the screen via MC's post-effect chain.
+     * Activated in [init], deactivated in [removed]. The post-chain runs
+     * before the screen renders, so our semi-transparent backgrounds and
+     * scrim layers composite over an already-blurred frame — frosted-glass
+     * look without any extra render pass on our side.
+     *
+     * Skipped on the title screen (no level) because `loadEffect` is fine
+     * but the blur would never visibly run without a world to render.
+     */
+    private var blurActive = false
+
     @Composable
     protected abstract fun Content()
 
     override fun init() {
         super.init()
+        val mc = Minecraft.getInstance()
+        if (mc.level != null && !blurActive) {
+            mc.gameRenderer.loadEffect(ResourceLocation("shaders/post/blur.json"))
+            blurActive = true
+        }
         // Provide the screen-size CompositionLocal at the very top of the
         // composition. The owner's screenSize state is updated each frame()
         // call, so any composable reading LocalScreenSize sees fresh values.
@@ -50,6 +68,10 @@ abstract class NwComposeScreen(title: Component) : Screen(title) {
 
     override fun removed() {
         owner.dispose()
+        if (blurActive) {
+            Minecraft.getInstance().gameRenderer.shutdownEffect()
+            blurActive = false
+        }
         super.removed()
     }
 
