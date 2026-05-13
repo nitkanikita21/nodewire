@@ -12,12 +12,16 @@ import dev.nitka.nodewire.graph.Node
 import dev.nitka.nodewire.graph.NodeGraph
 import dev.nitka.nodewire.graph.PinRef
 import dev.nitka.nodewire.graph.StockNodeTypes
+import dev.nitka.nodewire.net.NodewireNetwork
+import dev.nitka.nodewire.net.SaveGraphPacket
+import net.minecraftforge.network.PacketDistributor
 import dev.nitka.nodewire.ui.canvas.NodeCanvas
 import dev.nitka.nodewire.ui.canvas.rememberCanvasState
 import dev.nitka.nodewire.ui.core.Modifier
 import dev.nitka.nodewire.ui.core.NwComposeScreen
 import dev.nitka.nodewire.ui.input.PointerEvent
 import dev.nitka.nodewire.ui.layout.Box
+import dev.nitka.nodewire.ui.theme.LocalScreenSize
 import dev.nitka.nodewire.ui.modifier.input.pointerInput
 import dev.nitka.nodewire.ui.modifier.layout.fillMaxSize
 import dev.nitka.nodewire.ui.modifier.style.background
@@ -43,16 +47,34 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
 
     private val graph: NodeGraph = initialGraph.also { seedIfEmpty(it) }
 
+    /**
+     * Send the (possibly edited) graph back to the server when the screen
+     * closes. The packet handler validates everything; rejections show up
+     * in the server log but the player sees nothing — the worst case is
+     * the BE keeps its previous graph.
+     *
+     * No dirty-tracking yet — we save on every close. Cost is small (one
+     * packet, NBT-sized to the graph) and the server-side validation guards
+     * the BE either way.
+     */
+    override fun removed() {
+        NodewireNetwork.CHANNEL.send(
+            PacketDistributor.SERVER.noArg(),
+            SaveGraphPacket(pos, graph.toNbt()),
+        )
+        super.removed()
+    }
+
     @Composable
     override fun Content() {
         NwThemeProvider {
             val canvas = rememberCanvasState()
             val editor = remember(graph) { EditorState(graph) }
-            var nodes by remember { mutableStateOf(graph.nodes.values.toList()) }
-            // Future hook: rebind whenever the node set changes. Kept as
-            // a reachable setter so the editing slice can wire it without
-            // touching this file.
-            @Suppress("UNUSED_VARIABLE") val setNodes: (List<Node>) -> Unit = { nodes = it }
+            val screenSize = LocalScreenSize.current
+            // Read nodesVersion as a state to trigger recomposition when the
+            // node set changes. The version key in remember recomputes the
+            // list snapshot whenever editor.addNode() bumps the counter.
+            val nodes = remember(editor.nodesVersion) { graph.nodes.values.toList() }
 
             CompositionLocalProvider(LocalEditorState provides editor) {
                 Box(
@@ -95,6 +117,11 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
                         for (node in nodes) {
                             NodeCard(node = node)
                         }
+                    }
+                    // Palette renders LAST → on top of canvas. Mounted as a
+                    // sibling so it doesn't get pan / zoom applied to it.
+                    Palette(canvas, screenSize) { type, pos ->
+                        editor.addNode(type.newInstance(pos))
                     }
                 }
             }

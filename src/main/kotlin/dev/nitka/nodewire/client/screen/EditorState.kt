@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import dev.nitka.nodewire.graph.Edge
+import dev.nitka.nodewire.graph.Node
 import dev.nitka.nodewire.graph.NodeGraph
 import dev.nitka.nodewire.graph.PinRef
 
@@ -22,6 +23,29 @@ import dev.nitka.nodewire.graph.PinRef
  */
 class EditorState(val graph: NodeGraph) {
     val pinPositions = PinPositions()
+
+    /**
+     * Bumped every time the node set changes (add / remove). NodeEditorScreen
+     * reads it as a remember key so the rendered card list refreshes; edge
+     * mutations don't need this since WireLayer paints from the graph on
+     * every frame.
+     */
+    var nodesVersion: Int by mutableStateOf(0)
+        private set
+
+    fun addNode(node: Node) {
+        graph.add(node)
+        nodesVersion++
+    }
+
+    /**
+     * Remove the node and every edge touching it. Used by the right-click
+     * gesture on a card's title bar.
+     */
+    fun removeNode(id: dev.nitka.nodewire.graph.NodeId) {
+        graph.removeNode(id)
+        nodesVersion++
+    }
 
     /** Output pin currently being dragged from. Null when no drag in progress. */
     var wireDragSource: PinKey? by mutableStateOf(null)

@@ -108,6 +108,7 @@ private fun cardStyle(): SurfaceStyle = SurfaceStyle(
 
 @Composable
 private fun TitleBar(node: Node, onDragDelta: (Float, Float) -> Unit) {
+    val editor = LocalEditorState.current
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -115,7 +116,16 @@ private fun TitleBar(node: Node, onDragDelta: (Float, Float) -> Unit) {
             .padding(horizontal = NwTheme.dimens.space6, vertical = NwTheme.dimens.space2)
             .pointerInput { ev, _, _ ->
                 when (ev) {
-                    is PointerEvent.Press -> ev.button == LEFT_BUTTON
+                    is PointerEvent.Press -> when (ev.button) {
+                        LEFT_BUTTON -> true
+                        // Right-click the title to delete this node (and
+                        // every edge that referenced it).
+                        RIGHT_BUTTON -> {
+                            editor?.removeNode(node.id)
+                            true
+                        }
+                        else -> false
+                    }
                     is PointerEvent.Drag -> {
                         if (ev.button == LEFT_BUTTON) {
                             onDragDelta(ev.deltaX, ev.deltaY)
