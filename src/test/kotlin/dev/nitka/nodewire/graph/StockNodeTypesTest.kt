@@ -24,7 +24,7 @@ class StockNodeTypesTest {
 
     @Test
     fun allThirteenTypesRegistered() {
-        assertEquals(14, NodeTypeRegistry.all().size, "expected 14 stock types (13 from spec + I/O split)")
+        assertEquals(15, NodeTypeRegistry.all().size, "expected 15 stock types after adding STRING_CONST")
     }
 
     @Test
@@ -32,7 +32,7 @@ class StockNodeTypesTest {
         val groups = NodeTypeRegistry.byCategory()
         assertTrue(groups[NodeCategory.LOGIC]!!.size >= 3, "logic should have ≥3 types")
         assertTrue(groups[NodeCategory.MATH]!!.size >= 4, "math should have ≥4 types")
-        assertTrue(groups[NodeCategory.CONSTANTS]!!.size >= 4, "constants should have ≥4 types")
+        assertTrue(groups[NodeCategory.CONSTANTS]!!.size >= 5, "constants should have ≥5 types")
         assertTrue(groups[NodeCategory.IO]!!.size >= 2, "I/O should have ≥2 types")
     }
 

@@ -70,6 +70,15 @@ object StockNodeTypes {
         category = NodeCategory.CONSTANTS,
         outputs = listOf(Pin("out", "Value", PinType.BOOL)),
         defaultConfig = { CompoundTag().apply { putBoolean("value", false) } },
+        configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.BoolConst,
+    )
+
+    val STRING_CONST = nodeType(
+        id = "string_const",
+        displayName = "String Constant",
+        category = NodeCategory.CONSTANTS,
+        outputs = listOf(Pin("out", "Value", PinType.STRING)),
+        defaultConfig = { CompoundTag().apply { putString("value", "") } },
     )
 
     val INT_CONST = nodeType(
@@ -150,7 +159,7 @@ object StockNodeTypes {
         listOf(
             BLOCK_INPUT, BLOCK_OUTPUT,
             AND, OR, NOT,
-            BOOL_CONST, INT_CONST, FLOAT_CONST, VEC3_CONST,
+            BOOL_CONST, INT_CONST, FLOAT_CONST, STRING_CONST, VEC3_CONST,
             TIMER,
             ADD_INT, ADD_FLOAT, ADD_VEC3, COMPARE_INT,
         ).forEach(NodeTypeRegistry::register)
@@ -163,6 +172,7 @@ object StockNodeTypes {
         inputs: List<Pin> = emptyList(),
         outputs: List<Pin> = emptyList(),
         defaultConfig: () -> CompoundTag = { CompoundTag() },
+        configContent: (@androidx.compose.runtime.Composable (Node) -> Unit)? = null,
     ) = NodeType(
         id = ResourceLocation(Nodewire.ID, id),
         displayName = displayName,
@@ -170,6 +180,7 @@ object StockNodeTypes {
         inputs = inputs,
         outputs = outputs,
         defaultConfig = defaultConfig,
+        configContent = configContent,
     )
 
     private fun faceBoolPins(): List<Pin> = listOf(

@@ -1,5 +1,6 @@
 package dev.nitka.nodewire.graph
 
+import androidx.compose.runtime.Composable
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.resources.ResourceLocation
 
@@ -33,6 +34,13 @@ data class NodeType(
     val inputs: List<Pin>,
     val outputs: List<Pin>,
     val defaultConfig: () -> CompoundTag = { CompoundTag() },
+    /**
+     * Optional in-card configuration UI. When non-null, [NodeCard] renders
+     * this between the title bar and the pin rows. The composable receives
+     * the [Node] instance so it can read/write [Node.config] directly —
+     * mutations should also bump a Compose state to trigger recomposition.
+     */
+    val configContent: (@Composable (Node) -> Unit)? = null,
 ) {
     /** Instantiate a fresh [Node] at [pos] with default config. */
     fun newInstance(pos: CanvasPos = CanvasPos.Zero): Node =

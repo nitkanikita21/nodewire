@@ -1,7 +1,7 @@
 package dev.nitka.nodewire.client
 
 import dev.nitka.nodewire.block.LogicBlockEntity
-import dev.nitka.nodewire.ui.dev.DemoScreen
+import dev.nitka.nodewire.client.screen.NodeEditorScreen
 import net.minecraft.client.Minecraft
 import net.minecraft.core.BlockPos
 import net.minecraft.network.chat.Component
@@ -25,11 +25,6 @@ object NodeEditorLauncher {
             )
             return
         }
-        mc.player?.displayClientMessage(
-            Component.literal("§7Editor for ${pos.toShortString()} — graph has ${be.graph.nodes.size} nodes (placeholder)"),
-            true,
-        )
-        // Placeholder — swap for NodeEditorScreen in Phase 9.
-        mc.setScreen(DemoScreen())
+        mc.setScreen(NodeEditorScreen(pos, be.graph))
     }
 }

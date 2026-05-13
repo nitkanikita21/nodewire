@@ -13,6 +13,7 @@ enum class PinType {
     BOOL,
     INT,
     FLOAT,
+    STRING,
     VEC2,
     VEC3,
     QUAT;

@@ -35,6 +35,11 @@ sealed class PinValue {
         override fun writeTo(tag: CompoundTag) { tag.putFloat("v", value) }
     }
 
+    data class Str(val value: String) : PinValue() {
+        override val type = PinType.STRING
+        override fun writeTo(tag: CompoundTag) { tag.putString("v", value) }
+    }
+
     data class Vec2(val x: kotlin.Float, val y: kotlin.Float) : PinValue() {
         override val type = PinType.VEC2
         override fun writeTo(tag: CompoundTag) {
@@ -67,6 +72,7 @@ sealed class PinValue {
             PinType.BOOL -> Bool(false)
             PinType.INT -> Int(0)
             PinType.FLOAT -> Float(0f)
+            PinType.STRING -> Str("")
             PinType.VEC2 -> Vec2(0f, 0f)
             PinType.VEC3 -> Vec3(0f, 0f, 0f)
             PinType.QUAT -> Quat(0f, 0f, 0f, 1f)
@@ -77,6 +83,7 @@ sealed class PinValue {
             PinType.BOOL -> Bool(tag.getBoolean("v"))
             PinType.INT -> Int(tag.getInt("v"))
             PinType.FLOAT -> Float(tag.getFloat("v"))
+            PinType.STRING -> Str(tag.getString("v"))
             PinType.VEC2 -> Vec2(tag.getFloat("x"), tag.getFloat("y"))
             PinType.VEC3 -> Vec3(tag.getFloat("x"), tag.getFloat("y"), tag.getFloat("z"))
             PinType.QUAT -> Quat(tag.getFloat("x"), tag.getFloat("y"), tag.getFloat("z"), tag.getFloat("w"))

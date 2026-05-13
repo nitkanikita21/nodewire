@@ -13,6 +13,9 @@ import dev.nitka.nodewire.ui.components.Divider
 import dev.nitka.nodewire.ui.components.Surface
 import dev.nitka.nodewire.ui.components.SurfaceDefaults
 import dev.nitka.nodewire.ui.components.Text
+import dev.nitka.nodewire.client.screen.NodeCard
+import dev.nitka.nodewire.graph.StockNodeTypes
+import dev.nitka.nodewire.graph.CanvasPos
 import dev.nitka.nodewire.ui.components.Tooltip
 import dev.nitka.nodewire.ui.canvas.NodeCanvas
 import dev.nitka.nodewire.ui.canvas.rememberCanvasState
@@ -197,10 +200,15 @@ class DemoScreen : NwComposeScreen(Component.literal("Nodewire Demo")) {
                     .size(400, 220),
             ) {
                 NodeCanvas(state = canvas, modifier = Modifier.fillMaxSize()) {
-                    DemoNodeCard(0, 0, "Input", NwTheme.colors.pinFloat)
-                    DemoNodeCard(160, 60, "Add", NwTheme.colors.accent)
-                    DemoNodeCard(320, 30, "Output", NwTheme.colors.success)
-                    DemoNodeCard(80, 160, "Const", NwTheme.colors.pinInt)
+                    // Real NodeCards built from registered StockNodeTypes —
+                    // verifies pin alignment on borders, type labels, and
+                    // the config-section hook (BOOL_CONST renders a checkbox).
+                    NodeCard(node = remember { StockNodeTypes.BOOL_CONST.newInstance(CanvasPos(0f, 0f)) })
+                    NodeCard(node = remember { StockNodeTypes.INT_CONST.newInstance(CanvasPos(160f, 0f)) })
+                    NodeCard(node = remember { StockNodeTypes.STRING_CONST.newInstance(CanvasPos(320f, 0f)) })
+                    NodeCard(node = remember { StockNodeTypes.ADD_INT.newInstance(CanvasPos(0f, 90f)) })
+                    NodeCard(node = remember { StockNodeTypes.COMPARE_INT.newInstance(CanvasPos(160f, 90f)) })
+                    NodeCard(node = remember { StockNodeTypes.AND.newInstance(CanvasPos(320f, 90f)) })
                 }
             }
         }
