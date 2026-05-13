@@ -1,17 +1,16 @@
 package dev.nitka.nodewire.client
 
 import com.mojang.blaze3d.platform.InputConstants
-import dev.nitka.nodewire.Nodewire
+import com.mojang.logging.LogUtils
 import dev.nitka.nodewire.ui.dev.DemoScreen
 import net.minecraft.client.KeyMapping
 import net.minecraft.client.Minecraft
-import net.minecraftforge.api.distmarker.Dist
 import net.minecraftforge.client.event.RegisterKeyMappingsEvent
 import net.minecraftforge.client.settings.KeyConflictContext
 import net.minecraftforge.event.TickEvent
-import net.minecraftforge.eventbus.api.SubscribeEvent
-import net.minecraftforge.fml.common.Mod
+import net.minecraftforge.eventbus.api.IEventBus
 import org.lwjgl.glfw.GLFW
+import thedarkcolour.kotlinforforge.forge.FORGE_BUS
 
 /**
  * Client-only setup. Registers the `N` keybind for opening [DemoScreen] in
@@ -23,8 +22,8 @@ import org.lwjgl.glfw.GLFW
  *   - FORGE bus (per-tick check of consumeClick() — fires every client tick
  *     while a level is loaded)
  */
-@Mod.EventBusSubscriber(modid = Nodewire.ID, value = [Dist.CLIENT])
 object NodewireClient {
+    private val LOG = LogUtils.getLogger()
 
     private val OPEN_DEMO_KEY = KeyMapping(
         "key.nodewire.open_demo",
@@ -34,18 +33,17 @@ object NodewireClient {
         "key.categories.nodewire",
     )
 
-    @SubscribeEvent
-    @JvmStatic
-    fun onRegisterKeyMappings(event: RegisterKeyMappingsEvent) {
-        event.register(OPEN_DEMO_KEY)
+    fun registerOnModBus(bus: IEventBus) {
+        bus.addListener<RegisterKeyMappingsEvent> { it.register(OPEN_DEMO_KEY) }
+        FORGE_BUS.addListener(::onClientTick)
+        LOG.info("Nodewire client handlers registered (MOD bus + FORGE bus)")
     }
 
-    @SubscribeEvent
-    @JvmStatic
-    fun onClientTick(event: TickEvent.ClientTickEvent) {
+    private fun onClientTick(event: TickEvent.ClientTickEvent) {
         if (event.phase != TickEvent.Phase.END) return
         if (Minecraft.getInstance().screen != null) return
         if (OPEN_DEMO_KEY.consumeClick()) {
+            LOG.info("Opening DemoScreen")
             Minecraft.getInstance().setScreen(DemoScreen())
         }
     }
