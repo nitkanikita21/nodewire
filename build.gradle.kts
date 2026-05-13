@@ -176,6 +176,17 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
+// Make Minecraft classes available to unit tests. The legacyForge plugin
+// adds the MC artifact to `compileClasspath` only — graph-model tests use
+// NBT classes (CompoundTag, ListTag) and ResourceLocation, all of which are
+// plain Java that doesn't need a full MC bootstrap to instantiate.
+configurations.named("testCompileClasspath").configure {
+    extendsFrom(configurations.compileClasspath.get())
+}
+configurations.named("testRuntimeClasspath").configure {
+    extendsFrom(configurations.runtimeClasspath.get())
+}
+
 tasks.named<Test>("test") {
     useJUnitPlatform()
 }
