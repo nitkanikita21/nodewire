@@ -8,6 +8,7 @@ run/
 *.ipr
 *.iws
 .vscode/
+.kotlin/
 
 # Forge / FG
 forge*changelog.txt
