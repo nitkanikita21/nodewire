@@ -5,6 +5,7 @@ import androidx.compose.runtime.remember
 import dev.nitka.nodewire.ui.core.Modifier
 import dev.nitka.nodewire.ui.layout.Layout
 import dev.nitka.nodewire.ui.render.TextRenderer
+import dev.nitka.nodewire.ui.theme.LocalContentColor
 import dev.nitka.nodewire.ui.theme.LocalFont
 import dev.nitka.nodewire.ui.theme.NwTheme
 import dev.nitka.nodewire.ui.theme.TextStyle
@@ -29,8 +30,8 @@ fun Text(
     style: TextStyle = NwTheme.typography.body,
 ) {
     val font = LocalFont.current
-    val onSurface = NwTheme.colors.onSurface
-    val color = style.color ?: onSurface
+    // Color cascade: explicit > content-color from surrounding container > theme default.
+    val color = style.color ?: LocalContentColor.current ?: NwTheme.colors.onSurface
     val component = remember(text, style.bold, style.italic, style.underline, style.strikethrough) {
         val styled = Component.literal(text)
         val flags = buildList {

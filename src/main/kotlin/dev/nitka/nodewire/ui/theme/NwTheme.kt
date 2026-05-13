@@ -28,6 +28,19 @@ val LocalFont = staticCompositionLocalOf<Font> {
 }
 
 /**
+ * Foreground color cascade for [Text] and [Icon] children of a container
+ * that wants to override the default `onSurface` color (e.g. [Button] sets
+ * this to `onAccent` so a Text inside it shows in the right color without
+ * needing an explicit `style.color` argument).
+ *
+ * Resolution order in Text: `style.color ?: LocalContentColor.current ?:
+ * NwTheme.colors.onSurface`. Null means "inherit from the surrounding
+ * theme's onSurface" — the default.
+ */
+val LocalContentColor =
+    staticCompositionLocalOf<dev.nitka.nodewire.ui.render.Color?> { null }
+
+/**
  * Single static accessor for all theme axes. Use as `NwTheme.colors.accent`,
  * `NwTheme.dimens.space8`, etc. The properties are `@ReadOnlyComposable` so
  * reading them doesn't bump invalidation scope.

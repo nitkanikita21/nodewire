@@ -2,6 +2,7 @@ package dev.nitka.nodewire.ui.modifier.layout
 
 import dev.nitka.nodewire.ui.core.LayoutModifierElement
 import dev.nitka.nodewire.ui.core.Modifier
+import dev.nitka.nodewire.ui.layout.PaddingValues
 import org.appliedenergistics.yoga.YogaEdge
 import org.appliedenergistics.yoga.YogaNode
 import org.appliedenergistics.yoga.style.StyleLength
@@ -30,3 +31,6 @@ fun Modifier.padding(horizontal: Int = 0, vertical: Int = 0) =
 
 fun Modifier.padding(start: Int = 0, top: Int = 0, end: Int = 0, bottom: Int = 0) =
     this then PaddingModifier(start, top, end, bottom)
+
+fun Modifier.padding(values: PaddingValues) =
+    this then PaddingModifier(values.start, values.top, values.end, values.bottom)
