@@ -14,40 +14,42 @@ import dev.nitka.nodewire.ui.modifier.layout.padding
 import dev.nitka.nodewire.ui.modifier.layout.size
 import dev.nitka.nodewire.ui.modifier.layout.weight
 import dev.nitka.nodewire.ui.modifier.style.background
-import dev.nitka.nodewire.ui.render.Color
+import dev.nitka.nodewire.ui.theme.NwTheme
+import dev.nitka.nodewire.ui.theme.NwThemeProvider
 import net.minecraft.network.chat.Component
 
 /**
- * Phase 7 demo: Row with three regions — fixed red square on the left,
- * a Column of three evenly-spaced small squares in the middle, blue panel
- * grabs all remaining width via [weight]. SpaceBetween puts gaps between
- * regions; padding adds breathing room from the screen edge.
+ * Phase 8 demo: same layout as Phase 7 but every color and spacing comes
+ * from [NwTheme] tokens, not hex literals. Wrapped in [NwThemeProvider] so
+ * descendants resolve `LocalNwColors`, `LocalNwDimens`, etc.
  *
  * Bound to the `N` key by [NodewireClient]. Open in-world, ESC to close.
  */
 class DemoScreen : NwComposeScreen(Component.literal("Nodewire Demo")) {
     @Composable
     override fun Content() {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16)
-                .background(Color(0xFF_22_22_28.toInt())),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Center,
-        ) {
-            Box(Modifier.size(30).background(Color(0xFF_E8_5C_5C.toInt())))
-            Column(verticalArrangement = Arrangement.SpaceEvenly) {
-                Box(Modifier.size(20).background(Color(0xFF_5C_C8_E8.toInt())))
-                Box(Modifier.size(20).background(Color(0xFF_E8_C8_5C.toInt())))
-                Box(Modifier.size(20).background(Color(0xFF_7C_E8_5C.toInt())))
+        NwThemeProvider {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(NwTheme.dimens.space16)
+                    .background(NwTheme.colors.background),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Center,
+            ) {
+                Box(Modifier.size(30).background(NwTheme.colors.danger))
+                Column(verticalArrangement = Arrangement.SpaceEvenly) {
+                    Box(Modifier.size(NwTheme.dimens.iconLarge).background(NwTheme.colors.pinInt))
+                    Box(Modifier.size(NwTheme.dimens.iconLarge).background(NwTheme.colors.pinFloat))
+                    Box(Modifier.size(NwTheme.dimens.iconLarge).background(NwTheme.colors.pinVec2))
+                }
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .background(NwTheme.colors.accent),
+                )
             }
-            Box(
-                Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .background(Color(0xFF_4A_9E_FF.toInt()))
-            )
         }
     }
 }
