@@ -24,8 +24,16 @@ class NwCanvas(val gfx: GuiGraphics, val font: Font) {
      */
     private val offsets = ArrayDeque<IntOffset>().apply { add(IntOffset.Zero) }
 
-    private val ox: Int get() = offsets.last().x
-    private val oy: Int get() = offsets.last().y
+    /**
+     * Current accumulated offset (root → current node). Public because
+     * renderers that bypass [fillRect]/[drawText] (e.g. text with non-1 scale
+     * that needs `gfx.pose().scale(...)`) need to know where the canvas is
+     * already translated to.
+     */
+    val offsetX: Int get() = offsets.last().x
+    val offsetY: Int get() = offsets.last().y
+    private val ox: Int get() = offsetX
+    private val oy: Int get() = offsetY
 
     fun pushOffset(dx: Int, dy: Int) {
         val o = offsets.last()

@@ -12,9 +12,9 @@ import androidx.compose.runtime.Immutable
  */
 @Immutable
 data class NwTypography(
-    val title: TextStyle = TextStyle(scale = 1.5f, bold = true),
-    val subtitle: TextStyle = TextStyle(scale = 1.2f),
-    val body: TextStyle = TextStyle(),
-    val caption: TextStyle = TextStyle(scale = 0.85f, color = null),
+    val title: TextStyle = TextStyle(scale = 2.0f, bold = true),
+    val subtitle: TextStyle = TextStyle(scale = 1.4f, bold = true),
+    val body: TextStyle = TextStyle(scale = 1.0f),
+    val caption: TextStyle = TextStyle(scale = 0.85f),
     val mono: TextStyle = TextStyle(),
 )
