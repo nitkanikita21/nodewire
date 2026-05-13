@@ -57,6 +57,15 @@ private fun PopupSlot(popup: PopupEntry) {
         ScrimBox(
             onDismissRequest = popup.onDismissRequest,
             dismissOnClickOutside = popup.dismissOnClickOutside,
+            dim = true,
+        )
+    } else if (popup.dismissOnClickOutside && popup.onDismissRequest != null) {
+        // Invisible click-catcher — needed for popups like context menus
+        // that want outside-click dismissal but no dim overlay.
+        ScrimBox(
+            onDismissRequest = popup.onDismissRequest,
+            dismissOnClickOutside = true,
+            dim = false,
         )
     }
     // Use Layout directly with FlushingSurfaceRenderer so prior text-batch
@@ -71,24 +80,30 @@ private fun PopupSlot(popup: PopupEntry) {
 }
 
 @Composable
-private fun ScrimBox(onDismissRequest: (() -> Unit)?, dismissOnClickOutside: Boolean) {
-    // Scrim also flushes prior content so the dim layer covers main-tree
-    // text properly. Without the flush, content text would peek through.
-    Layout(
-        modifier = Modifier
-            .absolutePosition(0, 0)
-            .fillMaxSize()
-            .background(NwTheme.colors.overlay)
-            .pointerInput { ev, _, _ ->
-                when (ev) {
-                    is PointerEvent.Press -> {
-                        if (dismissOnClickOutside) onDismissRequest?.invoke()
-                        true
-                    }
-                    is PointerEvent.Release -> true
-                    else -> false
+private fun ScrimBox(
+    onDismissRequest: (() -> Unit)?,
+    dismissOnClickOutside: Boolean,
+    dim: Boolean,
+) {
+    // When `dim` is true, scrim paints theme.overlay (dialog modals); when
+    // false, it's an invisible click-catcher (context menus). Either way
+    // it consumes Press so subsequent unconsumed-click handlers don't fire.
+    val mod = Modifier
+        .absolutePosition(0, 0)
+        .fillMaxSize()
+        .let { if (dim) it.background(NwTheme.colors.overlay) else it }
+        .pointerInput { ev, _, _ ->
+            when (ev) {
+                is PointerEvent.Press -> {
+                    if (dismissOnClickOutside) onDismissRequest?.invoke()
+                    true
                 }
-            },
-        renderer = FlushingSurfaceRenderer,
+                is PointerEvent.Release -> true
+                else -> false
+            }
+        }
+    Layout(
+        modifier = mod,
+        renderer = if (dim) FlushingSurfaceRenderer else dev.nitka.nodewire.ui.render.EmptyRenderer,
     )
 }

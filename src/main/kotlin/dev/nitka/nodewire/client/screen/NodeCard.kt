@@ -72,6 +72,7 @@ fun NodeCard(
     // `node.pos` so the underlying graph stays in sync for save/load.
     var pos by remember(node) { mutableStateOf(node.pos) }
     val canvas = LocalCanvasState.current
+    val editor = LocalEditorState.current
 
     Surface(
         modifier = modifier
@@ -87,6 +88,18 @@ fun NodeCard(
                     val updated = CanvasPos(pos.x + dx / zoom, pos.y + dy / zoom)
                     pos = updated
                     node.pos = updated
+                },
+                onContextMenu = { localX, localY ->
+                    if (editor != null && canvas != null) {
+                        // pointerInput coords are world-relative inside the
+                        // canvas pose. World event pos = card pos + local
+                        // offset. Screen = (world + pan) * zoom.
+                        val worldX = pos.x + localX
+                        val worldY = pos.y + localY
+                        val screenX = ((worldX + canvas.panX) * canvas.zoom).toInt()
+                        val screenY = ((worldY + canvas.panY) * canvas.zoom).toInt()
+                        editor.openNodeMenu(screenX, screenY, node.id)
+                    }
                 },
             )
             ConfigSection(node)
@@ -107,21 +120,22 @@ private fun cardStyle(): SurfaceStyle = SurfaceStyle(
 )
 
 @Composable
-private fun TitleBar(node: Node, onDragDelta: (Float, Float) -> Unit) {
-    val editor = LocalEditorState.current
+private fun TitleBar(
+    node: Node,
+    onDragDelta: (Float, Float) -> Unit,
+    onContextMenu: (localX: Int, localY: Int) -> Unit,
+) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .background(NwTheme.colors.accent)
             .padding(horizontal = NwTheme.dimens.space6, vertical = NwTheme.dimens.space2)
-            .pointerInput { ev, _, _ ->
+            .pointerInput { ev, x, y ->
                 when (ev) {
                     is PointerEvent.Press -> when (ev.button) {
                         LEFT_BUTTON -> true
-                        // Right-click the title to delete this node (and
-                        // every edge that referenced it).
                         RIGHT_BUTTON -> {
-                            editor?.removeNode(node.id)
+                            onContextMenu(x, y)
                             true
                         }
                         else -> false

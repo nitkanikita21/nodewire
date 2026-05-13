@@ -4,6 +4,7 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import dev.nitka.nodewire.graph.CanvasPos
 import dev.nitka.nodewire.graph.Edge
 import dev.nitka.nodewire.graph.Node
 import dev.nitka.nodewire.graph.NodeGraph
@@ -38,13 +39,46 @@ class EditorState(val graph: NodeGraph) {
         nodesVersion++
     }
 
-    /**
-     * Remove the node and every edge touching it. Used by the right-click
-     * gesture on a card's title bar.
-     */
     fun removeNode(id: dev.nitka.nodewire.graph.NodeId) {
         graph.removeNode(id)
         nodesVersion++
+    }
+
+    /**
+     * Duplicate [id]: clone the node with a fresh UUID, deep-copy its
+     * config, and offset its position so it doesn't sit exactly on top of
+     * the original (which would make it look like nothing happened).
+     * Connected edges are NOT cloned — the duplicate starts unwired.
+     */
+    fun duplicateNode(id: dev.nitka.nodewire.graph.NodeId): Node? {
+        val src = graph.nodes[id] ?: return null
+        val copy = Node(
+            id = Node.newId(),
+            typeKey = src.typeKey,
+            pos = CanvasPos(src.pos.x + DUPLICATE_OFFSET, src.pos.y + DUPLICATE_OFFSET),
+            inputs = src.inputs,
+            outputs = src.outputs,
+            config = src.config.copy(),
+        )
+        graph.add(copy)
+        nodesVersion++
+        return copy
+    }
+
+    /** What context menu (if any) is currently open. Null = closed. */
+    var contextMenu: ContextMenuTarget? by mutableStateOf(null)
+        private set
+
+    fun openCreateMenu(screenX: Int, screenY: Int, world: CanvasPos) {
+        contextMenu = ContextMenuTarget.Create(screenX, screenY, world)
+    }
+
+    fun openNodeMenu(screenX: Int, screenY: Int, nodeId: dev.nitka.nodewire.graph.NodeId) {
+        contextMenu = ContextMenuTarget.Node(screenX, screenY, nodeId)
+    }
+
+    fun closeContextMenu() {
+        contextMenu = null
     }
 
     /** Output pin currently being dragged from. Null when no drag in progress. */
@@ -185,6 +219,7 @@ class EditorState(val graph: NodeGraph) {
     companion object {
         /** World-space radius around an input pin that counts as "dropped on it". */
         private const val PIN_HIT_RADIUS = 12f
+        private const val DUPLICATE_OFFSET = 20f
     }
 }
 

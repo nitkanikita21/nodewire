@@ -21,7 +21,6 @@ import dev.nitka.nodewire.ui.core.Modifier
 import dev.nitka.nodewire.ui.core.NwComposeScreen
 import dev.nitka.nodewire.ui.input.PointerEvent
 import dev.nitka.nodewire.ui.layout.Box
-import dev.nitka.nodewire.ui.theme.LocalScreenSize
 import dev.nitka.nodewire.ui.modifier.input.pointerInput
 import dev.nitka.nodewire.ui.modifier.layout.fillMaxSize
 import dev.nitka.nodewire.ui.modifier.style.background
@@ -70,7 +69,6 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
         NwThemeProvider {
             val canvas = rememberCanvasState()
             val editor = remember(graph) { EditorState(graph) }
-            val screenSize = LocalScreenSize.current
             // Read nodesVersion as a state to trigger recomposition when the
             // node set changes. The version key in remember recomputes the
             // list snapshot whenever editor.addNode() bumps the counter.
@@ -92,19 +90,32 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
                         //   * Non-sticky drags use only press-drag-release
                         //     on the source pin; we never run for them.
                         .pointerInput { ev, _, _ ->
-                            if (editor.wireDragSource == null || !editor.wireDragSticky) {
-                                return@pointerInput false
-                            }
-                            when (ev) {
-                                is PointerEvent.Move -> {
+                            when {
+                                // Right-click on empty area → open the
+                                // "Add Node" context menu. World position
+                                // = screen / zoom - pan (canvas origin 0,0).
+                                ev is PointerEvent.Press
+                                    && ev.button == RIGHT_BUTTON
+                                    && editor.wireDragSource == null
+                                -> {
                                     val worldX = ev.x.toFloat() / canvas.zoom - canvas.panX
                                     val worldY = ev.y.toFloat() / canvas.zoom - canvas.panY
-                                    editor.setCursor(worldX, worldY)
-                                    false
-                                }
-                                is PointerEvent.Press -> {
-                                    editor.cancelWireDrag()
+                                    editor.openCreateMenu(ev.x, ev.y, CanvasPos(worldX, worldY))
                                     true
+                                }
+                                // Sticky wire drag handling — unchanged.
+                                editor.wireDragSource != null && editor.wireDragSticky -> when (ev) {
+                                    is PointerEvent.Move -> {
+                                        val worldX = ev.x.toFloat() / canvas.zoom - canvas.panX
+                                        val worldY = ev.y.toFloat() / canvas.zoom - canvas.panY
+                                        editor.setCursor(worldX, worldY)
+                                        false
+                                    }
+                                    is PointerEvent.Press -> {
+                                        editor.cancelWireDrag()
+                                        true
+                                    }
+                                    else -> false
                                 }
                                 else -> false
                             }
@@ -118,10 +129,10 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
                             NodeCard(node = node)
                         }
                     }
-                    // Palette renders LAST → on top of canvas. Mounted as a
-                    // sibling so it doesn't get pan / zoom applied to it.
-                    Palette(canvas, screenSize) { type, pos ->
-                        editor.addNode(type.newInstance(pos))
+                    // Context menu — rendered when state is non-null. The
+                    // Popup handles overlay layering itself.
+                    editor.contextMenu?.let { target ->
+                        NodeContextMenu(target = target, editor = editor)
                     }
                 }
             }
@@ -133,6 +144,10 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
      * never opens to a blank canvas. Skipped if the graph already has any
      * content — the user's own work is never overwritten.
      */
+    private companion object {
+        private const val RIGHT_BUTTON = 1
+    }
+
     private fun seedIfEmpty(g: NodeGraph) {
         if (g.nodes.isNotEmpty()) return
         val bool1 = StockNodeTypes.BOOL_CONST.newInstance(CanvasPos(40f, 40f))
