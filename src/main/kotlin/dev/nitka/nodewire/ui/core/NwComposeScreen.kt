@@ -93,7 +93,7 @@ abstract class NwComposeScreen(title: Component) : Screen(title) {
     }
 
     override fun mouseDragged(x: Double, y: Double, btn: Int, dx: Double, dy: Double): Boolean {
-        if (owner.dispatchPointer(PointerEvent.Drag(x.toInt(), y.toInt(), btn, dx.toInt(), dy.toInt()))) return true
+        if (owner.dispatchPointer(PointerEvent.Drag(x.toInt(), y.toInt(), btn, dx.toFloat(), dy.toFloat()))) return true
         return super.mouseDragged(x, y, btn, dx, dy)
     }
 

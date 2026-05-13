@@ -43,7 +43,7 @@ import net.minecraft.network.chat.Component
  * component surface: typography ramp, pin-type color swatches, button
  * variants in all states, tooltip with delay.
  *
- * Bound to the `N` key by [NodewireClient]. Open in-world, ESC to close.
+ * Bound to the `N` key by [NodewireClient]. Open in-world, ESC to close.w
  */
 class DemoScreen : NwComposeScreen(Component.literal("Nodewire Demo")) {
     @Composable

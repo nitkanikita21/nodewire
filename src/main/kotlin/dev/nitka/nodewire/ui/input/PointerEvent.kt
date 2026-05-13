@@ -14,12 +14,19 @@ sealed interface PointerEvent {
     data class Press(override val x: Int, override val y: Int, val button: Int) : PointerEvent
     data class Release(override val x: Int, override val y: Int, val button: Int) : PointerEvent
     data class Move(override val x: Int, override val y: Int) : PointerEvent
+    /**
+     * Drag deltas are [Float] (not Int) because MC's `mouseDragged` reports
+     * sub-pixel motion. Truncating to Int loses fractional movement, which
+     * compounds into visible drift when handlers later divide by zoom — a
+     * 0.6 px drag becomes 0 in Int but should still nudge the world by
+     * 0.6/zoom units.
+     */
     data class Drag(
         override val x: Int,
         override val y: Int,
         val button: Int,
-        val deltaX: Int,
-        val deltaY: Int,
+        val deltaX: Float,
+        val deltaY: Float,
     ) : PointerEvent
     data class Scroll(
         override val x: Int,

@@ -182,7 +182,13 @@ class NwUiOwner {
             }
             is PointerEvent.Move -> {
                 updateHover(event)
-                false // hover is observational, never consumes
+                // Also dispatch Move to handlers — they can side-effect on
+                // cursor movement (e.g. dragging a "sticky" wire that follows
+                // the mouse without a button held). hitTest returns null if
+                // no handler claims it; either way we never consume Move
+                // (it's broadcast, not click-like).
+                root.hitTest(event)
+                false
             }
             is PointerEvent.Scroll -> root.hitTest(event) != null
         }
@@ -238,15 +244,23 @@ class NwUiOwner {
     ) {
         val absX = parentOffsetX + node.layoutX
         val absY = parentOffsetY + node.layoutY
-        if (x !in absX until (absX + node.layoutWidth)) return
-        if (y !in absY until (absY + node.layoutHeight)) return
-        if (node.inputModifiers.any { it is OnHoverModifier }) sink.add(node)
-        // Match HitTester: subtract this node's scroll offset before descending,
-        // so children's bounds are checked at their on-screen positions (not logical).
+
+        // Match HitTester: only enforce parent bounds when the node clips
+        // (canvas / scroll). Otherwise descend so overflow children stay
+        // hover-detectable — same rationale as in HitTester.
         val scrolls = node.inputModifiers.filterIsInstance<ScrollModifier>()
         val scrollX = scrolls.firstOrNull { it.axis == ScrollAxis.Horizontal }?.state?.value ?: 0
         val scrollY = scrolls.firstOrNull { it.axis == ScrollAxis.Vertical }?.state?.value ?: 0
         val canvasMod = node.inputModifiers.filterIsInstance<CanvasModifier>().firstOrNull()
+        val clipsToBounds = canvasMod != null || scrolls.isNotEmpty()
+        if (clipsToBounds) {
+            if (x !in absX until (absX + node.layoutWidth)) return
+            if (y !in absY until (absY + node.layoutHeight)) return
+        }
+
+        val inOwnBounds = x in absX until (absX + node.layoutWidth)
+            && y in absY until (absY + node.layoutHeight)
+        if (inOwnBounds && node.inputModifiers.any { it is OnHoverModifier }) sink.add(node)
         if (canvasMod != null) {
             // Same inverse transform as HitTester: hand children world-space
             // coords, with their parent offset reset to zero.

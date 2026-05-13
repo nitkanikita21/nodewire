@@ -5,7 +5,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import kotlin.math.abs
 
 /**
  * Pan + zoom state for a [NodeCanvas]. Mirrors [ScrollState]'s easing
@@ -24,15 +23,15 @@ class CanvasState(
     initialPanY: Float = 0f,
     initialZoom: Float = 1f,
 ) {
-    // Pan is NOT eased — drag should track the cursor 1:1, otherwise the
-    // card under the pointer visibly trails behind the mouse and feels laggy.
-    // Zoom IS eased because wheel notches are discrete and benefit from a
-    // smooth interpolation between zoom levels.
+    // Neither pan nor zoom is eased. Pan must track the cursor 1:1 or drag
+    // feels laggy. Zoom was originally eased but that made the grid (drawn
+    // in screen coords with `(world * zoom).toInt()`) jitter against cards
+    // (rendered through a pose transform, sub-pixel smooth) during the
+    // animation — looked like the cards were shaking. Snapping zoom to the
+    // target on each wheel notch keeps the grid and cards in lockstep.
     private var _panX by mutableStateOf(initialPanX)
     private var _panY by mutableStateOf(initialPanY)
     private var _zoom by mutableStateOf(initialZoom.coerceIn(MIN_ZOOM, MAX_ZOOM))
-
-    private var _targetZoom by mutableStateOf(_zoom)
 
     val panX: Float get() = _panX
     val panY: Float get() = _panY
@@ -50,14 +49,15 @@ class CanvasState(
      * Blender / UE5 / Figma.
      */
     fun zoomBy(factor: Float, focalLocalX: Float, focalLocalY: Float) {
-        val z0 = _targetZoom
+        val z0 = _zoom
         val z1 = (z0 * factor).coerceIn(MIN_ZOOM, MAX_ZOOM)
         if (z1 == z0) return
-        // Adjust pan so the world coord under the cursor stays fixed after
-        // the zoom change. Pan is instantaneous → write to `_panX` directly.
+        // Adjust pan so the world coord under the cursor stays fixed across
+        // the zoom step. Both pan and zoom apply immediately on this frame —
+        // grid and cards both jump to the new view together, no easing.
         _panX += focalLocalX * (1f / z1 - 1f / z0)
         _panY += focalLocalY * (1f / z1 - 1f / z0)
-        _targetZoom = z1
+        _zoom = z1
     }
 
     /**
@@ -65,18 +65,13 @@ class CanvasState(
      * frame, min 1 unit, snap when close) so wheel notches feel smooth but
      * not laggy. Called from NwUiOwner.postLayoutWalk once per frame.
      */
-    internal fun advance() {
-        if (abs(_targetZoom - _zoom) < 0.001f) {
-            _zoom = _targetZoom
-        } else {
-            _zoom += (_targetZoom - _zoom) * EASE_FACTOR
-        }
-    }
+    /** No per-frame work — both pan and zoom apply instantly. Kept for the
+     *  NwUiOwner call-site shape; remove once nothing references it. */
+    internal fun advance() = Unit
 
     companion object {
         const val MIN_ZOOM = 0.25f
         const val MAX_ZOOM = 3.0f
-        private const val EASE_FACTOR = 0.25f
     }
 }
 

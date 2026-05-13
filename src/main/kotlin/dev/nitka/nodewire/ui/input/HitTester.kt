@@ -21,13 +21,23 @@ import dev.nitka.nodewire.ui.scroll.ScrollModifier
 fun UiNode.hitTest(event: PointerEvent, parentOffsetX: Int = 0, parentOffsetY: Int = 0): UiNode? {
     val absX = parentOffsetX + layoutX
     val absY = parentOffsetY + layoutY
-    if (event.x !in absX until (absX + layoutWidth)) return null
-    if (event.y !in absY until (absY + layoutHeight)) return null
 
     val scrolls = inputModifiers.filterIsInstance<ScrollModifier>()
     val scrollX = scrolls.firstOrNull { it.axis == ScrollAxis.Horizontal }?.state?.value ?: 0
     val scrollY = scrolls.firstOrNull { it.axis == ScrollAxis.Vertical }?.state?.value ?: 0
     val canvasMod = inputModifiers.filterIsInstance<CanvasModifier>().firstOrNull()
+
+    // Bound-check own area BEFORE recursing when the node performs a
+    // coordinate transform (canvas pose) or clips visually (scroll). For
+    // ordinary containers, children may legitimately overflow via
+    // `Modifier.offset` — pin handles straddle the card border, for
+    // example — so we descend without rejecting on the parent's bounds
+    // and let each child re-check its own bounds.
+    val clipsToBounds = canvasMod != null || scrolls.isNotEmpty()
+    if (clipsToBounds) {
+        if (event.x !in absX until (absX + layoutWidth)) return null
+        if (event.y !in absY until (absY + layoutHeight)) return null
+    }
 
     // Reverse iteration: visually last child paints on top, so it hits first.
     if (canvasMod != null) {
@@ -50,6 +60,12 @@ fun UiNode.hitTest(event: PointerEvent, parentOffsetX: Int = 0, parentOffsetY: I
             if (hit != null) return hit
         }
     }
+
+    // Now check own bounds before invoking own handlers — overflow children
+    // get to claim the event first, but the node itself only responds to
+    // clicks inside its own rectangle.
+    if (event.x !in absX until (absX + layoutWidth)) return null
+    if (event.y !in absY until (absY + layoutHeight)) return null
     val localX = event.x - absX
     val localY = event.y - absY
     for (mod in inputModifiers) {

@@ -1,19 +1,24 @@
 package dev.nitka.nodewire.client.screen
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import dev.nitka.nodewire.graph.CanvasPos
+import dev.nitka.nodewire.graph.Edge
 import dev.nitka.nodewire.graph.Node
 import dev.nitka.nodewire.graph.NodeGraph
+import dev.nitka.nodewire.graph.PinRef
 import dev.nitka.nodewire.graph.StockNodeTypes
 import dev.nitka.nodewire.ui.canvas.NodeCanvas
 import dev.nitka.nodewire.ui.canvas.rememberCanvasState
 import dev.nitka.nodewire.ui.core.Modifier
 import dev.nitka.nodewire.ui.core.NwComposeScreen
+import dev.nitka.nodewire.ui.input.PointerEvent
 import dev.nitka.nodewire.ui.layout.Box
+import dev.nitka.nodewire.ui.modifier.input.pointerInput
 import dev.nitka.nodewire.ui.modifier.layout.fillMaxSize
 import dev.nitka.nodewire.ui.modifier.style.background
 import dev.nitka.nodewire.ui.theme.NwTheme
@@ -42,24 +47,54 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
     override fun Content() {
         NwThemeProvider {
             val canvas = rememberCanvasState()
-            // The `nodes` list reference is what drives recomposition when
-            // we (eventually) add/remove nodes. Snapshot the values once per
-            // composition — the wrapper state will be replaced wholesale by
-            // future edit actions, triggering recomposition for free.
+            val editor = remember(graph) { EditorState(graph) }
             var nodes by remember { mutableStateOf(graph.nodes.values.toList()) }
-            // Future hook: rebind whenever an edit lands. Kept as a no-op
-            // reference here so the compiler doesn't strip the setter and
-            // the editing slice can wire it without touching this file.
+            // Future hook: rebind whenever the node set changes. Kept as
+            // a reachable setter so the editing slice can wire it without
+            // touching this file.
             @Suppress("UNUSED_VARIABLE") val setNodes: (List<Node>) -> Unit = { nodes = it }
 
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(NwTheme.colors.background),
-            ) {
-                NodeCanvas(state = canvas, modifier = Modifier.fillMaxSize()) {
-                    for (node in nodes) {
-                        NodeCard(node = node)
+            CompositionLocalProvider(LocalEditorState provides editor) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(NwTheme.colors.background)
+                        // Catch-all handler for sticky wire drags:
+                        //   * Move events follow the cursor so the sticky
+                        //     wire trails the mouse with no button held —
+                        //     converted from screen to world via the canvas
+                        //     state since this Box is outside the pose.
+                        //   * An unconsumed Press while sticky drag is
+                        //     active means the user clicked off a pin —
+                        //     cancel the chain.
+                        //   * Non-sticky drags use only press-drag-release
+                        //     on the source pin; we never run for them.
+                        .pointerInput { ev, _, _ ->
+                            if (editor.wireDragSource == null || !editor.wireDragSticky) {
+                                return@pointerInput false
+                            }
+                            when (ev) {
+                                is PointerEvent.Move -> {
+                                    val worldX = ev.x.toFloat() / canvas.zoom - canvas.panX
+                                    val worldY = ev.y.toFloat() / canvas.zoom - canvas.panY
+                                    editor.setCursor(worldX, worldY)
+                                    false
+                                }
+                                is PointerEvent.Press -> {
+                                    editor.cancelWireDrag()
+                                    true
+                                }
+                                else -> false
+                            }
+                        },
+                ) {
+                    NodeCanvas(state = canvas, modifier = Modifier.fillMaxSize()) {
+                        // Wires render BEFORE cards so they pass under the
+                        // node bodies instead of clipping over them.
+                        WireLayer()
+                        for (node in nodes) {
+                            NodeCard(node = node)
+                        }
                     }
                 }
             }
@@ -73,10 +108,17 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
      */
     private fun seedIfEmpty(g: NodeGraph) {
         if (g.nodes.isNotEmpty()) return
-        g.add(StockNodeTypes.BOOL_CONST.newInstance(CanvasPos(40f, 40f)))
-        g.add(StockNodeTypes.INT_CONST.newInstance(CanvasPos(40f, 130f)))
-        g.add(StockNodeTypes.AND.newInstance(CanvasPos(220f, 40f)))
-        g.add(StockNodeTypes.ADD_INT.newInstance(CanvasPos(220f, 130f)))
-        g.add(StockNodeTypes.BLOCK_OUTPUT.newInstance(CanvasPos(400f, 40f)))
+        val bool1 = StockNodeTypes.BOOL_CONST.newInstance(CanvasPos(40f, 40f))
+        val int1 = StockNodeTypes.INT_CONST.newInstance(CanvasPos(40f, 130f))
+        val int2 = StockNodeTypes.INT_CONST.newInstance(CanvasPos(40f, 220f))
+        val and = StockNodeTypes.AND.newInstance(CanvasPos(250f, 40f))
+        val add = StockNodeTypes.ADD_INT.newInstance(CanvasPos(250f, 170f))
+        val out = StockNodeTypes.BLOCK_OUTPUT.newInstance(CanvasPos(480f, 100f))
+        g.add(bool1); g.add(int1); g.add(int2); g.add(and); g.add(add); g.add(out)
+        // BOOL_CONST → AND.a + AND → BLOCK_OUTPUT.down ; INT_CONSTs → ADD_INT
+        g.addEdge(Edge(PinRef(bool1.id, "out"), PinRef(and.id, "a")))
+        g.addEdge(Edge(PinRef(and.id, "out"), PinRef(out.id, "down")))
+        g.addEdge(Edge(PinRef(int1.id, "out"), PinRef(add.id, "a")))
+        g.addEdge(Edge(PinRef(int2.id, "out"), PinRef(add.id, "b")))
     }
 }
