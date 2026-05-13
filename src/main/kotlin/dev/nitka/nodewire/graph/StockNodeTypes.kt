@@ -46,6 +46,7 @@ object StockNodeTypes {
         category = NodeCategory.LOGIC,
         inputs = listOf(Pin("a", "A", PinType.BOOL), Pin("b", "B", PinType.BOOL)),
         outputs = listOf(Pin("out", "Out", PinType.BOOL)),
+        evaluate = StockEvaluators.And,
     )
 
     val OR = nodeType(
@@ -54,6 +55,7 @@ object StockNodeTypes {
         category = NodeCategory.LOGIC,
         inputs = listOf(Pin("a", "A", PinType.BOOL), Pin("b", "B", PinType.BOOL)),
         outputs = listOf(Pin("out", "Out", PinType.BOOL)),
+        evaluate = StockEvaluators.Or,
     )
 
     val NOT = nodeType(
@@ -62,6 +64,7 @@ object StockNodeTypes {
         category = NodeCategory.LOGIC,
         inputs = listOf(Pin("in", "In", PinType.BOOL)),
         outputs = listOf(Pin("out", "Out", PinType.BOOL)),
+        evaluate = StockEvaluators.Not,
     )
 
     val BOOL_CONST = nodeType(
@@ -71,6 +74,7 @@ object StockNodeTypes {
         outputs = listOf(Pin("out", "Value", PinType.BOOL)),
         defaultConfig = { CompoundTag().apply { putBoolean("value", false) } },
         configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.BoolConst,
+        evaluate = StockEvaluators.BoolConst,
     )
 
     val STRING_CONST = nodeType(
@@ -79,6 +83,7 @@ object StockNodeTypes {
         category = NodeCategory.CONSTANTS,
         outputs = listOf(Pin("out", "Value", PinType.STRING)),
         defaultConfig = { CompoundTag().apply { putString("value", "") } },
+        evaluate = StockEvaluators.StringConst,
     )
 
     val INT_CONST = nodeType(
@@ -87,6 +92,7 @@ object StockNodeTypes {
         category = NodeCategory.CONSTANTS,
         outputs = listOf(Pin("out", "Value", PinType.INT)),
         defaultConfig = { CompoundTag().apply { putInt("value", 0) } },
+        evaluate = StockEvaluators.IntConst,
     )
 
     val FLOAT_CONST = nodeType(
@@ -95,6 +101,7 @@ object StockNodeTypes {
         category = NodeCategory.CONSTANTS,
         outputs = listOf(Pin("out", "Value", PinType.FLOAT)),
         defaultConfig = { CompoundTag().apply { putFloat("value", 0f) } },
+        evaluate = StockEvaluators.FloatConst,
     )
 
     val VEC3_CONST = nodeType(
@@ -107,6 +114,7 @@ object StockNodeTypes {
                 putFloat("x", 0f); putFloat("y", 0f); putFloat("z", 0f)
             }
         },
+        evaluate = StockEvaluators.Vec3Const,
     )
 
     val TIMER = nodeType(
@@ -116,6 +124,7 @@ object StockNodeTypes {
         inputs = listOf(Pin("period", "Period", PinType.INT)),
         outputs = listOf(Pin("out", "Pulse", PinType.BOOL)),
         defaultConfig = { CompoundTag().apply { putInt("period", 20) } },
+        evaluate = StockEvaluators.Timer,
     )
 
     val ADD_INT = nodeType(
@@ -124,6 +133,7 @@ object StockNodeTypes {
         category = NodeCategory.MATH,
         inputs = listOf(Pin("a", "A", PinType.INT), Pin("b", "B", PinType.INT)),
         outputs = listOf(Pin("out", "Out", PinType.INT)),
+        evaluate = StockEvaluators.AddInt,
     )
 
     val ADD_FLOAT = nodeType(
@@ -132,6 +142,7 @@ object StockNodeTypes {
         category = NodeCategory.MATH,
         inputs = listOf(Pin("a", "A", PinType.FLOAT), Pin("b", "B", PinType.FLOAT)),
         outputs = listOf(Pin("out", "Out", PinType.FLOAT)),
+        evaluate = StockEvaluators.AddFloat,
     )
 
     val ADD_VEC3 = nodeType(
@@ -140,6 +151,7 @@ object StockNodeTypes {
         category = NodeCategory.MATH,
         inputs = listOf(Pin("a", "A", PinType.VEC3), Pin("b", "B", PinType.VEC3)),
         outputs = listOf(Pin("out", "Out", PinType.VEC3)),
+        evaluate = StockEvaluators.AddVec3,
     )
 
     val COMPARE_INT = nodeType(
@@ -152,6 +164,7 @@ object StockNodeTypes {
             Pin("eq", "A = B", PinType.BOOL),
             Pin("lt", "A < B", PinType.BOOL),
         ),
+        evaluate = StockEvaluators.CompareInt,
     )
 
     /** Registers all 13 types into [NodeTypeRegistry]. Idempotent. */
@@ -173,6 +186,7 @@ object StockNodeTypes {
         outputs: List<Pin> = emptyList(),
         defaultConfig: () -> CompoundTag = { CompoundTag() },
         configContent: (@androidx.compose.runtime.Composable (Node) -> Unit)? = null,
+        evaluate: NodeEvaluator? = null,
     ) = NodeType(
         id = ResourceLocation(Nodewire.ID, id),
         displayName = displayName,
@@ -181,6 +195,7 @@ object StockNodeTypes {
         outputs = outputs,
         defaultConfig = defaultConfig,
         configContent = configContent,
+        evaluate = evaluate,
     )
 
     private fun faceBoolPins(): List<Pin> = listOf(

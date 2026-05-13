@@ -27,6 +27,18 @@ enum class NodeCategory(val displayName: String) {
  * graph loaded with an unregistered [id] won't render or evaluate but
  * round-trips losslessly.
  */
+/**
+ * Pure function that computes a node's output values from its inputs and
+ * config. No side effects, no world access — graph-level evaluation is
+ * deterministic. External I/O (e.g. block_input reading a neighbour's
+ * redstone signal) is handled by the host before/after `eval`, not inside
+ * the function.
+ *
+ * Keyed by pin id. Missing inputs default to [PinValue.default] for the
+ * pin's type. Outputs map keys must match the type's [NodeType.outputs].
+ */
+typealias NodeEvaluator = (config: CompoundTag, inputs: Map<String, PinValue>) -> Map<String, PinValue>
+
 data class NodeType(
     val id: ResourceLocation,
     val displayName: String,
@@ -41,6 +53,13 @@ data class NodeType(
      * mutations should also bump a Compose state to trigger recomposition.
      */
     val configContent: (@Composable (Node) -> Unit)? = null,
+    /**
+     * Pure evaluator. Null = no computation (e.g. block_input which gets
+     * its values from the world host, or types we haven't implemented yet).
+     * [GraphEvaluator] treats null-evaluator nodes as "outputs default to
+     * zero" so the graph still walks past them.
+     */
+    val evaluate: NodeEvaluator? = null,
 ) {
     /** Instantiate a fresh [Node] at [pos] with default config. */
     fun newInstance(pos: CanvasPos = CanvasPos.Zero): Node =
