@@ -9,6 +9,7 @@ import dev.nitka.nodewire.graph.Node
 import dev.nitka.nodewire.graph.Pin
 import dev.nitka.nodewire.graph.PinType
 import dev.nitka.nodewire.ui.components.Checkbox
+import dev.nitka.nodewire.ui.components.Select
 import dev.nitka.nodewire.ui.components.Text
 import dev.nitka.nodewire.ui.components.TextInput
 import dev.nitka.nodewire.ui.core.Modifier
@@ -160,19 +161,19 @@ object NodeConfigContent {
 
     private val FACES = listOf("down", "up", "north", "south", "west", "east")
 
-    /** SideInput / SideOutput: cycle-button picking which world face this node binds to. */
+    /** SideInput / SideOutput: dropdown picking which world face this node binds to. */
     val SideFace: @Composable (Node) -> Unit = { node ->
         val editor = LocalEditorState.current
         var face by remember(node.id) { mutableStateOf(node.config.getString("face").ifEmpty { "north" }) }
-        CycleButton(
-            value = face,
-            onCycle = {
-                val idx = FACES.indexOf(face).coerceAtLeast(0)
-                val next = FACES[(idx + 1) % FACES.size]
+        Select(
+            options = FACES,
+            selected = face,
+            onSelect = { next ->
                 face = next
                 node.config.putString("face", next)
                 editor?.bumpGraphVersion()
             },
+            label = { it },
         )
     }
 
@@ -199,14 +200,14 @@ object NodeConfigContent {
                     editor?.bumpGraphVersion()
                 },
             )
-            CycleButton(
-                value = type.name.lowercase(),
-                onCycle = {
-                    val idx = CHANNEL_TYPES.indexOf(type).coerceAtLeast(0)
-                    val next = CHANNEL_TYPES[(idx + 1) % CHANNEL_TYPES.size]
+            Select(
+                options = CHANNEL_TYPES,
+                selected = type,
+                onSelect = { next ->
                     type = next
                     editor?.changeChannelType(node, next)
                 },
+                label = { it.name.lowercase() },
             )
         }
     }
@@ -231,11 +232,10 @@ object NodeConfigContent {
             mutableStateOf(node.config.getString("mode").ifEmpty { defaultModeFor(sourceType) })
         }
         Column(verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2)) {
-            CycleButton(
-                value = sourceType.name.lowercase(),
-                onCycle = {
-                    val idx = SOURCE_TYPES.indexOf(sourceType).coerceAtLeast(0)
-                    val next = SOURCE_TYPES[(idx + 1) % SOURCE_TYPES.size]
+            Select(
+                options = SOURCE_TYPES,
+                selected = sourceType,
+                onSelect = { next ->
                     val defaultMode = defaultModeFor(next)
                     node.config.putString("sourceType", next.name)
                     node.config.putString("mode", defaultMode)
@@ -243,17 +243,18 @@ object NodeConfigContent {
                     mode = defaultMode
                     editor?.changeConverterInput(node, next)
                 },
+                label = { it.name.lowercase() },
             )
             val modes = modesFor(sourceType)
-            CycleButton(
-                value = mode,
-                onCycle = {
-                    val idx = modes.indexOf(mode).coerceAtLeast(0)
-                    val next = modes[(idx + 1) % modes.size]
+            Select(
+                options = modes,
+                selected = mode,
+                onSelect = { next ->
                     mode = next
                     node.config.putString("mode", next)
                     editor?.bumpGraphVersion()
                 },
+                label = { it },
             )
             ModeParams(node, sourceType, mode, editor)
         }
@@ -299,6 +300,7 @@ object NodeConfigContent {
     private fun IntField(node: Node, key: String, label: String, editor: EditorState?) {
         var text by remember(key) { mutableStateOf(node.config.getInt(key).toString()) }
         Row(
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.Center,
             horizontalArrangement = Arrangement.spacedBy(NwTheme.dimens.space4),
         ) {
@@ -320,6 +322,7 @@ object NodeConfigContent {
     private fun FloatField(node: Node, key: String, label: String, editor: EditorState?) {
         var text by remember(key) { mutableStateOf(node.config.getFloat(key).toString()) }
         Row(
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.Center,
             horizontalArrangement = Arrangement.spacedBy(NwTheme.dimens.space4),
         ) {
@@ -346,28 +349,6 @@ object NodeConfigContent {
         }
     }
 
-    /**
-     * Compact cycle-button: click advances [value] to next in a cycle.
-     * Flat fill, no border at rest — matches the dense form-field style
-     * Blender / UE5 use for property panels.
-     */
-    @Composable
-    private fun CycleButton(value: String, onCycle: () -> Unit) {
-        var hovered by remember { mutableStateOf(false) }
-        val bg = if (hovered) NwTheme.colors.surfacePressed else NwTheme.colors.surfaceHover
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(bg, NwTheme.shapes.medium)
-                .padding(horizontal = NwTheme.dimens.space4, vertical = 1)
-                .onHover { hovered = it }
-                .pointerInput { ev, _, _ ->
-                    if (ev is PointerEvent.Press) { onCycle(); true } else false
-                },
-        ) {
-            Text(value, style = NwTheme.typography.caption)
-        }
-    }
 
     /** BOOL_CONST: single checkbox bound to `config.value`. */
     val BoolConst: @Composable (Node) -> Unit = { node ->

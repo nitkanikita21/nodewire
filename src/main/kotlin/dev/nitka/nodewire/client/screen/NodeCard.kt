@@ -6,11 +6,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import dev.nitka.nodewire.graph.CanvasPos
+import dev.nitka.nodewire.graph.NodeCategory
 import dev.nitka.nodewire.graph.Node
 import dev.nitka.nodewire.graph.NodeTypeRegistry
 import dev.nitka.nodewire.graph.Pin
 import dev.nitka.nodewire.graph.PinType
 import dev.nitka.nodewire.graph.PinValue
+import dev.nitka.nodewire.ui.layout.Layout
 import dev.nitka.nodewire.ui.canvas.LocalCanvasState
 import dev.nitka.nodewire.ui.modifier.input.onPositioned
 import dev.nitka.nodewire.ui.components.Surface
@@ -66,14 +68,14 @@ fun NodeCard(
     node: Node,
     modifier: Modifier = Modifier,
 ) {
-    // Local state tracks the live position during a drag so the card moves
-    // every frame without going through Compose's data-class equality
-    // (Node is a data class but its `pos` is `var` — direct mutation
-    // wouldn't trigger recomposition). We mirror the value back into
-    // `node.pos` so the underlying graph stays in sync for save/load.
     var pos by remember(node) { mutableStateOf(node.pos) }
     val canvas = LocalCanvasState.current
     val editor = LocalEditorState.current
+    // Read graphVersion so any mutation that bumps it (incl. pin-type
+    // rebuilds for Channel/Convert nodes) triggers a recomposition here.
+    // node.inputs / node.outputs are plain `var`s — Compose can't observe
+    // them on its own.
+    editor?.graphVersion
 
     Surface(
         modifier = modifier
@@ -129,10 +131,15 @@ private fun TitleBar(
     node: Node,
     onDragDelta: (Float, Float) -> Unit,
 ) {
-    Box(
+    val category = NodeTypeRegistry.get(node.typeKey)?.category ?: NodeCategory.LOGIC
+    val baseColor = headerColorFor(category)
+    // Re-instantiate renderer when the underlying color changes (e.g.
+    // theme swap). For a stable category the renderer is created once.
+    val headerRenderer = remember(baseColor.argb) { PixelDotHeaderRenderer(baseColor) }
+    Layout(
+        renderer = headerRenderer,
         modifier = Modifier
             .fillMaxWidth()
-            .background(NwTheme.colors.accent)
             // Tight padding — title is purely a drag handle / label strip,
             // matches Blender's narrow header.
             .padding(horizontal = NwTheme.dimens.space4, vertical = 1)
