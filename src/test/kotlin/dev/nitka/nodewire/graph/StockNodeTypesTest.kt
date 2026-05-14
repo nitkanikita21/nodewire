@@ -23,8 +23,12 @@ class StockNodeTypesTest {
     }
 
     @Test
-    fun allThirteenTypesRegistered() {
-        assertEquals(15, NodeTypeRegistry.all().size, "expected 15 stock types after adding STRING_CONST")
+    fun stockTypesRegistered() {
+        // Bumped to 41 after the round-2 expansion (logic family, math
+        // suite, conversion, flow). Update this number when the catalog
+        // changes — it's a coarse "did anyone forget to wire registerAll"
+        // smoke test, not a contract on the exact count.
+        assertEquals(41, NodeTypeRegistry.all().size)
     }
 
     @Test

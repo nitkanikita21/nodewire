@@ -13,6 +13,8 @@ enum class NodeCategory(val displayName: String) {
     IO("I/O"),
     LOGIC("Logic"),
     MATH("Math"),
+    CONVERSION("Conversion"),
+    FLOW("Flow"),
     CONSTANTS("Constants"),
 }
 

@@ -67,6 +67,11 @@ object StockNodeTypes {
         evaluate = StockEvaluators.Not,
     )
 
+    val XOR = boolBinary("xor", "XOR", StockEvaluators.Xor)
+    val NAND = boolBinary("nand", "NAND", StockEvaluators.Nand)
+    val NOR = boolBinary("nor", "NOR", StockEvaluators.Nor)
+    val XNOR = boolBinary("xnor", "XNOR", StockEvaluators.Xnor)
+
     val BOOL_CONST = nodeType(
         id = "bool_const",
         displayName = "Bool Constant",
@@ -173,14 +178,137 @@ object StockNodeTypes {
         evaluate = StockEvaluators.CompareInt,
     )
 
-    /** Registers all 13 types into [NodeTypeRegistry]. Idempotent. */
+    val COMPARE_FLOAT = nodeType(
+        id = "compare_float",
+        displayName = "Compare Float",
+        category = NodeCategory.MATH,
+        inputs = listOf(Pin("a", "A", PinType.FLOAT), Pin("b", "B", PinType.FLOAT)),
+        outputs = listOf(
+            Pin("gt", "A > B", PinType.BOOL),
+            Pin("eq", "A = B", PinType.BOOL),
+            Pin("lt", "A < B", PinType.BOOL),
+        ),
+        evaluate = StockEvaluators.CompareFloat,
+    )
+
+    val SUB_INT = intBinary("sub_int", "Subtract Int", StockEvaluators.SubInt)
+    val SUB_FLOAT = floatBinary("sub_float", "Subtract Float", StockEvaluators.SubFloat)
+    val MUL_INT = intBinary("mul_int", "Multiply Int", StockEvaluators.MulInt)
+    val MUL_FLOAT = floatBinary("mul_float", "Multiply Float", StockEvaluators.MulFloat)
+    val DIV_INT = intBinary("div_int", "Divide Int", StockEvaluators.DivInt)
+    val DIV_FLOAT = floatBinary("div_float", "Divide Float", StockEvaluators.DivFloat)
+    val MOD_INT = intBinary("mod_int", "Modulo Int", StockEvaluators.ModInt)
+    val NEG_FLOAT = floatUnary("neg_float", "Negate Float", StockEvaluators.NegFloat)
+    val ABS_FLOAT = floatUnary("abs_float", "Abs Float", StockEvaluators.AbsFloat)
+    val MIN_FLOAT = floatBinary("min_float", "Min Float", StockEvaluators.MinFloat)
+    val MAX_FLOAT = floatBinary("max_float", "Max Float", StockEvaluators.MaxFloat)
+
+    val CLAMP_FLOAT = nodeType(
+        id = "clamp_float",
+        displayName = "Clamp Float",
+        category = NodeCategory.MATH,
+        inputs = listOf(
+            Pin("in", "Value", PinType.FLOAT),
+            Pin("min", "Min", PinType.FLOAT),
+            Pin("max", "Max", PinType.FLOAT),
+        ),
+        outputs = listOf(Pin("out", "Out", PinType.FLOAT)),
+        evaluate = StockEvaluators.ClampFloat,
+    )
+
+    // --- Conversion ----------------------------------------------------
+
+    val INT_TO_FLOAT = nodeType(
+        id = "int_to_float", displayName = "Int → Float", category = NodeCategory.CONVERSION,
+        inputs = listOf(Pin("in", "Int", PinType.INT)),
+        outputs = listOf(Pin("out", "Float", PinType.FLOAT)),
+        evaluate = StockEvaluators.IntToFloat,
+    )
+    val FLOAT_TO_INT = nodeType(
+        id = "float_to_int", displayName = "Float → Int", category = NodeCategory.CONVERSION,
+        inputs = listOf(Pin("in", "Float", PinType.FLOAT)),
+        outputs = listOf(Pin("out", "Int", PinType.INT)),
+        evaluate = StockEvaluators.FloatToInt,
+    )
+    val BOOL_TO_INT = nodeType(
+        id = "bool_to_int", displayName = "Bool → Int", category = NodeCategory.CONVERSION,
+        inputs = listOf(Pin("in", "Bool", PinType.BOOL)),
+        outputs = listOf(Pin("out", "Int", PinType.INT)),
+        evaluate = StockEvaluators.BoolToInt,
+    )
+    val INT_TO_BOOL = nodeType(
+        id = "int_to_bool", displayName = "Int → Bool", category = NodeCategory.CONVERSION,
+        inputs = listOf(Pin("in", "Int", PinType.INT)),
+        outputs = listOf(Pin("out", "Bool", PinType.BOOL)),
+        evaluate = StockEvaluators.IntToBool,
+    )
+
+    // --- Flow ----------------------------------------------------------
+
+    val SELECT_BOOL = nodeType(
+        id = "select_bool", displayName = "Select Bool", category = NodeCategory.FLOW,
+        inputs = listOf(
+            Pin("pred", "If", PinType.BOOL),
+            Pin("a", "Then", PinType.BOOL),
+            Pin("b", "Else", PinType.BOOL),
+        ),
+        outputs = listOf(Pin("out", "Out", PinType.BOOL)),
+        evaluate = StockEvaluators.SelectBool,
+    )
+
+    val EDGE_RISING = nodeType(
+        id = "edge_rising", displayName = "Rising Edge", category = NodeCategory.FLOW,
+        inputs = listOf(Pin("in", "In", PinType.BOOL)),
+        outputs = listOf(Pin("out", "Pulse", PinType.BOOL)),
+        tickEvaluator = StockEvaluators.EdgeRisingTick,
+    )
+
+    val TOGGLE = nodeType(
+        id = "toggle", displayName = "Toggle", category = NodeCategory.FLOW,
+        inputs = listOf(Pin("in", "Pulse", PinType.BOOL)),
+        outputs = listOf(Pin("out", "State", PinType.BOOL)),
+        tickEvaluator = StockEvaluators.ToggleTick,
+    )
+
+    val COUNTER = nodeType(
+        id = "counter", displayName = "Counter", category = NodeCategory.FLOW,
+        inputs = listOf(
+            Pin("in", "Pulse", PinType.BOOL),
+            Pin("reset", "Reset", PinType.BOOL),
+        ),
+        outputs = listOf(Pin("out", "Count", PinType.INT)),
+        tickEvaluator = StockEvaluators.CounterTick,
+    )
+
+    val DELAY = nodeType(
+        id = "delay", displayName = "Delay", category = NodeCategory.FLOW,
+        inputs = listOf(Pin("in", "In", PinType.BOOL)),
+        outputs = listOf(Pin("out", "Delayed", PinType.BOOL)),
+        defaultConfig = { CompoundTag().apply { putInt("delay", 5) } },
+        configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.DelayTicks,
+        tickEvaluator = StockEvaluators.DelayTick,
+    )
+
+    /** Registers every stock type into [NodeTypeRegistry]. Idempotent. */
     fun registerAll() {
         listOf(
+            // IO
             BLOCK_INPUT, BLOCK_OUTPUT,
-            AND, OR, NOT,
-            BOOL_CONST, INT_CONST, FLOAT_CONST, STRING_CONST, VEC3_CONST,
-            TIMER,
-            ADD_INT, ADD_FLOAT, ADD_VEC3, COMPARE_INT,
+            // Logic
+            AND, OR, NOT, XOR, NAND, NOR, XNOR,
+            // Constants
+            BOOL_CONST, INT_CONST, FLOAT_CONST, STRING_CONST, VEC3_CONST, TIMER,
+            // Math
+            ADD_INT, ADD_FLOAT, ADD_VEC3,
+            SUB_INT, SUB_FLOAT,
+            MUL_INT, MUL_FLOAT,
+            DIV_INT, DIV_FLOAT, MOD_INT,
+            NEG_FLOAT, ABS_FLOAT, MIN_FLOAT, MAX_FLOAT, CLAMP_FLOAT,
+            COMPARE_INT, COMPARE_FLOAT,
+            // Conversion
+            INT_TO_FLOAT, FLOAT_TO_INT, BOOL_TO_INT, INT_TO_BOOL,
+            // Flow
+            SELECT_BOOL, EDGE_RISING, TOGGLE, COUNTER, DELAY,
         ).forEach(NodeTypeRegistry::register)
     }
 
@@ -204,6 +332,36 @@ object StockNodeTypes {
         configContent = configContent,
         evaluate = evaluate,
         tickEvaluator = tickEvaluator,
+    )
+
+    // --- Helpers for common pin shapes ---------------------------------
+
+    private fun boolBinary(id: String, displayName: String, eval: NodeEvaluator) = nodeType(
+        id = id, displayName = displayName, category = NodeCategory.LOGIC,
+        inputs = listOf(Pin("a", "A", PinType.BOOL), Pin("b", "B", PinType.BOOL)),
+        outputs = listOf(Pin("out", "Out", PinType.BOOL)),
+        evaluate = eval,
+    )
+
+    private fun intBinary(id: String, displayName: String, eval: NodeEvaluator) = nodeType(
+        id = id, displayName = displayName, category = NodeCategory.MATH,
+        inputs = listOf(Pin("a", "A", PinType.INT), Pin("b", "B", PinType.INT)),
+        outputs = listOf(Pin("out", "Out", PinType.INT)),
+        evaluate = eval,
+    )
+
+    private fun floatBinary(id: String, displayName: String, eval: NodeEvaluator) = nodeType(
+        id = id, displayName = displayName, category = NodeCategory.MATH,
+        inputs = listOf(Pin("a", "A", PinType.FLOAT), Pin("b", "B", PinType.FLOAT)),
+        outputs = listOf(Pin("out", "Out", PinType.FLOAT)),
+        evaluate = eval,
+    )
+
+    private fun floatUnary(id: String, displayName: String, eval: NodeEvaluator) = nodeType(
+        id = id, displayName = displayName, category = NodeCategory.MATH,
+        inputs = listOf(Pin("in", "In", PinType.FLOAT)),
+        outputs = listOf(Pin("out", "Out", PinType.FLOAT)),
+        evaluate = eval,
     )
 
     private fun faceBoolPins(): List<Pin> = listOf(

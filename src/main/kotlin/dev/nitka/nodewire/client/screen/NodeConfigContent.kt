@@ -95,6 +95,32 @@ object NodeConfigContent {
         )
     }
 
+    /** DELAY: number of ticks the input is held back by. */
+    val DelayTicks: @Composable (Node) -> Unit = { node ->
+        val editor = LocalEditorState.current
+        var text by remember { mutableStateOf(node.config.getInt("delay").toString()) }
+        Row(
+            verticalAlignment = Alignment.Center,
+            horizontalArrangement = Arrangement.spacedBy(NwTheme.dimens.space4),
+        ) {
+            Text(
+                "Ticks",
+                style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceMuted),
+            )
+            TextInput(
+                modifier = Modifier.fillMaxWidth(),
+                value = text,
+                onValueChange = { new ->
+                    val filtered = new.filter { it.isDigit() }
+                    text = filtered
+                    val v = (filtered.toIntOrNull() ?: 0).coerceIn(0, 200)
+                    node.config.putInt("delay", v)
+                    editor?.bumpGraphVersion()
+                },
+            )
+        }
+    }
+
     /** TIMER: integer period in ticks. Same widget shape as IntConst. */
     val TimerPeriod: @Composable (Node) -> Unit = { node ->
         val editor = LocalEditorState.current

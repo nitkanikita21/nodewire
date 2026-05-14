@@ -25,6 +25,22 @@ object StockEvaluators {
         mapOf("out" to PinValue.Bool(!boolIn(inputs, "in")))
     }
 
+    val Xor: NodeEvaluator = { _, inputs ->
+        mapOf("out" to PinValue.Bool(boolIn(inputs, "a") xor boolIn(inputs, "b")))
+    }
+
+    val Nand: NodeEvaluator = { _, inputs ->
+        mapOf("out" to PinValue.Bool(!(boolIn(inputs, "a") && boolIn(inputs, "b"))))
+    }
+
+    val Nor: NodeEvaluator = { _, inputs ->
+        mapOf("out" to PinValue.Bool(!(boolIn(inputs, "a") || boolIn(inputs, "b"))))
+    }
+
+    val Xnor: NodeEvaluator = { _, inputs ->
+        mapOf("out" to PinValue.Bool(boolIn(inputs, "a") == boolIn(inputs, "b")))
+    }
+
     // --- Constants ------------------------------------------------------
 
     val BoolConst: NodeEvaluator = { config, _ ->
@@ -95,6 +111,155 @@ object StockEvaluators {
             "lt" to PinValue.Bool(a < b),
         )
     }
+
+    val CompareFloat: NodeEvaluator = { _, inputs ->
+        val a = floatIn(inputs, "a")
+        val b = floatIn(inputs, "b")
+        mapOf(
+            "gt" to PinValue.Bool(a > b),
+            "eq" to PinValue.Bool(a == b),
+            "lt" to PinValue.Bool(a < b),
+        )
+    }
+
+    val SubInt: NodeEvaluator = { _, i ->
+        mapOf("out" to PinValue.Int(intIn(i, "a") - intIn(i, "b")))
+    }
+    val SubFloat: NodeEvaluator = { _, i ->
+        mapOf("out" to PinValue.Float(floatIn(i, "a") - floatIn(i, "b")))
+    }
+    val MulInt: NodeEvaluator = { _, i ->
+        mapOf("out" to PinValue.Int(intIn(i, "a") * intIn(i, "b")))
+    }
+    val MulFloat: NodeEvaluator = { _, i ->
+        mapOf("out" to PinValue.Float(floatIn(i, "a") * floatIn(i, "b")))
+    }
+    val DivInt: NodeEvaluator = { _, i ->
+        // Defensive divide-by-zero handling — returning 0 mirrors what
+        // most node-editor toolkits do (Blender, UE). Crashing or NaN
+        // propagation would be worse UX in a live preview.
+        val b = intIn(i, "b")
+        mapOf("out" to PinValue.Int(if (b == 0) 0 else intIn(i, "a") / b))
+    }
+    val DivFloat: NodeEvaluator = { _, i ->
+        val b = floatIn(i, "b")
+        mapOf("out" to PinValue.Float(if (b == 0f) 0f else floatIn(i, "a") / b))
+    }
+    val ModInt: NodeEvaluator = { _, i ->
+        val b = intIn(i, "b")
+        mapOf("out" to PinValue.Int(if (b == 0) 0 else intIn(i, "a") % b))
+    }
+    val NegFloat: NodeEvaluator = { _, i ->
+        mapOf("out" to PinValue.Float(-floatIn(i, "in")))
+    }
+    val AbsFloat: NodeEvaluator = { _, i ->
+        mapOf("out" to PinValue.Float(kotlin.math.abs(floatIn(i, "in"))))
+    }
+    val MinFloat: NodeEvaluator = { _, i ->
+        mapOf("out" to PinValue.Float(kotlin.math.min(floatIn(i, "a"), floatIn(i, "b"))))
+    }
+    val MaxFloat: NodeEvaluator = { _, i ->
+        mapOf("out" to PinValue.Float(kotlin.math.max(floatIn(i, "a"), floatIn(i, "b"))))
+    }
+    val ClampFloat: NodeEvaluator = { _, i ->
+        val v = floatIn(i, "in")
+        val lo = floatIn(i, "min")
+        val hi = floatIn(i, "max")
+        mapOf("out" to PinValue.Float(v.coerceIn(lo, hi)))
+    }
+
+    // --- Conversion ----------------------------------------------------
+
+    val IntToFloat: NodeEvaluator = { _, i ->
+        mapOf("out" to PinValue.Float(intIn(i, "in").toFloat()))
+    }
+    val FloatToInt: NodeEvaluator = { _, i ->
+        mapOf("out" to PinValue.Int(floatIn(i, "in").toInt()))
+    }
+    val BoolToInt: NodeEvaluator = { _, i ->
+        mapOf("out" to PinValue.Int(if (boolIn(i, "in")) 1 else 0))
+    }
+    val IntToBool: NodeEvaluator = { _, i ->
+        mapOf("out" to PinValue.Bool(intIn(i, "in") != 0))
+    }
+
+    // --- Flow ----------------------------------------------------------
+
+    /**
+     * Boolean multiplexer: `pred ? a : b`. Two-way switch generalised to
+     * boolean selector. Type-specific variants needed later if we want
+     * SELECT_INT / SELECT_FLOAT etc.
+     */
+    val SelectBool: NodeEvaluator = { _, i ->
+        val pred = boolIn(i, "pred")
+        val a = boolIn(i, "a")
+        val b = boolIn(i, "b")
+        mapOf("out" to PinValue.Bool(if (pred) a else b))
+    }
+
+    /**
+     * Rising-edge detector: fires `true` for one tick when `in` transitions
+     * false → true. Stateful (remembers previous level).
+     */
+    val EdgeRisingTick: TickEvaluator = { state, _, inputs ->
+        val now = boolIn(inputs, "in")
+        val prev = state.getBoolean("prev")
+        state.putBoolean("prev", now)
+        mapOf("out" to PinValue.Bool(now && !prev))
+    }
+
+    /**
+     * Toggle / T flip-flop: every rising edge on `in` flips the stored
+     * output bit. Useful for buttons that need to act as on/off switches.
+     */
+    val ToggleTick: TickEvaluator = { state, _, inputs ->
+        val now = boolIn(inputs, "in")
+        val prev = state.getBoolean("prev")
+        var out = state.getBoolean("out")
+        if (now && !prev) out = !out
+        state.putBoolean("prev", now)
+        state.putBoolean("out", out)
+        mapOf("out" to PinValue.Bool(out))
+    }
+
+    /**
+     * Counter: increments stored int on each rising edge of `in`. Resets
+     * to 0 on rising edge of `reset`.
+     */
+    val CounterTick: TickEvaluator = { state, _, inputs ->
+        val tick = boolIn(inputs, "in")
+        val reset = boolIn(inputs, "reset")
+        val prevTick = state.getBoolean("prevTick")
+        val prevReset = state.getBoolean("prevReset")
+        var count = state.getInt("count")
+        if (reset && !prevReset) count = 0
+        if (tick && !prevTick) count++
+        state.putBoolean("prevTick", tick)
+        state.putBoolean("prevReset", reset)
+        state.putInt("count", count)
+        mapOf("out" to PinValue.Int(count))
+    }
+
+    /**
+     * Delay-line: outputs the value of `in` from `delay` ticks ago. Buffer
+     * stored as a serialized byte ring in state — for MVP we cap at
+     * MAX_DELAY ticks.
+     */
+    val DelayTick: TickEvaluator = { state, config, inputs ->
+        val delay = config.getInt("delay").coerceIn(0, MAX_DELAY)
+        val now = boolIn(inputs, "in")
+        val buf = state.getByteArray("buf")
+        val ring = if (buf.size == MAX_DELAY) buf.copyOf() else ByteArray(MAX_DELAY)
+        val head = state.getInt("head")
+        ring[head] = if (now) 1 else 0
+        val tail = (head - delay + MAX_DELAY) % MAX_DELAY
+        val out = ring[tail].toInt() != 0
+        state.putByteArray("buf", ring)
+        state.putInt("head", (head + 1) % MAX_DELAY)
+        mapOf("out" to PinValue.Bool(out))
+    }
+
+    private const val MAX_DELAY = 200
 
     // --- helpers --------------------------------------------------------
 
