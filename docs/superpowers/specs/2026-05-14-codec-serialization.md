@@ -12,9 +12,12 @@ The graph model + cross-block bindings currently serialize via hand-written
   `type` discriminator string)
 - `ChannelBinding`, `SideBinding`
 
-The same shape is wire-encoded in `SaveGraphPacket`, `BindChannelPacket`,
-`BindSideChannelPacket`, `RemoveBindingPacket` via `FriendlyByteBuf` —
-those stay as is; codecs replace NBT only.
+The same shape is also wire-encoded in `SaveGraphPacket`, `BindChannelPacket`,
+`BindSideChannelPacket`, `RemoveBindingPacket` via hand-written
+`FriendlyByteBuf` reads/writes. This spec puts those on codecs too —
+`FriendlyByteBuf.writeWithCodec(codec, value)` / `readWithCodec(codec)`
+serializes the value to NBT through the codec then ships the tag in the
+buffer, giving us one serialization layer for save *and* wire.
 
 This spec moves all NBT serialization to MC's `com.mojang.serialization.Codec`
 infrastructure: one canonical `CODEC` per type, NBT via `NbtOps.INSTANCE`,
@@ -39,8 +42,6 @@ user accepts that.
 
 ## Non-goals
 
-- Wire format changes for `FriendlyByteBuf` packets. Those continue to
-  use `buf.writeBlockPos`/`writeUtf` etc.
 - A user-facing SNBT export action. Codecs *enable* it cheaply, but the
   export UI is a separate spec.
 - Backward compatibility with old NBT. Clean slate.
@@ -59,6 +60,11 @@ user accepts that.
 | `NodeGraph` | `NodeGraph.kt` companion | nodes (map), edges (list) |
 | `ChannelBinding` | `ChannelBinding.kt` companion | source name, target pos, target name |
 | `SideBinding` | `SideBinding.kt` companion | source name, target pos, target side |
+| `SaveGraphPacket` | `SaveGraphPacket.kt` companion | `pos: BlockPos`, `graph: NodeGraph` |
+| `BindChannelPacket` | `BindChannelPacket.kt` companion | 4 fields per current shape |
+| `BindSideChannelPacket` | `BindSideChannelPacket.kt` companion | 4 fields per current shape |
+| `RemoveBindingPacket` | `RemoveBindingPacket.kt` companion | 5 fields incl. `Kind` enum |
+| `RemoveBindingPacket.Kind` | inner companion | enum codec via `StringRepresentable` or `Codec.STRING.xmap` |
 
 ### Building blocks
 
@@ -102,10 +108,22 @@ Edges stay a `List<Edge>`.
 - `LogicBlockEntity.load(tag)`:
   - `NodeGraph.CODEC.parse(NbtOps.INSTANCE, tag.getCompound("graph")).result().orElse(NodeGraph())`
   - Same for binding lists.
-- `SaveGraphPacket.handle()` and `BindChannelPacket.handle()`: server-side
-  reads a `NodeGraph` (or just bindings) — those packets currently carry
-  `CompoundTag` through `FriendlyByteBuf.writeNbt`. After this change they
-  encode through codec → tag → buf. Decode reverses.
+- All four packets get a top-level `CODEC: Codec<T>` and their
+  `encode/decode` collapse to one-liners:
+
+  ```kotlin
+  fun encode(buf: FriendlyByteBuf) { buf.writeWithCodec(NbtOps.INSTANCE, CODEC, this) }
+  companion object {
+      val CODEC: Codec<MyPacket> = RecordCodecBuilder.create { it.group(...).apply(it, ::MyPacket) }
+      fun decode(buf: FriendlyByteBuf): MyPacket = buf.readWithCodec(NbtOps.INSTANCE, CODEC, MAX_NBT_BYTES)
+  }
+  ```
+
+  `MAX_NBT_BYTES` is a project-wide constant (e.g. 2 MiB) to cap the
+  decoded payload — vanilla `readWithCodec` requires a size limit.
+
+  `handle()` bodies are unchanged — they operate on the already-decoded
+  instance.
 
 ## Testing
 
@@ -134,9 +152,12 @@ the main classpath.
   - `graph/NodeGraph.kt`
   - `block/ChannelBinding.kt`
   - `block/SideBinding.kt`
-- Modify (use codec at call sites):
+- Modify (use codec at call sites + their own packet `CODEC`):
   - `block/LogicBlockEntity.kt`
   - `net/SaveGraphPacket.kt`
+  - `net/BindChannelPacket.kt`
+  - `net/BindSideChannelPacket.kt`
+  - `net/RemoveBindingPacket.kt`
 - Create:
   - `src/test/kotlin/dev/nitka/nodewire/graph/CodecRoundTripTest.kt`
 - Delete: any test that explicitly tests `toNbt/fromNbt` of the now-codec
