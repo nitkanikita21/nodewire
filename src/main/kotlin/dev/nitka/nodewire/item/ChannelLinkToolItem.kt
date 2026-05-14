@@ -30,7 +30,18 @@ import net.minecraft.world.level.block.Block
  */
 class ChannelLinkToolItem(props: Properties) : Item(props) {
 
-    override fun useOn(ctx: UseOnContext): InteractionResult {
+    /**
+     * Intercepts the right-click BEFORE [LogicBlock.use] gets a chance to
+     * open the editor screen. Standard interaction order in 1.20.1 is
+     * onItemUseFirst → Block.use → Item.useOn, so we own the first slot
+     * and return SUCCESS to short-circuit the rest.
+     */
+    override fun onItemUseFirst(stack: net.minecraft.world.item.ItemStack, ctx: UseOnContext): InteractionResult =
+        handle(ctx)
+
+    override fun useOn(ctx: UseOnContext): InteractionResult = handle(ctx)
+
+    private fun handle(ctx: UseOnContext): InteractionResult {
         val level = ctx.level
         val pos = ctx.clickedPos
         val player = ctx.player ?: return InteractionResult.PASS
