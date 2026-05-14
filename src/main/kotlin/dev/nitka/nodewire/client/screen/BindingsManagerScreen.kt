@@ -100,38 +100,30 @@ class BindingsManagerScreen(
                 ),
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space6)) {
-                    Header()
-                    Section(title = "Source channel") {
-                        SourceList()
-                    }
-                    Section(title = "Existing bindings (${totalBindings()})") {
-                        ExistingList()
-                    }
+                    PanelHeader(channelCount = 0, bindingCount = 0)
+                    SourceList()
+                    ExistingList()
                 }
             }
         }
     }
 
     @Composable
-    private fun Header() {
+    private fun PanelHeader(channelCount: Int, bindingCount: Int) {
         val pos = sourceBe.blockPos
         Column(verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2)) {
-            Text("Link Manager", style = NwTheme.typography.subtitle)
+            Row(verticalAlignment = Alignment.Center) {
+                Text("Link Manager", style = NwTheme.typography.subtitle)
+                Box(modifier = Modifier.weight(1f))
+                Text(
+                    "$channelCount channels · $bindingCount bindings",
+                    style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceMuted),
+                )
+            }
             Text(
-                "Block ${pos.toShortString()}",
+                "Block (${pos.toShortString()}) · click a channel to arm tool, ✕ to disconnect",
                 style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceMuted),
             )
-        }
-    }
-
-    @Composable
-    private fun Section(title: String, content: @Composable () -> Unit) {
-        Column(verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2)) {
-            Text(
-                title.uppercase(),
-                style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceMuted),
-            )
-            content()
         }
     }
 
@@ -144,7 +136,7 @@ class BindingsManagerScreen(
                 if (name.isEmpty()) null else name to PinType.fromName(node.config.getString("type"))
             }
         if (outputs.isEmpty()) {
-            EmptyRow("(no channel outputs on this block)")
+            MutedLine("(no channel outputs on this block)")
             return
         }
         Column(verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2)) {
@@ -166,7 +158,7 @@ class BindingsManagerScreen(
         val sideBindings = remember(version) { sourceBe.sideBindingsSnapshot() }
 
         if (bindings.isEmpty() && sideBindings.isEmpty()) {
-            EmptyRow("(no outgoing links yet)")
+            MutedLine("(no outgoing links yet)")
             return
         }
         Column(verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2)) {
@@ -319,7 +311,7 @@ private fun RemoveButton(onClick: () -> Unit) {
 }
 
 @Composable
-private fun EmptyRow(text: String) {
+private fun MutedLine(text: String) {
     Text(
         text,
         style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceMuted),
