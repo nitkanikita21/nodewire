@@ -12,13 +12,9 @@ typealias NodeId = UUID
  */
 data class PinRef(val node: NodeId, val pin: String) {
     companion object {
-        /** UUID round-trips as its canonical string form. */
-        private val UUID_CODEC: Codec<UUID> =
-            Codec.STRING.xmap(UUID::fromString, UUID::toString)
-
         val CODEC: Codec<PinRef> = RecordCodecBuilder.create { i ->
             i.group(
-                UUID_CODEC.fieldOf("node").forGetter(PinRef::node),
+                GraphCodecs.UUID_CODEC.fieldOf("node").forGetter(PinRef::node),
                 Codec.STRING.fieldOf("pin").forGetter(PinRef::pin),
             ).apply(i, ::PinRef)
         }

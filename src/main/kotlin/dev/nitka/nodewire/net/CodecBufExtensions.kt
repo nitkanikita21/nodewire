@@ -13,6 +13,10 @@ import net.minecraft.network.FriendlyByteBuf
  *
  * One serialization layer: the same codec drives both BlockEntity NBT and
  * SimpleChannel packets.
+ *
+ * Size: `FriendlyByteBuf.readNbt()` (no-arg) in 1.20.1 hard-caps decoded
+ * NBT at 2 MiB via the default `NbtAccounter`, which is plenty for any
+ * single graph we'd ship. No per-call limit needed at this layer.
  */
 fun <T> FriendlyByteBuf.writeCodec(codec: Codec<T>, value: T) {
     val encoded = codec.encodeStart(NbtOps.INSTANCE, value).result()

@@ -41,12 +41,9 @@ data class Node(
     val config: CompoundTag = CompoundTag(),
 ) {
     companion object {
-        private val UUID_CODEC: Codec<UUID> =
-            Codec.STRING.xmap(UUID::fromString, UUID::toString)
-
         val CODEC: Codec<Node> = RecordCodecBuilder.create { i ->
             i.group(
-                UUID_CODEC.fieldOf("id").forGetter(Node::id),
+                GraphCodecs.UUID_CODEC.fieldOf("id").forGetter(Node::id),
                 ResourceLocation.CODEC.fieldOf("type").forGetter(Node::typeKey),
                 CanvasPos.CODEC.fieldOf("pos").forGetter(Node::pos),
                 Pin.CODEC.listOf().fieldOf("inputs").forGetter(Node::inputs),
