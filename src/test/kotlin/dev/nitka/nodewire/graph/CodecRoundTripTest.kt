@@ -93,4 +93,29 @@ class CodecRoundTripTest {
         )
         roundTripSnbt(Node.CODEC, n)
     }
+
+    @Test fun nodeGraphNbtRoundTrip() {
+        val g = NodeGraph()
+        g.add(Node(
+            id = nodeA,
+            typeKey = net.minecraft.resources.ResourceLocation("nodewire", "timer"),
+            pos = CanvasPos(0f, 0f),
+            inputs = emptyList(),
+            outputs = listOf(Pin("out", "Pulse", PinType.BOOL)),
+        ))
+        g.add(Node(
+            id = nodeB,
+            typeKey = net.minecraft.resources.ResourceLocation("nodewire", "not"),
+            pos = CanvasPos(50f, 0f),
+            inputs = listOf(Pin("in", "In", PinType.BOOL)),
+            outputs = listOf(Pin("out", "Out", PinType.BOOL)),
+        ))
+        g.addEdge(Edge(PinRef(nodeA, "out"), PinRef(nodeB, "in")))
+
+        val encoded = NodeGraph.CODEC.encodeStart(NbtOps.INSTANCE, g).result().orElseThrow()
+        val decoded = NodeGraph.CODEC.parse(NbtOps.INSTANCE, encoded).result().orElseThrow()
+
+        assertEquals(g.nodes.keys, decoded.nodes.keys)
+        assertEquals(g.edges, decoded.edges)
+    }
 }
