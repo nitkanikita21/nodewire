@@ -15,10 +15,20 @@ import net.minecraft.nbt.CompoundTag
  * mutable [CompoundTag] that the tick evaluator mutates in-place — same
  * NBT shape as on-disk Node.config, so persistence is one map write away
  * if/when we add it.
+ *
+ * Cycles through state-bearing nodes are allowed (and intended). A state
+ * node logically reads its inputs *as of the previous tick* — that's the
+ * defining property of "stateful": Counter.reset can depend on
+ * Counter.out via Compare etc. The evaluator breaks such cycles by
+ * removing edges *into* state nodes from the topo-sort graph, then
+ * feeding those inputs from a snapshot of the previous tick's outputs.
  */
 class StatefulGraphEvaluator(val graph: NodeGraph) {
 
     private val nodeStates: MutableMap<NodeId, CompoundTag> = HashMap()
+
+    /** Outputs produced by the previous tick — read for state-node inputs. */
+    private var lastOutputs: Map<Pair<NodeId, String>, PinValue> = emptyMap()
 
     /**
      * Drop state for removed nodes. Cheap to call every tick — usually a
@@ -29,6 +39,12 @@ class StatefulGraphEvaluator(val graph: NodeGraph) {
             val gone = nodeStates.keys - graph.nodes.keys
             for (id in gone) nodeStates.remove(id)
         }
+    }
+
+    /** True if the node at [id] has a tick evaluator — i.e. is stateful. */
+    private fun isStateNode(id: NodeId): Boolean {
+        val type = graph.nodes[id]?.let { NodeTypeRegistry.get(it.typeKey) }
+        return type?.tickEvaluator != null
     }
 
     fun tick(externalOutputs: Map<Pair<NodeId, String>, PinValue> = emptyMap()): EvalResult {
@@ -43,11 +59,18 @@ class StatefulGraphEvaluator(val graph: NodeGraph) {
             val node = graph.nodes[nodeId] ?: continue
             val type = NodeTypeRegistry.get(node.typeKey) ?: continue
             if (node.outputs.all { (nodeId to it.id) in outputs }) continue
+            val stateful = type.tickEvaluator != null
 
             val inputs = HashMap<String, PinValue>()
             for (pin in node.inputs) {
                 val src = incoming[nodeId to pin.id]
-                val value = if (src != null) outputs[src.node to src.pin] else null
+                // State-node inputs read from the previous-tick snapshot so
+                // feedback edges (e.g. Counter → Compare → Counter.reset)
+                // work without forming a forward cycle.
+                val value = if (src != null) {
+                    if (stateful) lastOutputs[src.node to src.pin]
+                    else outputs[src.node to src.pin]
+                } else null
                 inputs[pin.id] = value ?: PinValue.default(pin.type)
             }
 
@@ -64,14 +87,25 @@ class StatefulGraphEvaluator(val graph: NodeGraph) {
                 if (key !in externalOutputs) outputs[key] = value
             }
         }
+        // Snapshot for the next tick. Copy so external mutations don't leak.
+        lastOutputs = HashMap(outputs)
         return EvalResult(outputs)
     }
 
+    /**
+     * Kahn's topo-sort, but ignoring edges that land on a state node —
+     * those represent a temporal "previous tick" dep and don't constrain
+     * within-tick ordering. Result is null only if a cycle exists among
+     * stateless nodes (a real logical error).
+     */
     private fun topoSort(graph: NodeGraph): List<NodeId>? {
         val indegree = HashMap<NodeId, Int>()
         val outAdj = HashMap<NodeId, MutableList<NodeId>>()
         for (id in graph.nodes.keys) indegree[id] = 0
         for (e in graph.edges) {
+            // Edges into state nodes are temporal — drop them from the
+            // forward DAG so cycles closed through state break here.
+            if (isStateNode(e.to.node)) continue
             outAdj.getOrPut(e.from.node) { mutableListOf() }.add(e.to.node)
             indegree[e.to.node] = (indegree[e.to.node] ?: 0) + 1
         }

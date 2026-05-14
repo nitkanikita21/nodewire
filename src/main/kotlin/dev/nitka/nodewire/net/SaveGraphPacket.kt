@@ -122,8 +122,27 @@ class SaveGraphPacket(val pos: BlockPos, val graph: NodeGraph) {
             return null
         }
 
+        /**
+         * Detects "bad" cycles — those that don't pass through any
+         * state-bearing node. A cycle that goes through a Counter/Toggle/
+         * Delay etc. is fine: the state node reads its inputs from the
+         * previous tick, so the cycle is temporal, not algebraic. Cycles
+         * among stateless nodes are real logical errors and rejected.
+         *
+         * Implementation: build the forward adjacency but drop edges
+         * landing on a state node (mirrors what [StatefulGraphEvaluator]
+         * does at runtime). If a cycle remains in the reduced graph,
+         * reject.
+         */
         private fun hasCycle(graph: NodeGraph): Boolean {
+            fun isStateNode(id: NodeId): Boolean {
+                val node = graph.nodes[id] ?: return false
+                val type = dev.nitka.nodewire.graph.NodeTypeRegistry.get(node.typeKey) ?: return false
+                return type.tickEvaluator != null
+            }
+
             val adj: Map<NodeId, List<NodeId>> = graph.edges
+                .filterNot { isStateNode(it.to.node) }
                 .groupBy { it.from.node }
                 .mapValues { (_, edges) -> edges.map { it.to.node } }
 
