@@ -100,6 +100,7 @@ class BindingsManagerScreen(
                 ),
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space6)) {
+                    // TODO Task 5: wire real counts from sourceBe
                     PanelHeader(channelCount = 0, bindingCount = 0)
                     SourceList()
                     ExistingList()
