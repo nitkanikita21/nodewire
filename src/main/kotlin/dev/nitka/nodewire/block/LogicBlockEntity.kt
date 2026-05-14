@@ -109,6 +109,21 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
     fun serverTick(level: Level, pos: BlockPos, state: BlockState) {
         val eval = serverEvaluator ?: StatefulGraphEvaluator(graph).also { serverEvaluator = it }
 
+        // Drop bindings whose endpoints have gone stale (source channel
+        // removed, target BE missing, target channel removed, types now
+        // mismatched). Reasons happen all the time — user deletes a
+        // channel_input, the binding here is orphaned. We prune lazily so
+        // the editor doesn't have to call out to every other BE on save.
+        if (bindings.isNotEmpty()) {
+            val before = bindings.size
+            bindings.removeAll { isStale(it, level) }
+            if (bindings.size != before) {
+                setChanged()
+                // Push so client-side wire renderer drops the dead link.
+                level.sendBlockUpdated(pos, state, state, net.minecraft.world.level.block.Block.UPDATE_CLIENTS)
+            }
+        }
+
         // 1. External inputs: side redstone + named channels.
         val external = HashMap<Pair<java.util.UUID, String>, PinValue>()
         for (node in graph.nodes.values) {
@@ -214,6 +229,21 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
 
     override fun onDataPacket(net: Connection, pkt: ClientboundBlockEntityDataPacket) {
         pkt.tag?.let { load(it) }
+    }
+
+    private fun isStale(binding: ChannelBinding, level: Level): Boolean {
+        val srcNode = graph.nodes.values.firstOrNull {
+            it.typeKey.path == "channel_output"
+                && it.config.getString("name") == binding.sourceChannelName
+        } ?: return true
+        val target = level.getBlockEntity(binding.targetPos) as? LogicBlockEntity ?: return true
+        val tgtNode = target.graph.nodes.values.firstOrNull {
+            it.typeKey.path == "channel_input"
+                && it.config.getString("name") == binding.targetChannelName
+        } ?: return true
+        val srcType = PinType.fromName(srcNode.config.getString("type"))
+        val tgtType = PinType.fromName(tgtNode.config.getString("type"))
+        return srcType != tgtType
     }
 
     companion object {

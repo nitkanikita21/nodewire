@@ -1,35 +1,77 @@
 package dev.nitka.nodewire.client.wire
 
-import com.mojang.blaze3d.systems.RenderSystem
+import com.mojang.blaze3d.vertex.DefaultVertexFormat
 import com.mojang.blaze3d.vertex.PoseStack
 import com.mojang.blaze3d.vertex.VertexConsumer
+import com.mojang.blaze3d.vertex.VertexFormat
+import dev.nitka.nodewire.Registry
 import dev.nitka.nodewire.block.LogicBlockEntity
 import dev.nitka.nodewire.graph.PinType
 import net.minecraft.client.Minecraft
-import net.minecraft.client.renderer.MultiBufferSource
+import net.minecraft.client.renderer.RenderStateShard
 import net.minecraft.client.renderer.RenderType
 import net.minecraft.world.phys.Vec3
 import net.minecraftforge.client.event.RenderLevelStageEvent
-import kotlin.math.abs
+import kotlin.math.sqrt
 
 /**
- * Draws Scrap-Mechanic-style cables between bound logic blocks. Wires
- * follow a parabolic catenary sag in world Y so they read as physical
- * rope rather than a flat segment; thickness is faked by drawing a few
- * parallel offset lines (GPUs ignore line-width > 1 in core profile).
+ * Straight, camera-facing colored cables between bound logic blocks.
  *
- * Channel type drives the colour — the same hues the editor uses for pin
- * handles, so a wire and the pins it connects share a visual language.
+ * Visibility: only renders while the player is holding the Channel Link
+ * Tool in either hand — keeps the world clean during normal play and
+ * draws the wires only when the user is actively wiring.
  *
- * Hook: [RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS]. Late
- * enough that the wires read as overlays but still depth-tested against
- * world geometry; a wire passing behind a wall hides correctly.
+ * Geometry: each binding is a single billboard quad spanning source-
+ * center to target-center. Quad width is computed by cross-producting
+ * the segment direction with the view direction so it always faces
+ * the camera — gives a constant pixel thickness regardless of viewing
+ * angle, unlike GL_LINES whose width is silently clamped to 1 in core
+ * profile.
  */
 object WireWorldRenderer {
+
+    /**
+     * Subclass purely to access [RenderStateShard]'s protected static
+     * sub-shards (POSITION_COLOR_SHADER, NO_LIGHTMAP, …). They aren't
+     * exposed publicly; the subclass-based access is the standard
+     * trick Forge mods use without an Access Transformer.
+     */
+    private object Shards : RenderStateShard("", Runnable {}, Runnable {}) {
+        val POSITION_COLOR = POSITION_COLOR_SHADER
+        val NO_LIGHTMAP = RenderStateShard.NO_LIGHTMAP
+        val TRANSLUCENT = TRANSLUCENT_TRANSPARENCY
+        val NO_CULL_S = NO_CULL
+        val LEQUAL_DEPTH = LEQUAL_DEPTH_TEST
+        val COLOR_DEPTH = COLOR_DEPTH_WRITE
+    }
+
+    /** Custom render type: POSITION+COLOR quads, translucency, world depth-test. */
+    private val WIRE_TYPE: RenderType = RenderType.create(
+        "nodewire_wire",
+        DefaultVertexFormat.POSITION_COLOR,
+        VertexFormat.Mode.QUADS,
+        256,
+        false,
+        false,
+        RenderType.CompositeState.builder()
+            .setShaderState(Shards.POSITION_COLOR)
+            .setLightmapState(Shards.NO_LIGHTMAP)
+            .setTransparencyState(Shards.TRANSLUCENT)
+            .setCullState(Shards.NO_CULL_S)
+            .setDepthTestState(Shards.LEQUAL_DEPTH)
+            .setWriteMaskState(Shards.COLOR_DEPTH)
+            .createCompositeState(false),
+    )
 
     fun render(event: RenderLevelStageEvent) {
         if (event.stage != RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) return
         val mc = Minecraft.getInstance()
+        val player = mc.player ?: return
+        // Only show wires when the link tool is actually in hand.
+        val toolItem = Registry.CHANNEL_LINK_TOOL.get()
+        val hasTool = player.mainHandItem.`is`(toolItem) || player.offhandItem.`is`(toolItem)
+        if (!hasTool) return
+
         val level = mc.level ?: return
         val tracked = ClientLogicBlockTracker.all()
         if (tracked.isEmpty()) return
@@ -37,87 +79,94 @@ object WireWorldRenderer {
         val cameraPos = event.camera.position
         val pose = event.poseStack
         val bufferSource = mc.renderBuffers().bufferSource()
-        val builder = bufferSource.getBuffer(RenderType.lines())
+        val builder = bufferSource.getBuffer(WIRE_TYPE)
 
         pose.pushPose()
-        // Move world origin to the camera so absolute world positions
-        // composed below render correctly.
         pose.translate(-cameraPos.x, -cameraPos.y, -cameraPos.z)
+        val matrix = pose.last().pose()
 
         for (source in tracked) {
-            if (source.bindingsSnapshot().isEmpty()) continue
-            val srcPos = source.blockPos.center
-            for (binding in source.bindingsSnapshot()) {
-                val dstPos = binding.targetPos.center
+            val bindings = source.bindingsSnapshot()
+            if (bindings.isEmpty()) continue
+            val srcCenter = source.blockPos.center
+            for (binding in bindings) {
                 val color = colorForBinding(source, binding.sourceChannelName)
-                drawCatenary(pose, builder, srcPos, dstPos, color)
+                drawStraightWire(builder, matrix, srcCenter, binding.targetPos.center, cameraPos, color)
             }
         }
 
         pose.popPose()
-        // Flush this frame's wire vertices.
-        bufferSource.endBatch(RenderType.lines())
+        bufferSource.endBatch(WIRE_TYPE)
     }
 
     /**
-     * Sample the catenary in [SEGMENTS] segments and emit them as line
-     * pairs. The sag is parabolic (zero at endpoints, max at midpoint) and
-     * scales with the chord length so short wires stay tight while long
-     * ones droop visibly. Y-only sag — feels right for gravity-bound rope.
+     * One billboard quad from [src] to [dst]. The quad's width-direction
+     * is `segDir × cameraDir` normalized — keeps the quad facing the
+     * camera so it stays thick at any viewing angle.
      */
-    private fun drawCatenary(
-        pose: PoseStack,
+    private fun drawStraightWire(
         builder: VertexConsumer,
+        matrix: org.joml.Matrix4f,
         src: Vec3,
         dst: Vec3,
+        cameraPos: Vec3,
         color: Int,
     ) {
         val dx = dst.x - src.x
         val dy = dst.y - src.y
         val dz = dst.z - src.z
-        val chord = kotlin.math.sqrt(dx * dx + dy * dy + dz * dz).toFloat()
-        val sag = (chord * SAG_FACTOR).coerceAtLeast(MIN_SAG)
+        val len = sqrt(dx * dx + dy * dy + dz * dz)
+        if (len < 1e-4) return
 
-        // Pre-sample once; outline / core passes share the same points.
-        val points = Array(SEGMENTS + 1) { i ->
-            val t = i.toFloat() / SEGMENTS
-            val x = src.x + dx * t
-            val y = src.y + dy * t - sag * 4f * t * (1f - t)
-            val z = src.z + dz * t
-            Vec3(x, y, z)
-        }
+        // Direction toward camera, taken from the segment midpoint so the
+        // billboard normal isn't degenerate when the camera is right above
+        // an endpoint.
+        val midX = (src.x + dst.x) * 0.5
+        val midY = (src.y + dst.y) * 0.5
+        val midZ = (src.z + dst.z) * 0.5
+        var vx = cameraPos.x - midX
+        var vy = cameraPos.y - midY
+        var vz = cameraPos.z - midZ
+        val vlen = sqrt(vx * vx + vy * vy + vz * vz)
+        if (vlen < 1e-4) return
+        vx /= vlen; vy /= vlen; vz /= vlen
 
-        // Two parallel passes offset slightly in Y for a thicker "rope"
-        // silhouette without depending on RenderSystem.lineWidth (which
-        // is unreliable on modern GL).
+        // perp = (seg × view) — perpendicular to both, lies in the screen
+        // plane along the screen-horizontal of the segment.
+        val sdx = dx / len; val sdy = dy / len; val sdz = dz / len
+        var px = sdy * vz - sdz * vy
+        var py = sdz * vx - sdx * vz
+        var pz = sdx * vy - sdy * vx
+        val plen = sqrt(px * px + py * py + pz * pz)
+        if (plen < 1e-4) return
+        val half = WIRE_THICKNESS * 0.5
+        px = px / plen * half; py = py / plen * half; pz = pz / plen * half
+
         val a = (color ushr 24) and 0xFF
         val r = (color ushr 16) and 0xFF
         val g = (color ushr 8) and 0xFF
         val b = color and 0xFF
-        val matrix = pose.last().pose()
-        for (offset in OFFSETS) {
-            for (i in 0 until SEGMENTS) {
-                val p1 = points[i]
-                val p2 = points[i + 1]
-                builder.vertex(matrix, p1.x.toFloat(), (p1.y + offset).toFloat(), p1.z.toFloat())
-                    .color(r, g, b, a)
-                    .normal(0f, 1f, 0f)
-                    .endVertex()
-                builder.vertex(matrix, p2.x.toFloat(), (p2.y + offset).toFloat(), p2.z.toFloat())
-                    .color(r, g, b, a)
-                    .normal(0f, 1f, 0f)
-                    .endVertex()
-            }
-        }
-        RenderSystem.lineWidth(LINE_WIDTH)
+
+        // Quad order matters for back-face culling / shader winding.
+        // CCW from the camera: src-, src+, dst+, dst- ⇒ NO_CULL keeps both
+        // sides drawable so the order doesn't matter visually here.
+        emit(builder, matrix, src.x - px, src.y - py, src.z - pz, r, g, b, a)
+        emit(builder, matrix, src.x + px, src.y + py, src.z + pz, r, g, b, a)
+        emit(builder, matrix, dst.x + px, dst.y + py, dst.z + pz, r, g, b, a)
+        emit(builder, matrix, dst.x - px, dst.y - py, dst.z - pz, r, g, b, a)
     }
 
-    /**
-     * Look up the source's [channel_output] node by name, take its
-     * configured [PinType], map to a colour. Falls back to white if the
-     * channel can't be found (binding survives a node delete; we still
-     * want to draw the wire so the user can see the dangling link).
-     */
+    private fun emit(
+        builder: VertexConsumer,
+        matrix: org.joml.Matrix4f,
+        x: Double, y: Double, z: Double,
+        r: Int, g: Int, b: Int, a: Int,
+    ) {
+        builder.vertex(matrix, x.toFloat(), y.toFloat(), z.toFloat())
+            .color(r, g, b, a)
+            .endVertex()
+    }
+
     private fun colorForBinding(source: LogicBlockEntity, channelName: String): Int {
         val node = source.graph.nodes.values.firstOrNull { node ->
             node.typeKey.path == "channel_output"
@@ -140,10 +189,6 @@ object WireWorldRenderer {
         PinType.QUAT -> 0xFF_C8_7C_E8.toInt()
     }
 
-    private const val SEGMENTS = 24
-    private const val SAG_FACTOR = 0.08f
-    private const val MIN_SAG = 0.3f
-    private const val LINE_WIDTH = 2.5f
-    /** Three near-parallel passes fake a rope thickness despite GL_LINES' 1px reality. */
-    private val OFFSETS = floatArrayOf(-0.02f, 0f, 0.02f)
+    /** Visible cable thickness in world units. Tweak for fatter / thinner ropes. */
+    private const val WIRE_THICKNESS = 0.08
 }
