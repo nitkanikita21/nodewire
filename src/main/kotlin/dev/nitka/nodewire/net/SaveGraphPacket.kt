@@ -1,12 +1,13 @@
 package dev.nitka.nodewire.net
 
 import com.mojang.logging.LogUtils
+import com.mojang.serialization.Codec
+import com.mojang.serialization.codecs.RecordCodecBuilder
 import dev.nitka.nodewire.block.LogicBlockEntity
 import dev.nitka.nodewire.graph.NodeGraph
 import dev.nitka.nodewire.graph.NodeId
 import dev.nitka.nodewire.graph.PinRef
 import net.minecraft.core.BlockPos
-import net.minecraft.nbt.CompoundTag
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.world.level.block.Block
 import net.minecraftforge.network.NetworkEvent
@@ -19,20 +20,18 @@ import java.util.function.Supplier
  *
  *   1. Sender must be within 8 blocks of [pos] (anti-cheat).
  *   2. A [LogicBlockEntity] must exist at [pos].
- *   3. NBT must parse into a [NodeGraph] without throwing.
- *   4. Every edge must reference real pins on real nodes.
- *   5. Edge endpoint types must match (`from.type == to.type`).
- *   6. No two edges may share the same input (`Edge.to`).
- *   7. The graph must be acyclic.
+ *   3. Every edge must reference real pins on real nodes.
+ *   4. Edge endpoint types must match (`from.type == to.type`).
+ *   5. No two edges may share the same input (`Edge.to`).
+ *   6. The graph must be acyclic.
  *
  * Failing any check drops the packet with a warning log — no exception
  * leaks back to the client, and the BE keeps its previous graph.
  */
-class SaveGraphPacket(val pos: BlockPos, val graphTag: CompoundTag) {
+class SaveGraphPacket(val pos: BlockPos, val graph: NodeGraph) {
 
     fun encode(buf: FriendlyByteBuf) {
-        buf.writeBlockPos(pos)
-        buf.writeNbt(graphTag)
+        buf.writeCodec(CODEC, this)
     }
 
     fun handle(ctx: Supplier<NetworkEvent.Context>): Boolean {
@@ -49,12 +48,7 @@ class SaveGraphPacket(val pos: BlockPos, val graphTag: CompoundTag) {
                 LOG.warn("Rejecting SaveGraphPacket: no LogicBlockEntity at {}", pos)
                 return@enqueueWork
             }
-            val graph = try {
-                NodeGraph.fromNbt(graphTag)
-            } catch (t: Throwable) {
-                LOG.warn("Rejecting SaveGraphPacket: malformed NBT — ${t.message}")
-                return@enqueueWork
-            }
+            // Codec already parsed the graph during decode.
             val reason = validate(graph)
             if (reason != null) {
                 LOG.warn("Rejecting SaveGraphPacket from {}: {}", player.gameProfile.name, reason)
@@ -77,8 +71,14 @@ class SaveGraphPacket(val pos: BlockPos, val graphTag: CompoundTag) {
         // 8 blocks (squared) — same reach Minecraft uses for interactions.
         private const val MAX_DISTANCE_SQR = 8.0 * 8.0
 
-        fun decode(buf: FriendlyByteBuf): SaveGraphPacket =
-            SaveGraphPacket(buf.readBlockPos(), buf.readNbt() ?: CompoundTag())
+        val CODEC: Codec<SaveGraphPacket> = RecordCodecBuilder.create { i ->
+            i.group(
+                BlockPos.CODEC.fieldOf("pos").forGetter(SaveGraphPacket::pos),
+                NodeGraph.CODEC.fieldOf("graph").forGetter(SaveGraphPacket::graph),
+            ).apply(i, ::SaveGraphPacket)
+        }
+
+        fun decode(buf: FriendlyByteBuf): SaveGraphPacket = buf.readCodec(CODEC)
 
         /**
          * Returns `null` if the graph is valid, otherwise a short reason

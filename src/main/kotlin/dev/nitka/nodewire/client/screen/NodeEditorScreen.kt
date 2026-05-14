@@ -63,7 +63,7 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
     override fun removed() {
         NodewireNetwork.CHANNEL.send(
             PacketDistributor.SERVER.noArg(),
-            SaveGraphPacket(pos, graph.toNbt()),
+            SaveGraphPacket(pos, graph),
         )
         super.removed()
     }
