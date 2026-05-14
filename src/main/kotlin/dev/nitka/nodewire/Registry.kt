@@ -2,6 +2,7 @@ package dev.nitka.nodewire
 
 import dev.nitka.nodewire.block.LogicBlock
 import dev.nitka.nodewire.block.LogicBlockEntity
+import dev.nitka.nodewire.item.ChannelLinkToolItem
 import net.minecraft.world.item.BlockItem
 import net.minecraft.world.item.CreativeModeTabs
 import net.minecraft.world.item.Item
@@ -31,6 +32,10 @@ object Registry {
         BlockItem(LOGIC_BLOCK.get(), Item.Properties())
     }
 
+    val CHANNEL_LINK_TOOL: RegistryObject<Item> = ITEMS.register("channel_link_tool") {
+        ChannelLinkToolItem(Item.Properties().stacksTo(1))
+    }
+
     // `BlockEntityType.Builder.of(..., LOGIC_BLOCK.get())` is safe in the
     // factory lambda — DeferredRegister calls the lambda after blocks are
     // registered, so `.get()` is valid by then.
@@ -51,6 +56,9 @@ object Registry {
     private fun onBuildTabs(event: BuildCreativeModeTabContentsEvent) {
         if (event.tabKey == CreativeModeTabs.REDSTONE_BLOCKS) {
             event.accept(LOGIC_BLOCK_ITEM.get())
+        }
+        if (event.tabKey == CreativeModeTabs.TOOLS_AND_UTILITIES) {
+            event.accept(CHANNEL_LINK_TOOL.get())
         }
     }
 }

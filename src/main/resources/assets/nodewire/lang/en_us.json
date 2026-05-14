@@ -1,5 +1,6 @@
 {
   "block.nodewire.logic_block": "Logic Block",
+  "item.nodewire.channel_link_tool": "Channel Link Tool",
 
   "key.categories.nodewire": "Nodewire",
   "key.nodewire.open_demo": "Open UI demo (dev)"
