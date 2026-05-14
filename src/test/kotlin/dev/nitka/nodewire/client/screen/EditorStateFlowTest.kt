@@ -74,4 +74,23 @@ class EditorStateFlowTest {
         assertNull(ed.nodeFlow(a.id))
         assertTrue(ed.edges.value.none { it.from.node == a.id || it.to.node == a.id })
     }
+
+    @Test
+    fun changeChannelTypeProducesNewPinAndConfig() {
+        val outputNode = Node(
+            id = Node.newId(),
+            typeKey = ResourceLocation("nodewire", "channel_output"),
+            pos = CanvasPos.Zero,
+            inputs = listOf(Pin("in", "Value", PinType.BOOL)),
+            outputs = emptyList(),
+        ).also {
+            it.config.putString("type", PinType.BOOL.name)
+            it.config.putString("name", "speed")
+        }
+        val ed = EditorState(NodeGraph().also { it.add(outputNode) })
+        ed.changeChannelType(outputNode.id, PinType.INT)
+        val after = ed.nodeFlow(outputNode.id)!!.value
+        assertEquals(PinType.INT, after.inputs[0].type)
+        assertEquals(PinType.INT.name, after.config.getString("type"))
+    }
 }

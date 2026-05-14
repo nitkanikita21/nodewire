@@ -207,7 +207,9 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         if (target.node == src.node) return false
         val (output, input) = orderOutputInput(src, target)
         if (pinType(output) != pinType(input)) return false
-        graph.connectReplacing(Edge(PinRef(output.node, output.pin), PinRef(input.node, input.pin)))
+        val edge = Edge(PinRef(output.node, output.pin), PinRef(input.node, input.pin))
+        graph.connectReplacing(edge)
+        _edges.value = graph.edges.toList()
         graphVersion++
         return true
     }
@@ -222,7 +224,9 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         val target = findCompatibleOppositeAt(src, wireDragCursorX, wireDragCursorY)
         if (target != null) {
             val (output, input) = orderOutputInput(src, target)
-            graph.connectReplacing(Edge(PinRef(output.node, output.pin), PinRef(input.node, input.pin)))
+            val edge = Edge(PinRef(output.node, output.pin), PinRef(input.node, input.pin))
+            graph.connectReplacing(edge)
+            _edges.value = graph.edges.toList()
             graphVersion++
         }
         if (!wireDragSticky) wireDragSource = null
@@ -245,12 +249,15 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
      * confirmed the auto-disconnect-on-change UX (option 1a in the round-3
      * design Q&A).
      */
-    fun changeChannelType(node: Node, newType: dev.nitka.nodewire.graph.PinType) {
-        val pin = (node.inputs + node.outputs).firstOrNull() ?: return
-        val rebuilt = pin.copy(type = newType)
-        if (node.inputs.isNotEmpty()) node.inputs = listOf(rebuilt) else node.outputs = listOf(rebuilt)
-        node.config.putString("type", newType.name)
-        disconnectAllEdges(node.id)
+    fun changeChannelType(id: dev.nitka.nodewire.graph.NodeId, newType: dev.nitka.nodewire.graph.PinType) {
+        updateNode(id) { n ->
+            val pin = (n.inputs + n.outputs).firstOrNull() ?: return@updateNode n
+            val rebuilt = pin.copy(type = newType)
+            val newConfig = n.config.copy().apply { putString("type", newType.name) }
+            if (n.inputs.isNotEmpty()) n.copy(inputs = listOf(rebuilt), config = newConfig)
+            else n.copy(outputs = listOf(rebuilt), config = newConfig)
+        }
+        disconnectAllEdges(id)
         graphVersion++
     }
 
@@ -258,16 +265,21 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
      * Convert-to-Redstone has a single input pin whose type follows
      * `config.sourceType`. Rebuild the pin and snip incompatible edges.
      */
-    fun changeConverterInput(node: Node, newType: dev.nitka.nodewire.graph.PinType) {
-        node.inputs = listOf(node.inputs.first().copy(type = newType))
-        disconnectAllEdges(node.id)
+    fun changeConverterInput(id: dev.nitka.nodewire.graph.NodeId, newType: dev.nitka.nodewire.graph.PinType) {
+        updateNode(id) { n ->
+            n.copy(inputs = listOf(n.inputs.first().copy(type = newType)))
+        }
+        disconnectAllEdges(id)
         graphVersion++
     }
 
     private fun disconnectAllEdges(id: dev.nitka.nodewire.graph.NodeId) {
         val before = graph.edges.size
         graph.edges.removeAll { it.from.node == id || it.to.node == id }
-        if (graph.edges.size != before) graphVersion++
+        if (graph.edges.size != before) {
+            _edges.value = graph.edges.toList()
+            graphVersion++
+        }
     }
 
     fun disconnectPin(key: PinKey) {
@@ -276,7 +288,10 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
             (edge.from.node == key.node && edge.from.pin == key.pin && key.side == PinSide.Output) ||
                 (edge.to.node == key.node && edge.to.pin == key.pin && key.side == PinSide.Input)
         }
-        if (graph.edges.size != before) graphVersion++
+        if (graph.edges.size != before) {
+            _edges.value = graph.edges.toList()
+            graphVersion++
+        }
     }
 
     /** Look for the nearest opposite-side pin within hit radius whose type matches [src]. */
@@ -361,11 +376,8 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
     fun moveSelected(dxWorld: Float, dyWorld: Float) {
         if (selectedNodes.isEmpty()) return
         for (id in selectedNodes) {
-            val n = graph.nodes[id] ?: continue
-            n.pos = CanvasPos(n.pos.x + dxWorld, n.pos.y + dyWorld)
+            updateNode(id) { n -> n.copy(pos = CanvasPos(n.pos.x + dxWorld, n.pos.y + dyWorld)) }
         }
-        // Bump version so NodeCard reads the new pos and recomposes its
-        // absolutePosition.
         graphVersion++
     }
 
