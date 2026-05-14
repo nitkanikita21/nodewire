@@ -2,6 +2,7 @@ package dev.nitka.nodewire.ui.theme
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import dev.nitka.nodewire.ui.layout.IntSize
 import net.minecraft.client.gui.Font
@@ -49,7 +50,7 @@ val LocalContentColor =
  *
  * Reads are tracked — recomposes will fire if the window resizes mid-frame.
  */
-val LocalScreenSize = staticCompositionLocalOf { IntSize.Zero }
+val LocalScreenSize = compositionLocalOf { IntSize.Zero }
 
 /**
  * Single static accessor for all theme axes. Use as `NwTheme.colors.accent`,
