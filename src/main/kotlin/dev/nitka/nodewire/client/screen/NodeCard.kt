@@ -15,6 +15,7 @@ import dev.nitka.nodewire.graph.PinValue
 import dev.nitka.nodewire.ui.layout.Layout
 import dev.nitka.nodewire.ui.canvas.LocalCanvasState
 import dev.nitka.nodewire.ui.modifier.input.onPositioned
+import dev.nitka.nodewire.ui.modifier.input.onSizeChanged
 import dev.nitka.nodewire.ui.components.Surface
 import dev.nitka.nodewire.ui.components.SurfaceStyle
 import dev.nitka.nodewire.ui.components.Text
@@ -84,6 +85,11 @@ fun NodeCard(
         modifier = modifier
             .absolutePosition(pos.x.toInt(), pos.y.toInt())
             .width(CARD_WIDTH)
+            // Report measured size to the editor so rubber-band hit-tests
+            // use the real card bounds, not a constant guess.
+            .onSizeChanged { size ->
+                editor?.setCardSize(node.id, size.width, size.height)
+            }
             // Card-wide right-click opens the node context menu. Pin handles
             // are deeper in the tree so their own RMB-disconnect still wins
             // when the click lands on a pin; only "empty card area" reaches

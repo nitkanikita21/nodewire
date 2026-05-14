@@ -278,6 +278,20 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
     var selectedNodes: Set<dev.nitka.nodewire.graph.NodeId> by mutableStateOf(emptySet())
         private set
 
+    /**
+     * Measured card sizes in world units (pre-zoom). Updated by NodeCard
+     * via onSizeChanged so rubber-band hit tests use real bounds — using a
+     * constant height guess made the AABB extend below the card and
+     * select nodes whose wires (not bodies) crossed the rect.
+     */
+    private val cardSizes: MutableMap<dev.nitka.nodewire.graph.NodeId, Pair<Int, Int>> = HashMap()
+
+    fun setCardSize(id: dev.nitka.nodewire.graph.NodeId, width: Int, height: Int) {
+        cardSizes[id] = width to height
+    }
+
+    fun cardSize(id: dev.nitka.nodewire.graph.NodeId): Pair<Int, Int>? = cardSizes[id]
+
     fun isSelected(id: dev.nitka.nodewire.graph.NodeId): Boolean = id in selectedNodes
 
     fun clearSelection() { if (selectedNodes.isNotEmpty()) selectedNodes = emptySet() }
@@ -356,10 +370,16 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         val minY = minOf(s.y, e.y)
         val maxY = maxOf(s.y, e.y)
         val hits = graph.nodes.values.filter { n ->
+            // Use measured size if we have one; fall back to a conservative
+            // small guess so a card whose onSizeChanged hasn't fired yet
+            // doesn't over-include.
+            val size = cardSizes[n.id]
+            val w = size?.first?.toFloat() ?: NODE_CARD_WIDTH
+            val h = size?.second?.toFloat() ?: NODE_CARD_HEIGHT_FALLBACK
             val left = n.pos.x
             val top = n.pos.y
-            val right = left + NODE_CARD_WIDTH
-            val bottom = top + NODE_CARD_HEIGHT_GUESS
+            val right = left + w
+            val bottom = top + h
             !(right < minX || left > maxX || bottom < minY || top > maxY)
         }.map { it.id }
         selectedNodes = if (additive) selectedNodes + hits else hits.toSet()
@@ -376,8 +396,8 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         private const val DUPLICATE_OFFSET = 20f
         /** Match `NodeCard.CARD_WIDTH`; duplicated as a constant rather than imported to avoid a cyclic dep. */
         private const val NODE_CARD_WIDTH = 200f
-        /** Cards vary in height by pin count; use a tall-ish guess so AABB tests are inclusive. */
-        private const val NODE_CARD_HEIGHT_GUESS = 120f
+        /** Used only until a card's onSizeChanged fires once. Small so unmeasured cards don't over-select. */
+        private const val NODE_CARD_HEIGHT_FALLBACK = 24f
         /** World-space distance below which a press+release is treated as a click, not a drag. */
         private const val CLICK_THRESHOLD = 4f
     }
