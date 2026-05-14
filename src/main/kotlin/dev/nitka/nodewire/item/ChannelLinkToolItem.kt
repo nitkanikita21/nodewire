@@ -8,6 +8,7 @@ import net.minecraft.network.chat.Component
 import net.minecraft.world.InteractionResult
 import net.minecraft.world.item.Item
 import net.minecraft.world.item.context.UseOnContext
+import net.minecraft.world.level.block.Block
 
 /**
  * In-world tool to bind named channels between two logic blocks.
@@ -81,6 +82,16 @@ class ChannelLinkToolItem(props: Properties) : Item(props) {
                 return InteractionResult.SUCCESS
             }
             val bound = sourceBe.bindChannelsTo(be)
+            if (bound > 0) {
+                // Push the new bindings to clients so WireWorldRenderer
+                // picks them up without needing a chunk-reload.
+                level.sendBlockUpdated(
+                    sourcePos,
+                    sourceBe.blockState,
+                    sourceBe.blockState,
+                    Block.UPDATE_CLIENTS,
+                )
+            }
             val msg = if (bound > 0) {
                 Component.literal("Bound $bound channel(s) ")
                     .append(Component.literal(sourcePos.toShortString()).withStyle(ChatFormatting.AQUA))

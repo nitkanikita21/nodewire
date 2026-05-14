@@ -154,6 +154,20 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
         }
     }
 
+    override fun onLoad() {
+        super.onLoad()
+        if (level?.isClientSide == true) {
+            dev.nitka.nodewire.client.wire.ClientLogicBlockTracker.register(this)
+        }
+    }
+
+    override fun setRemoved() {
+        if (level?.isClientSide == true) {
+            dev.nitka.nodewire.client.wire.ClientLogicBlockTracker.unregister(this)
+        }
+        super.setRemoved()
+    }
+
     override fun saveAdditional(tag: CompoundTag) {
         super.saveAdditional(tag)
         tag.put("graph", graph.toNbt())
