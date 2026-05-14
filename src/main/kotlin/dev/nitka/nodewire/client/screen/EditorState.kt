@@ -302,6 +302,26 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
     }
 
     /**
+     * Compare node: rebuild both input pins to [newType] and write it into
+     * `config.type`. Outputs (gt/eq/lt) are always BOOL and don't change.
+     * All edges are disconnected for uniformity with the other mutators.
+     */
+    fun changeCompareType(
+        id: NodeId,
+        newType: dev.nitka.nodewire.graph.PinType,
+    ) {
+        updateNode(id) { n ->
+            val inputs = listOf(
+                dev.nitka.nodewire.graph.Pin("a", "A", newType),
+                dev.nitka.nodewire.graph.Pin("b", "B", newType),
+            )
+            val newConfig = n.config.copy().apply { putString("type", newType.name) }
+            n.copy(inputs = inputs, config = newConfig)
+        }
+        disconnectAllEdges(id)
+    }
+
+    /**
      * Constant node: rebuild the single output pin to the given type and
      * record it in `config.type`. Any outgoing edges are disconnected because
      * downstream pins may no longer match the new type.

@@ -34,7 +34,8 @@ class StockNodeTypesTest {
         //          (-7 +1 = -6 → 38).
         // Phase 3: ADD_INT, ADD_FLOAT, SUB_INT, SUB_FLOAT, MUL_INT, MUL_FLOAT,
         //          DIV_INT, DIV_FLOAT, MOD_INT replaced by MATH (-9 +1 = -8 → 30).
-        assertEquals(30, NodeTypeRegistry.all().size)
+        // Phase 4: COMPARE_INT, COMPARE_FLOAT replaced by COMPARE (-2 +1 = -1 → 29).
+        assertEquals(29, NodeTypeRegistry.all().size)
     }
 
     @Test
@@ -62,8 +63,8 @@ class StockNodeTypesTest {
     }
 
     @Test
-    fun compareIntHasThreeBoolOutputs() {
-        val t = StockNodeTypes.COMPARE_INT
+    fun compareHasThreeBoolOutputs() {
+        val t = StockNodeTypes.COMPARE
         assertEquals(setOf("gt", "eq", "lt"), t.outputs.map { it.id }.toSet())
         assertTrue(t.outputs.all { it.type == PinType.BOOL })
     }

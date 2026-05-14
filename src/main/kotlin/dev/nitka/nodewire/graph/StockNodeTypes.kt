@@ -190,9 +190,9 @@ object StockNodeTypes {
         evaluate = StockEvaluators.AddVec3,
     )
 
-    val COMPARE_INT = nodeType(
-        id = "compare_int",
-        displayName = "Compare Int",
+    val COMPARE = nodeType(
+        id = "compare",
+        displayName = "Compare",
         category = NodeCategory.MATH,
         inputs = listOf(Pin("a", "A", PinType.INT), Pin("b", "B", PinType.INT)),
         outputs = listOf(
@@ -200,20 +200,9 @@ object StockNodeTypes {
             Pin("eq", "A = B", PinType.BOOL),
             Pin("lt", "A < B", PinType.BOOL),
         ),
-        evaluate = StockEvaluators.CompareInt,
-    )
-
-    val COMPARE_FLOAT = nodeType(
-        id = "compare_float",
-        displayName = "Compare Float",
-        category = NodeCategory.MATH,
-        inputs = listOf(Pin("a", "A", PinType.FLOAT), Pin("b", "B", PinType.FLOAT)),
-        outputs = listOf(
-            Pin("gt", "A > B", PinType.BOOL),
-            Pin("eq", "A = B", PinType.BOOL),
-            Pin("lt", "A < B", PinType.BOOL),
-        ),
-        evaluate = StockEvaluators.CompareFloat,
+        defaultConfig = { CompoundTag().apply { putString("type", PinType.INT.name) } },
+        configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.Compare,
+        evaluate = StockEvaluators.Compare,
     )
 
     val NEG_FLOAT = floatUnary("neg_float", "Negate Float", StockEvaluators.NegFloat)
@@ -352,7 +341,7 @@ object StockNodeTypes {
             // Math
             MATH, ADD_VEC3,
             NEG_FLOAT, ABS_FLOAT, MIN_FLOAT, MAX_FLOAT, CLAMP_FLOAT,
-            COMPARE_INT, COMPARE_FLOAT,
+            COMPARE,
             // Conversion
             INT_TO_FLOAT, FLOAT_TO_INT, BOOL_TO_INT, INT_TO_BOOL, CONVERT_TO_REDSTONE, FROM_REDSTONE,
             // Flow

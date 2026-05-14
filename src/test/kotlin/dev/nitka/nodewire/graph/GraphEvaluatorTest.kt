@@ -75,7 +75,7 @@ class GraphEvaluatorTest {
         val b = StockNodeTypes.CONSTANT.newInstance().also {
             it.config.putString("type", "INT"); it.config.putInt("int", 3)
         }
-        val cmp = StockNodeTypes.COMPARE_INT.newInstance()
+        val cmp = StockNodeTypes.COMPARE.newInstance()
         val g = NodeGraph().apply {
             add(a); add(b); add(cmp)
             addEdge(Edge(PinRef(a.id, "out"), PinRef(cmp.id, "a")))

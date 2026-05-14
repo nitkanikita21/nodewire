@@ -114,23 +114,24 @@ object StockEvaluators {
         mapOf("out" to PinValue.Vec3(a.x + b.x, a.y + b.y, a.z + b.z))
     }
 
-    val CompareInt: NodeEvaluator = { _, inputs ->
-        val a = intIn(inputs, "a")
-        val b = intIn(inputs, "b")
+    /**
+     * Compare: dispatches on config.type (INT/FLOAT), compares `a` and `b`,
+     * and returns all three boolean relations: gt/eq/lt.
+     */
+    val Compare: NodeEvaluator = { config, inputs ->
+        val type = config.getString("type").ifEmpty { "INT" }
+        val gt: Boolean; val eq: Boolean; val lt: Boolean
+        if (type == "FLOAT") {
+            val a = floatIn(inputs, "a"); val b = floatIn(inputs, "b")
+            gt = a > b; eq = a == b; lt = a < b
+        } else {
+            val a = intIn(inputs, "a"); val b = intIn(inputs, "b")
+            gt = a > b; eq = a == b; lt = a < b
+        }
         mapOf(
-            "gt" to PinValue.Bool(a > b),
-            "eq" to PinValue.Bool(a == b),
-            "lt" to PinValue.Bool(a < b),
-        )
-    }
-
-    val CompareFloat: NodeEvaluator = { _, inputs ->
-        val a = floatIn(inputs, "a")
-        val b = floatIn(inputs, "b")
-        mapOf(
-            "gt" to PinValue.Bool(a > b),
-            "eq" to PinValue.Bool(a == b),
-            "lt" to PinValue.Bool(a < b),
+            "gt" to PinValue.Bool(gt),
+            "eq" to PinValue.Bool(eq),
+            "lt" to PinValue.Bool(lt),
         )
     }
 

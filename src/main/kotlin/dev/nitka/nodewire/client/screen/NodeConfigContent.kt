@@ -685,6 +685,28 @@ object NodeConfigContent {
 
     private val MATH_TYPES = listOf(PinType.INT, PinType.FLOAT)
 
+    /**
+     * Compare: single type selector (INT/FLOAT). Input pin types switch;
+     * the three boolean outputs (gt/eq/lt) are invariant.
+     */
+    val Compare: @Composable (Node) -> Unit = { node ->
+        val editor = LocalEditorState.current
+        var type by remember(node.id) {
+            mutableStateOf(PinType.fromName(node.config.getString("type").ifEmpty { PinType.INT.name }))
+        }
+        LabeledRow("Type") {
+            Select(
+                options = MATH_TYPES,
+                selected = type,
+                onSelect = { next ->
+                    type = next
+                    editor?.changeCompareType(node.id, next)
+                },
+                label = { it.name.lowercase() },
+            )
+        }
+    }
+
     private fun opsForMathType(t: PinType) = when (t) {
         PinType.INT -> listOf("ADD", "SUB", "MUL", "DIV", "MOD")
         else -> listOf("ADD", "SUB", "MUL", "DIV")
