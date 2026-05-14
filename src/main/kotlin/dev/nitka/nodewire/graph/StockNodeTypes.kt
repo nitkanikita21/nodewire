@@ -105,6 +105,25 @@ object StockNodeTypes {
         evaluate = StockEvaluators.ConvertToRedstone,
     )
 
+    val FROM_REDSTONE = nodeType(
+        id = "from_redstone",
+        displayName = "From Redstone",
+        category = NodeCategory.CONVERSION,
+        inputs = listOf(Pin("in", "Signal", PinType.REDSTONE)),
+        outputs = listOf(Pin("out", "Out", PinType.INT)),
+        defaultConfig = {
+            CompoundTag().apply {
+                putString("targetType", PinType.INT.name)
+                putString("mode", "raw")
+                putInt("threshold", 1)
+                putInt("min", 0)
+                putInt("max", 15)
+            }
+        },
+        configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.FromRedstone,
+        evaluate = StockEvaluators.FromRedstone,
+    )
+
     val AND = nodeType(
         id = "and",
         displayName = "AND",
@@ -404,7 +423,7 @@ object StockNodeTypes {
             NEG_FLOAT, ABS_FLOAT, MIN_FLOAT, MAX_FLOAT, CLAMP_FLOAT,
             COMPARE_INT, COMPARE_FLOAT,
             // Conversion
-            INT_TO_FLOAT, FLOAT_TO_INT, BOOL_TO_INT, INT_TO_BOOL, CONVERT_TO_REDSTONE,
+            INT_TO_FLOAT, FLOAT_TO_INT, BOOL_TO_INT, INT_TO_BOOL, CONVERT_TO_REDSTONE, FROM_REDSTONE,
             // Flow
             SELECT_BOOL, EDGE_RISING, TOGGLE, COUNTER, DELAY,
             // Test / Generators
