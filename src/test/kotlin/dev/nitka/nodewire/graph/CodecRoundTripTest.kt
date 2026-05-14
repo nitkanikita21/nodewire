@@ -64,4 +64,33 @@ class CodecRoundTripTest {
         com.mojang.serialization.codecs.RecordCodecBuilder.create { i ->
             i.group(this.fieldOf("v").forGetter { it }).apply(i) { it }
         }
+
+    @Test fun canvasPosNbt() = roundTripNbt(CanvasPos.CODEC, CanvasPos(1.5f, -2.5f))
+    @Test fun canvasPosSnbt() = roundTripSnbt(CanvasPos.CODEC, CanvasPos(0f, 0f))
+
+    @Test fun nodeNbt() {
+        val cfg = net.minecraft.nbt.CompoundTag().apply { putInt("period", 20) }
+        val n = Node(
+            id = nodeA,
+            typeKey = net.minecraft.resources.ResourceLocation("nodewire", "timer"),
+            pos = CanvasPos(10f, 20f),
+            inputs = emptyList(),
+            outputs = listOf(Pin("out", "Pulse", PinType.BOOL)),
+            config = cfg,
+        )
+        roundTripNbt(Node.CODEC, n)
+    }
+
+    @Test fun nodeSnbt() {
+        val cfg = net.minecraft.nbt.CompoundTag().apply { putString("name", "speed"); putString("type", "INT") }
+        val n = Node(
+            id = nodeB,
+            typeKey = net.minecraft.resources.ResourceLocation("nodewire", "channel_output"),
+            pos = CanvasPos(-50f, 5f),
+            inputs = listOf(Pin("in", "Value", PinType.INT)),
+            outputs = emptyList(),
+            config = cfg,
+        )
+        roundTripSnbt(Node.CODEC, n)
+    }
 }
