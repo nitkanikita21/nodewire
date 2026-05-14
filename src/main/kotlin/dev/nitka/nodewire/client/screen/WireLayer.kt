@@ -1,6 +1,8 @@
 package dev.nitka.nodewire.client.screen
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import dev.nitka.nodewire.graph.PinType
 import dev.nitka.nodewire.ui.core.Modifier
@@ -54,7 +56,9 @@ fun WireLayer() {
             PinType.QUAT to c.pinQuat,
         )
     }
+    val edges by editor.edges.collectAsState()
     val renderer = remember(editor, pinColors) { WireRenderer(editor, pinColors) }
+    renderer.edges = edges
     Layout(
         modifier = Modifier.absolutePosition(0, 0).fillMaxSize(),
         renderer = renderer,
@@ -66,13 +70,14 @@ private class WireRenderer(
     private val pinColors: Map<PinType, Color>,
 ) : Renderer {
 
+    var edges: List<dev.nitka.nodewire.graph.Edge> = emptyList()
+
     override fun NwCanvas.render(node: UiNode) {
-        val graph = editor.graph
         val positions = editor.pinPositions
-        for (edge in graph.edges) {
+        for (edge in edges) {
             val from = positions.get(PinKey(edge.from.node, edge.from.pin, PinSide.Output)) ?: continue
             val to = positions.get(PinKey(edge.to.node, edge.to.pin, PinSide.Input)) ?: continue
-            val fromNode = graph.nodes[edge.from.node] ?: continue
+            val fromNode = editor.nodeFlow(edge.from.node)?.value ?: continue
             val pinType = fromNode.outputs.firstOrNull { it.id == edge.from.pin }?.type ?: continue
             val color = pinColors[pinType] ?: continue
             drawBezier(from.first, from.second, to.first, to.second, color)
@@ -82,7 +87,7 @@ private class WireRenderer(
         // of existing wires.
         val src = editor.wireDragSource ?: return
         val srcPos = positions.get(src) ?: return
-        val srcNode = graph.nodes[src.node] ?: return
+        val srcNode = editor.nodeFlow(src.node)?.value ?: return
         val srcType = when (src.side) {
             PinSide.Output -> srcNode.outputs.firstOrNull { it.id == src.pin }?.type
             PinSide.Input -> srcNode.inputs.firstOrNull { it.id == src.pin }?.type
