@@ -163,9 +163,8 @@ object NodeConfigContent {
     /** SideInput / SideOutput: cycle-button picking which world face this node binds to. */
     val SideFace: @Composable (Node) -> Unit = { node ->
         val editor = LocalEditorState.current
-        var face by remember { mutableStateOf(node.config.getString("face").ifEmpty { "north" }) }
+        var face by remember(node.id) { mutableStateOf(node.config.getString("face").ifEmpty { "north" }) }
         CycleButton(
-            label = "Face",
             value = face,
             onCycle = {
                 val idx = FACES.indexOf(face).coerceAtLeast(0)
@@ -178,88 +177,89 @@ object NodeConfigContent {
     }
 
     /**
-     * ChannelInput / ChannelOutput: name + type pickers. Changing type
-     * rebuilds the node's pin list and auto-disconnects any incompatible
-     * edges (see [EditorState.changeChannelType]).
+     * ChannelInput / ChannelOutput: name + type pickers. Local Compose
+     * state holds the user-visible values so the widget recomposes on
+     * cycle/edit without depending on NBT-read reactivity. Mutations are
+     * mirrored into [Node.config] for save/load.
      */
     val ChannelEndpoint: @Composable (Node) -> Unit = { node ->
         val editor = LocalEditorState.current
-        var name by remember { mutableStateOf(node.config.getString("name")) }
-        val current = PinType.fromName(node.config.getString("type").ifEmpty { PinType.BOOL.name })
-        val channelTypes = listOf(
-            PinType.BOOL, PinType.INT, PinType.FLOAT, PinType.REDSTONE,
-            PinType.STRING, PinType.VEC2, PinType.VEC3, PinType.QUAT,
-        )
+        var name by remember(node.id) { mutableStateOf(node.config.getString("name")) }
+        var type by remember(node.id) {
+            mutableStateOf(PinType.fromName(node.config.getString("type").ifEmpty { PinType.BOOL.name }))
+        }
         Column(verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2)) {
-            Row(
-                verticalAlignment = Alignment.Center,
-                horizontalArrangement = Arrangement.spacedBy(NwTheme.dimens.space4),
-            ) {
-                Text(
-                    "Name",
-                    style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceMuted),
-                )
-                TextInput(
-                    modifier = Modifier.fillMaxWidth(),
-                    value = name,
-                    placeholder = "(unnamed)",
-                    onValueChange = { new ->
-                        name = new
-                        node.config.putString("name", new)
-                        editor?.bumpGraphVersion()
-                    },
-                )
-            }
+            TextInput(
+                modifier = Modifier.fillMaxWidth(),
+                value = name,
+                placeholder = "name",
+                onValueChange = { new ->
+                    name = new
+                    node.config.putString("name", new)
+                    editor?.bumpGraphVersion()
+                },
+            )
             CycleButton(
-                label = "Type",
-                value = current.name.lowercase(),
+                value = type.name.lowercase(),
                 onCycle = {
-                    val idx = channelTypes.indexOf(current).coerceAtLeast(0)
-                    val next = channelTypes[(idx + 1) % channelTypes.size]
+                    val idx = CHANNEL_TYPES.indexOf(type).coerceAtLeast(0)
+                    val next = CHANNEL_TYPES[(idx + 1) % CHANNEL_TYPES.size]
+                    type = next
                     editor?.changeChannelType(node, next)
                 },
             )
         }
     }
 
+    private val CHANNEL_TYPES = listOf(
+        PinType.BOOL, PinType.INT, PinType.FLOAT, PinType.REDSTONE,
+        PinType.STRING, PinType.VEC2, PinType.VEC3, PinType.QUAT,
+    )
+
     /**
-     * ConvertToRedstone: source type + mode pickers. Mode list depends on
-     * source type — only valid combos are reachable. Threshold/scale/level
-     * config fields shown when the mode uses them.
+     * ConvertToRedstone: source type + mode pickers. Local state for both
+     * so a click on the cycle button immediately recomposes. Mode list
+     * depends on source type — switching source resets mode to that type's
+     * default so we never sit on a stale incompatible mode.
      */
     val ConvertToRedstone: @Composable (Node) -> Unit = { node ->
         val editor = LocalEditorState.current
-        val sourceType = PinType.fromName(node.config.getString("sourceType").ifEmpty { PinType.INT.name })
-        val mode = node.config.getString("mode").ifEmpty { defaultModeFor(sourceType) }
-        val sourceTypes = listOf(PinType.INT, PinType.FLOAT, PinType.BOOL)
+        var sourceType by remember(node.id) {
+            mutableStateOf(PinType.fromName(node.config.getString("sourceType").ifEmpty { PinType.INT.name }))
+        }
+        var mode by remember(node.id) {
+            mutableStateOf(node.config.getString("mode").ifEmpty { defaultModeFor(sourceType) })
+        }
         Column(verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2)) {
             CycleButton(
-                label = "From",
                 value = sourceType.name.lowercase(),
                 onCycle = {
-                    val idx = sourceTypes.indexOf(sourceType).coerceAtLeast(0)
-                    val next = sourceTypes[(idx + 1) % sourceTypes.size]
-                    // Reset to default mode for the new source type to avoid
-                    // landing on an incompatible mode (e.g. switching to BOOL
-                    // while mode is "modulo").
+                    val idx = SOURCE_TYPES.indexOf(sourceType).coerceAtLeast(0)
+                    val next = SOURCE_TYPES[(idx + 1) % SOURCE_TYPES.size]
+                    val defaultMode = defaultModeFor(next)
                     node.config.putString("sourceType", next.name)
-                    node.config.putString("mode", defaultModeFor(next))
+                    node.config.putString("mode", defaultMode)
+                    sourceType = next
+                    mode = defaultMode
                     editor?.changeConverterInput(node, next)
                 },
             )
             val modes = modesFor(sourceType)
             CycleButton(
-                label = "Mode",
                 value = mode,
                 onCycle = {
                     val idx = modes.indexOf(mode).coerceAtLeast(0)
-                    node.config.putString("mode", modes[(idx + 1) % modes.size])
+                    val next = modes[(idx + 1) % modes.size]
+                    mode = next
+                    node.config.putString("mode", next)
                     editor?.bumpGraphVersion()
                 },
             )
             ModeParams(node, sourceType, mode, editor)
         }
     }
+
+    private val SOURCE_TYPES = listOf(PinType.INT, PinType.FLOAT, PinType.BOOL)
 
     private fun defaultModeFor(t: PinType) = when (t) {
         PinType.INT -> "clamp"
@@ -347,28 +347,24 @@ object NodeConfigContent {
     }
 
     /**
-     * Cycle-button: click advances [value] to next in a cycle. Stand-in
-     * for a real Select dropdown until we have one — fine for short enums
-     * (faces = 6, types = 8, modes ≤ 4) where chained clicks are quick.
+     * Compact cycle-button: click advances [value] to next in a cycle.
+     * Flat fill, no border at rest — matches the dense form-field style
+     * Blender / UE5 use for property panels.
      */
     @Composable
-    private fun CycleButton(label: String, value: String, onCycle: () -> Unit) {
+    private fun CycleButton(value: String, onCycle: () -> Unit) {
         var hovered by remember { mutableStateOf(false) }
-        val bg = if (hovered) NwTheme.colors.surfaceHover else NwTheme.colors.surface
-        Row(
+        val bg = if (hovered) NwTheme.colors.surfacePressed else NwTheme.colors.surfaceHover
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(bg, NwTheme.shapes.medium)
-                .border(BorderStroke(1, NwTheme.colors.border), NwTheme.shapes.medium)
-                .padding(horizontal = NwTheme.dimens.space6, vertical = NwTheme.dimens.space2)
+                .padding(horizontal = NwTheme.dimens.space4, vertical = 1)
                 .onHover { hovered = it }
                 .pointerInput { ev, _, _ ->
                     if (ev is PointerEvent.Press) { onCycle(); true } else false
                 },
-            verticalAlignment = Alignment.Center,
-            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text(label, style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceMuted))
             Text(value, style = NwTheme.typography.caption)
         }
     }

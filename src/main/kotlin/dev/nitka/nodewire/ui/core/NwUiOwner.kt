@@ -5,7 +5,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Composition
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.Recomposer
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.Snapshot
 import dev.nitka.nodewire.ui.canvas.CanvasModifier
 import dev.nitka.nodewire.ui.input.KeyEvent
@@ -81,15 +83,14 @@ class NwUiOwner {
     private val hoveredNodes = mutableSetOf<UiNode>()
 
     /**
-     * Holder of keyboard focus — receives every key event until released.
-     * Single-slot: requesting focus implicitly releases whoever had it.
-     *
-     * Press anywhere clears focus before hit-testing, so a TextInput that
-     * wants to keep focus re-requests it in its own Press handler. Click-
-     * elsewhere → unfocus falls out of this design without explicit
-     * "outside-click" detection per TextInput.
+     * Holder of keyboard focus. State-backed so widgets can observe their
+     * own focused-ness purely through [KeyFocusController.isFocused] during
+     * composition — no need for a local mirror state, which had a race in
+     * the first iteration (DisposableEffect runs after composition, so a
+     * naive "if not registered yet, drop focus" check fired before the
+     * handler was registered and instantly killed the focus).
      */
-    private var keyFocus: KeyHandler? = null
+    private var keyFocus: KeyHandler? by mutableStateOf(null)
 
     val keyFocusController: KeyFocusController = object : KeyFocusController {
         override fun request(handler: KeyHandler) { keyFocus = handler }

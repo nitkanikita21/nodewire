@@ -67,4 +67,4 @@ fun Checkbox(
     // accent for checked, hollow border for unchecked.
 }
 
-private const val CHECKBOX_SIZE = 10
+private const val CHECKBOX_SIZE = 8

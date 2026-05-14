@@ -133,7 +133,9 @@ private fun TitleBar(
         modifier = Modifier
             .fillMaxWidth()
             .background(NwTheme.colors.accent)
-            .padding(horizontal = NwTheme.dimens.space6, vertical = NwTheme.dimens.space2)
+            // Tight padding — title is purely a drag handle / label strip,
+            // matches Blender's narrow header.
+            .padding(horizontal = NwTheme.dimens.space4, vertical = 1)
             // LMB-only handler — RMB falls through to the card-level handler
             // (which opens the context menu). LMB starts drag-to-move.
             .pointerInput { ev, _, _ ->
@@ -167,7 +169,7 @@ private fun ConfigSection(node: Node) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = NwTheme.dimens.space6, vertical = NwTheme.dimens.space4),
+            .padding(horizontal = NwTheme.dimens.space4, vertical = NwTheme.dimens.space2),
     ) {
         content(node)
     }
@@ -178,7 +180,7 @@ private fun CardBody(nodeId: java.util.UUID, node: Node) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = NwTheme.dimens.space4),
+            .padding(vertical = NwTheme.dimens.space2),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Column(

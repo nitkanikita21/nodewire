@@ -25,17 +25,15 @@ import dev.nitka.nodewire.ui.render.BorderStroke
 import dev.nitka.nodewire.ui.theme.NwTheme
 
 /**
- * Single-line text input. Click to focus, Esc or Enter to release; while
- * focused, printable chars append to [value] and Backspace removes the
- * last character.
+ * Compact text field, Blender / UE5 -style: tight padding, no chunky
+ * border at rest — just a subtle surface fill, accent edge when focused.
  *
- * State is hoisted — caller owns [value] and decides how to react to
- * [onValueChange]. That makes it trivial to validate / clamp at the call
- * site (e.g. an Int config widget parses + clamps before storing).
+ * Focus state lives in the global [LocalKeyFocus] controller (which is
+ * Compose-state-backed) and is read directly here, so external focus
+ * loss (another input clicked, or any background-click clearing focus)
+ * shows up in this widget's recomposition without a local mirror.
  *
- * Cursor: a single accent-colored block painted after the text. No
- * blinking yet — adding a clock would force a frame request every tick
- * which we don't need for MVP.
+ * Caller owns [value] — filter/clamp/parse there.
  */
 @Composable
 fun TextInput(
@@ -46,11 +44,9 @@ fun TextInput(
     onSubmit: () -> Unit = {},
 ) {
     val focus = LocalKeyFocus.current
-    var focused by remember { mutableStateOf(false) }
-    // Capture the latest value/callbacks as state so the long-lived
-    // KeyHandler closure always reads up-to-date values without being
-    // recreated (and re-registered with the focus controller) every
-    // composition.
+    // rememberUpdatedState so the long-lived KeyHandler closure always
+    // sees the latest value/callbacks without being re-created (and re-
+    // registered) every composition.
     val valueState = rememberUpdatedState(value)
     val onChangeState = rememberUpdatedState(onValueChange)
     val onSubmitState = rememberUpdatedState(onSubmit)
@@ -60,9 +56,6 @@ fun TextInput(
             override fun handle(event: KeyEvent): Boolean = when (event) {
                 is KeyEvent.Char -> {
                     val cp = event.codePoint
-                    // Filter ISO control chars (also covers backspace=8,
-                    // tab=9, newline=10 which we handle in keyPressed if
-                    // at all). We accept everything else as text input.
                     if (cp >= 0x20 && cp != 0x7F) {
                         val ch = Character.toChars(cp).concatToString()
                         onChangeState.value(valueState.value + ch)
@@ -78,43 +71,42 @@ fun TextInput(
                     }
                     KEY_ENTER, KEY_NUMPAD_ENTER -> {
                         onSubmitState.value()
+                        focus?.release(this)
                         true
                     }
-                    KEY_ESCAPE -> true
+                    KEY_ESCAPE -> {
+                        focus?.release(this)
+                        true
+                    }
                     else -> false
                 }
                 else -> false
             }
         }
     }
+    val focused = focus?.isFocused(handler) == true
 
-    DisposableEffect(focused) {
-        if (focused) focus?.request(handler)
+    // Release on unmount so navigating away cleans up the focus slot.
+    DisposableEffect(handler) {
         onDispose { focus?.release(handler) }
-    }
-    // Sync external focus loss (e.g. user clicked elsewhere → owner cleared
-    // focus) back to our local state on the next frame.
-    if (focused && focus != null && !focus.isFocused(handler)) {
-        focused = false
     }
 
     Box(
         modifier = modifier
             .background(
-                if (focused) NwTheme.colors.surfaceHover else NwTheme.colors.surface,
+                if (focused) NwTheme.colors.surfacePressed else NwTheme.colors.surfaceHover,
                 NwTheme.shapes.medium,
             )
-            .border(
-                BorderStroke(
-                    1,
-                    if (focused) NwTheme.colors.accent else NwTheme.colors.border,
-                ),
-                NwTheme.shapes.medium,
-            )
-            .padding(horizontal = NwTheme.dimens.space6, vertical = NwTheme.dimens.space2)
+            // Only show a border (accent) when focused; resting state stays
+            // flat to match Blender / UE5's compact form density.
+            .let { m ->
+                if (focused) m.border(BorderStroke(1, NwTheme.colors.accent), NwTheme.shapes.medium)
+                else m
+            }
+            .padding(horizontal = NwTheme.dimens.space4, vertical = 1)
             .pointerInput { ev, _, _ ->
                 if (ev is PointerEvent.Press) {
-                    focused = true
+                    focus?.request(handler)
                     true
                 } else false
             },
@@ -126,19 +118,13 @@ fun TextInput(
             if (value.isEmpty() && placeholder.isNotEmpty() && !focused) {
                 Text(
                     placeholder,
-                    style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceMuted),
+                    style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceDisabled),
                 )
             } else {
                 Text(value, style = NwTheme.typography.caption)
             }
             if (focused) {
-                // Solid block caret — readable at MC font size without
-                // animation overhead. ~5px tall matches caption line.
-                Box(
-                    modifier = Modifier
-                        .size(1, 7)
-                        .background(NwTheme.colors.accent),
-                )
+                Box(modifier = Modifier.size(1, 7).background(NwTheme.colors.accent))
             }
         }
     }
