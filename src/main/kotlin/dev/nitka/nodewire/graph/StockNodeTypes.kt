@@ -16,10 +16,8 @@ import net.minecraft.resources.ResourceLocation
  *   * Compare-int has three outputs (`gt`, `eq`, `lt`).
  *
  * Config conventions:
- *   * `bool_const` stores `value: byte` (0/1).
- *   * `int_const` stores `value: int`.
- *   * `float_const` stores `value: float`.
- *   * `vec3_const` stores `x,y,z: float`.
+ *   * `constant` stores `type: String` + per-type slots: `bool`, `int`,
+ *     `float`, `string`, and `x/y/z` (VEC3).
  *   * `timer` stores `period: int` (ticks).
  *
  * No-arg defaults match [PinValue.default] for the corresponding type.
@@ -156,57 +154,23 @@ object StockNodeTypes {
     val NOR = boolBinary("nor", "NOR", StockEvaluators.Nor)
     val XNOR = boolBinary("xnor", "XNOR", StockEvaluators.Xnor)
 
-    val BOOL_CONST = nodeType(
-        id = "bool_const",
-        displayName = "Bool Constant",
+    val CONSTANT = nodeType(
+        id = "constant",
+        displayName = "Constant",
         category = NodeCategory.CONSTANTS,
         outputs = listOf(Pin("out", "Value", PinType.BOOL)),
-        defaultConfig = { CompoundTag().apply { putBoolean("value", false) } },
-        configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.BoolConst,
-        evaluate = StockEvaluators.BoolConst,
-    )
-
-    val STRING_CONST = nodeType(
-        id = "string_const",
-        displayName = "String Constant",
-        category = NodeCategory.CONSTANTS,
-        outputs = listOf(Pin("out", "Value", PinType.STRING)),
-        defaultConfig = { CompoundTag().apply { putString("value", "") } },
-        configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.StringConst,
-        evaluate = StockEvaluators.StringConst,
-    )
-
-    val INT_CONST = nodeType(
-        id = "int_const",
-        displayName = "Int Constant",
-        category = NodeCategory.CONSTANTS,
-        outputs = listOf(Pin("out", "Value", PinType.INT)),
-        defaultConfig = { CompoundTag().apply { putInt("value", 0) } },
-        configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.IntConst,
-        evaluate = StockEvaluators.IntConst,
-    )
-
-    val FLOAT_CONST = nodeType(
-        id = "float_const",
-        displayName = "Float Constant",
-        category = NodeCategory.CONSTANTS,
-        outputs = listOf(Pin("out", "Value", PinType.FLOAT)),
-        defaultConfig = { CompoundTag().apply { putFloat("value", 0f) } },
-        configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.FloatConst,
-        evaluate = StockEvaluators.FloatConst,
-    )
-
-    val VEC3_CONST = nodeType(
-        id = "vec3_const",
-        displayName = "Vec3 Constant",
-        category = NodeCategory.CONSTANTS,
-        outputs = listOf(Pin("out", "Value", PinType.VEC3)),
         defaultConfig = {
             CompoundTag().apply {
+                putString("type", PinType.BOOL.name)
+                putBoolean("bool", false)
+                putInt("int", 0)
+                putFloat("float", 0f)
+                putString("string", "")
                 putFloat("x", 0f); putFloat("y", 0f); putFloat("z", 0f)
             }
         },
-        evaluate = StockEvaluators.Vec3Const,
+        configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.Constant,
+        evaluate = StockEvaluators.Constant,
     )
 
     val TIMER = nodeType(
@@ -414,7 +378,7 @@ object StockNodeTypes {
             // Logic
             AND, OR, NOT, XOR, NAND, NOR, XNOR,
             // Constants
-            BOOL_CONST, INT_CONST, FLOAT_CONST, STRING_CONST, VEC3_CONST, TIMER,
+            CONSTANT, TIMER,
             // Math
             ADD_INT, ADD_FLOAT, ADD_VEC3,
             SUB_INT, SUB_FLOAT,

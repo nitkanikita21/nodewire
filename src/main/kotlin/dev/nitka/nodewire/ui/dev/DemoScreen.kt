@@ -210,9 +210,13 @@ class DemoScreen : NwComposeScreen(Component.literal("Nodewire Demo")) {
                 val demoEditor = remember {
                     val g = NodeGraph()
                     listOf(
-                        StockNodeTypes.BOOL_CONST.newInstance(CanvasPos(0f, 0f)),
-                        StockNodeTypes.INT_CONST.newInstance(CanvasPos(160f, 0f)),
-                        StockNodeTypes.STRING_CONST.newInstance(CanvasPos(320f, 0f)),
+                        StockNodeTypes.CONSTANT.newInstance(CanvasPos(0f, 0f)),
+                        StockNodeTypes.CONSTANT.newInstance(CanvasPos(160f, 0f)).also {
+                            it.config.putString("type", "INT")
+                        },
+                        StockNodeTypes.CONSTANT.newInstance(CanvasPos(320f, 0f)).also {
+                            it.config.putString("type", "STRING")
+                        },
                         StockNodeTypes.ADD_INT.newInstance(CanvasPos(0f, 90f)),
                         StockNodeTypes.COMPARE_INT.newInstance(CanvasPos(160f, 90f)),
                         StockNodeTypes.AND.newInstance(CanvasPos(320f, 90f)),
@@ -223,7 +227,7 @@ class DemoScreen : NwComposeScreen(Component.literal("Nodewire Demo")) {
                 NodeCanvas(state = canvas, modifier = Modifier.fillMaxSize()) {
                     // Real NodeCards built from registered StockNodeTypes —
                     // verifies pin alignment on borders, type labels, and
-                    // the config-section hook (BOOL_CONST renders a checkbox).
+                    // the config-section hook (CONSTANT renders a type selector + value field).
                     CompositionLocalProvider(LocalEditorState provides demoEditor) {
                         for (id in demoNodeIds) {
                             NodeCard(nodeId = id)

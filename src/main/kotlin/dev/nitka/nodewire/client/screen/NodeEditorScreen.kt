@@ -223,8 +223,10 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
 
     private fun seedIfEmpty(g: NodeGraph) {
         if (g.nodes.isNotEmpty()) return
-        val bool1 = StockNodeTypes.BOOL_CONST.newInstance(CanvasPos(40f, 40f))
-        val int1 = StockNodeTypes.INT_CONST.newInstance(CanvasPos(40f, 140f))
+        val bool1 = StockNodeTypes.CONSTANT.newInstance(CanvasPos(40f, 40f))
+        val int1 = StockNodeTypes.CONSTANT.newInstance(CanvasPos(40f, 140f)).also {
+            it.config.putString("type", "INT")
+        }
         val sideIn = StockNodeTypes.SIDE_INPUT.newInstance(CanvasPos(40f, 240f))
         val and = StockNodeTypes.AND.newInstance(CanvasPos(260f, 40f))
         val toRs = StockNodeTypes.CONVERT_TO_REDSTONE.newInstance(CanvasPos(260f, 160f))

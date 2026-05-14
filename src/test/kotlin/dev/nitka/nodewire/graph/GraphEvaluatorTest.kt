@@ -18,8 +18,8 @@ class GraphEvaluatorTest {
 
     @Test
     fun andOfTwoBoolConstsTrue() {
-        val a = StockNodeTypes.BOOL_CONST.newInstance().also { it.config.putBoolean("value", true) }
-        val b = StockNodeTypes.BOOL_CONST.newInstance().also { it.config.putBoolean("value", true) }
+        val a = StockNodeTypes.CONSTANT.newInstance().also { it.config.putBoolean("bool", true) }
+        val b = StockNodeTypes.CONSTANT.newInstance().also { it.config.putBoolean("bool", true) }
         val and = StockNodeTypes.AND.newInstance()
         val g = NodeGraph().apply {
             add(a); add(b); add(and)
@@ -32,8 +32,8 @@ class GraphEvaluatorTest {
 
     @Test
     fun andOfTrueAndFalseFalse() {
-        val a = StockNodeTypes.BOOL_CONST.newInstance().also { it.config.putBoolean("value", true) }
-        val b = StockNodeTypes.BOOL_CONST.newInstance().also { it.config.putBoolean("value", false) }
+        val a = StockNodeTypes.CONSTANT.newInstance().also { it.config.putBoolean("bool", true) }
+        val b = StockNodeTypes.CONSTANT.newInstance().also { it.config.putBoolean("bool", false) }
         val and = StockNodeTypes.AND.newInstance()
         val g = NodeGraph().apply {
             add(a); add(b); add(and)
@@ -46,9 +46,15 @@ class GraphEvaluatorTest {
     @Test
     fun addThreeIntsChained() {
         // (3 + 5) + 7 = 15
-        val c3 = StockNodeTypes.INT_CONST.newInstance().also { it.config.putInt("value", 3) }
-        val c5 = StockNodeTypes.INT_CONST.newInstance().also { it.config.putInt("value", 5) }
-        val c7 = StockNodeTypes.INT_CONST.newInstance().also { it.config.putInt("value", 7) }
+        val c3 = StockNodeTypes.CONSTANT.newInstance().also {
+            it.config.putString("type", "INT"); it.config.putInt("int", 3)
+        }
+        val c5 = StockNodeTypes.CONSTANT.newInstance().also {
+            it.config.putString("type", "INT"); it.config.putInt("int", 5)
+        }
+        val c7 = StockNodeTypes.CONSTANT.newInstance().also {
+            it.config.putString("type", "INT"); it.config.putInt("int", 7)
+        }
         val add1 = StockNodeTypes.ADD_INT.newInstance()
         val add2 = StockNodeTypes.ADD_INT.newInstance()
         val g = NodeGraph().apply {
@@ -63,8 +69,12 @@ class GraphEvaluatorTest {
 
     @Test
     fun compareIntProducesAllThreeOutputs() {
-        val a = StockNodeTypes.INT_CONST.newInstance().also { it.config.putInt("value", 5) }
-        val b = StockNodeTypes.INT_CONST.newInstance().also { it.config.putInt("value", 3) }
+        val a = StockNodeTypes.CONSTANT.newInstance().also {
+            it.config.putString("type", "INT"); it.config.putInt("int", 5)
+        }
+        val b = StockNodeTypes.CONSTANT.newInstance().also {
+            it.config.putString("type", "INT"); it.config.putInt("int", 3)
+        }
         val cmp = StockNodeTypes.COMPARE_INT.newInstance()
         val g = NodeGraph().apply {
             add(a); add(b); add(cmp)
@@ -80,7 +90,9 @@ class GraphEvaluatorTest {
     @Test
     fun unconnectedInputDefaultsToZero() {
         // ADD_INT with only `a` connected → `b` defaults to 0, so result == a.
-        val a = StockNodeTypes.INT_CONST.newInstance().also { it.config.putInt("value", 42) }
+        val a = StockNodeTypes.CONSTANT.newInstance().also {
+            it.config.putString("type", "INT"); it.config.putInt("int", 42)
+        }
         val add = StockNodeTypes.ADD_INT.newInstance()
         val g = NodeGraph().apply {
             add(a); add(add)

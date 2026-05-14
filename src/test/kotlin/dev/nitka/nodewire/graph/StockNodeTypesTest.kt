@@ -28,7 +28,9 @@ class StockNodeTypesTest {
         // CHANNEL_IN/OUT + CONVERT_TO_REDSTONE added (-2 +5 = +3).
         // Test/generator round adds RANDOM_BOOL, RANDOM_INT, PULSE (+3).
         // FROM_REDSTONE added (+1 = 48).
-        assertEquals(48, NodeTypeRegistry.all().size)
+        // Phase 1: BOOL_CONST, INT_CONST, FLOAT_CONST, STRING_CONST, VEC3_CONST
+        //          replaced by single CONSTANT (-5 +1 = -4 → 44).
+        assertEquals(44, NodeTypeRegistry.all().size)
     }
 
     @Test
@@ -70,10 +72,10 @@ class StockNodeTypesTest {
 
     @Test
     fun newInstanceProducesIndependentConfig() {
-        val a = StockNodeTypes.INT_CONST.newInstance()
-        val b = StockNodeTypes.INT_CONST.newInstance()
-        a.config.putInt("value", 42)
+        val a = StockNodeTypes.CONSTANT.newInstance()
+        val b = StockNodeTypes.CONSTANT.newInstance()
+        a.config.putInt("int", 42)
         assertNotSame(a.config, b.config)
-        assertEquals(0, b.config.getInt("value"))
+        assertEquals(0, b.config.getInt("int"))
     }
 }

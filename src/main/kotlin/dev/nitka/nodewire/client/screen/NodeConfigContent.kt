@@ -41,10 +41,10 @@ import dev.nitka.nodewire.ui.theme.NwTheme
  */
 object NodeConfigContent {
 
-    /** INT_CONST: numeric text input. */
-    val IntConst: @Composable (Node) -> Unit = { node ->
-        val editor = LocalEditorState.current
-        var text by remember(node.id) { mutableStateOf(node.config.getInt("value").toString()) }
+    /** Constant (INT slot): numeric text input writing to `config.int`. */
+    @Composable
+    private fun ConstantBodyInt(node: Node, editor: EditorState?) {
+        var text by remember(node.id) { mutableStateOf(node.config.getInt("int").toString()) }
         LabeledRow("Value") {
             TextInput(
                 modifier = Modifier.fillMaxWidth(),
@@ -55,7 +55,7 @@ object NodeConfigContent {
                     text = filtered
                     editor?.updateNode(node.id) { n ->
                         n.copy(config = n.config.copy().apply {
-                            putInt("value", filtered.toIntOrNull() ?: 0)
+                            putInt("int", filtered.toIntOrNull() ?: 0)
                         })
                     }
                 },
@@ -63,10 +63,10 @@ object NodeConfigContent {
         }
     }
 
-    /** FLOAT_CONST: numeric text input accepting optional sign and one dot. */
-    val FloatConst: @Composable (Node) -> Unit = { node ->
-        val editor = LocalEditorState.current
-        var text by remember(node.id) { mutableStateOf(node.config.getFloat("value").toString()) }
+    /** Constant (FLOAT slot): numeric text input writing to `config.float`. */
+    @Composable
+    private fun ConstantBodyFloat(node: Node, editor: EditorState?) {
+        var text by remember(node.id) { mutableStateOf(node.config.getFloat("float").toString()) }
         LabeledRow("Value") {
             TextInput(
                 modifier = Modifier.fillMaxWidth(),
@@ -86,7 +86,7 @@ object NodeConfigContent {
                     text = filtered
                     editor?.updateNode(node.id) { n ->
                         n.copy(config = n.config.copy().apply {
-                            putFloat("value", filtered.toFloatOrNull() ?: 0f)
+                            putFloat("float", filtered.toFloatOrNull() ?: 0f)
                         })
                     }
                 },
@@ -94,10 +94,10 @@ object NodeConfigContent {
         }
     }
 
-    /** STRING_CONST: plain text input. */
-    val StringConst: @Composable (Node) -> Unit = { node ->
-        val editor = LocalEditorState.current
-        var text by remember(node.id) { mutableStateOf(node.config.getString("value")) }
+    /** Constant (STRING slot): plain text input writing to `config.string`. */
+    @Composable
+    private fun ConstantBodyString(node: Node, editor: EditorState?) {
+        var text by remember(node.id) { mutableStateOf(node.config.getString("string")) }
         LabeledRow("Value") {
             TextInput(
                 modifier = Modifier.fillMaxWidth(),
@@ -107,7 +107,7 @@ object NodeConfigContent {
                     text = new
                     editor?.updateNode(node.id) { n ->
                         n.copy(config = n.config.copy().apply {
-                            putString("value", new)
+                            putString("string", new)
                         })
                     }
                 },
@@ -545,10 +545,10 @@ object NodeConfigContent {
         }
     }
 
-    /** BOOL_CONST: single checkbox bound to `config.value`. */
-    val BoolConst: @Composable (Node) -> Unit = { node ->
-        val editor = LocalEditorState.current
-        var value by remember { mutableStateOf(node.config.getBoolean("value")) }
+    /** Constant (BOOL slot): single checkbox writing to `config.bool`. */
+    @Composable
+    private fun ConstantBodyBool(node: Node, editor: EditorState?) {
+        var value by remember(node.id) { mutableStateOf(node.config.getBoolean("bool")) }
         Row(
             modifier = Modifier,
             verticalAlignment = Alignment.Center,
@@ -560,7 +560,7 @@ object NodeConfigContent {
                     value = v
                     editor?.updateNode(node.id) { n ->
                         n.copy(config = n.config.copy().apply {
-                            putBoolean("value", v)
+                            putBoolean("bool", v)
                         })
                     }
                 },
@@ -571,4 +571,50 @@ object NodeConfigContent {
             )
         }
     }
+
+    /** Constant (VEC3 slot): three float fields writing to `config.x/y/z`. */
+    @Composable
+    private fun ConstantBodyVec3(node: Node, editor: EditorState?) {
+        Column(verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2)) {
+            FloatField(node, "x", "X", editor)
+            FloatField(node, "y", "Y", editor)
+            FloatField(node, "z", "Z", editor)
+        }
+    }
+
+    /**
+     * Constant: type selector + per-type value field. Dispatches to one of
+     * the private ConstantBody* helpers based on the selected type.
+     */
+    val Constant: @Composable (Node) -> Unit = { node ->
+        val editor = LocalEditorState.current
+        var type by remember(node.id) {
+            mutableStateOf(PinType.fromName(node.config.getString("type").ifEmpty { PinType.BOOL.name }))
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2)) {
+            LabeledRow("Type") {
+                Select(
+                    options = CONSTANT_TYPES,
+                    selected = type,
+                    onSelect = { next ->
+                        type = next
+                        editor?.changeConstantType(node.id, next)
+                    },
+                    label = { it.name.lowercase() },
+                )
+            }
+            when (type) {
+                PinType.BOOL -> ConstantBodyBool(node, editor)
+                PinType.INT -> ConstantBodyInt(node, editor)
+                PinType.FLOAT -> ConstantBodyFloat(node, editor)
+                PinType.STRING -> ConstantBodyString(node, editor)
+                PinType.VEC3 -> ConstantBodyVec3(node, editor)
+                else -> Unit
+            }
+        }
+    }
+
+    private val CONSTANT_TYPES = listOf(
+        PinType.BOOL, PinType.INT, PinType.FLOAT, PinType.STRING, PinType.VEC3,
+    )
 }

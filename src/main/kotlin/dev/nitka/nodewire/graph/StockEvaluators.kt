@@ -43,24 +43,24 @@ object StockEvaluators {
 
     // --- Constants ------------------------------------------------------
 
-    val BoolConst: NodeEvaluator = { config, _ ->
-        mapOf("out" to PinValue.Bool(config.getBoolean("value")))
-    }
-
-    val IntConst: NodeEvaluator = { config, _ ->
-        mapOf("out" to PinValue.Int(config.getInt("value")))
-    }
-
-    val FloatConst: NodeEvaluator = { config, _ ->
-        mapOf("out" to PinValue.Float(config.getFloat("value")))
-    }
-
-    val StringConst: NodeEvaluator = { config, _ ->
-        mapOf("out" to PinValue.Str(config.getString("value")))
-    }
-
-    val Vec3Const: NodeEvaluator = { config, _ ->
-        mapOf("out" to PinValue.Vec3(config.getFloat("x"), config.getFloat("y"), config.getFloat("z")))
+    /**
+     * Constant: outputs one of BOOL/INT/FLOAT/STRING/VEC3 driven by
+     * `config.type`. Each type has its own config slot (so type-switching
+     * preserves prior values). Unknown type → BOOL false.
+     */
+    val Constant: NodeEvaluator = { config, _ ->
+        val type = PinType.fromName(config.getString("type").ifEmpty { PinType.BOOL.name })
+        val out: PinValue = when (type) {
+            PinType.BOOL -> PinValue.Bool(config.getBoolean("bool"))
+            PinType.INT -> PinValue.Int(config.getInt("int"))
+            PinType.FLOAT -> PinValue.Float(config.getFloat("float"))
+            PinType.STRING -> PinValue.Str(config.getString("string"))
+            PinType.VEC3 -> PinValue.Vec3(
+                config.getFloat("x"), config.getFloat("y"), config.getFloat("z"),
+            )
+            else -> PinValue.default(PinType.BOOL)
+        }
+        mapOf("out" to out)
     }
 
     /**

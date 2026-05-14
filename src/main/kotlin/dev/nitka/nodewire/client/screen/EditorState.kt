@@ -255,6 +255,23 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         disconnectAllEdges(id)
     }
 
+    /**
+     * Constant node: rebuild the single output pin to the given type and
+     * record it in `config.type`. Any outgoing edges are disconnected because
+     * downstream pins may no longer match the new type.
+     */
+    fun changeConstantType(
+        id: dev.nitka.nodewire.graph.NodeId,
+        newType: dev.nitka.nodewire.graph.PinType,
+    ) {
+        updateNode(id) { n ->
+            val rebuilt = n.outputs.first().copy(type = newType)
+            val newConfig = n.config.copy().apply { putString("type", newType.name) }
+            n.copy(outputs = listOf(rebuilt), config = newConfig)
+        }
+        disconnectAllEdges(id)
+    }
+
     private fun disconnectAllEdges(id: dev.nitka.nodewire.graph.NodeId) {
         val before = graph.edges.size
         graph.edges.removeAll { it.from.node == id || it.to.node == id }
