@@ -326,6 +326,7 @@ private fun formatPinValue(v: PinValue): String = when (v) {
     is PinValue.Bool -> if (v.value) "true" else "false"
     is PinValue.Int -> v.value.toString()
     is PinValue.Float -> "%.2f".format(v.value)
+    is PinValue.Redstone -> v.value.toString()
     is PinValue.Str -> "\"${v.value.take(10)}${if (v.value.length > 10) "…" else ""}\""
     is PinValue.Vec2 -> "(%.1f, %.1f)".format(v.x, v.y)
     is PinValue.Vec3 -> "(%.1f, %.1f, %.1f)".format(v.x, v.y, v.z)
@@ -337,6 +338,7 @@ private fun pinColor(type: PinType): Color = when (type) {
     PinType.BOOL -> NwTheme.colors.pinBool
     PinType.INT -> NwTheme.colors.pinInt
     PinType.FLOAT -> NwTheme.colors.pinFloat
+    PinType.REDSTONE -> NwTheme.colors.pinRedstone
     PinType.STRING -> NwTheme.colors.pinString
     PinType.VEC2 -> NwTheme.colors.pinVec2
     PinType.VEC3 -> NwTheme.colors.pinVec3

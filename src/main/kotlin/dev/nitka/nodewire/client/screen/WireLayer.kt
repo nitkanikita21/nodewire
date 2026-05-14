@@ -47,6 +47,7 @@ fun WireLayer() {
             PinType.BOOL to c.pinBool,
             PinType.INT to c.pinInt,
             PinType.FLOAT to c.pinFloat,
+            PinType.REDSTONE to c.pinRedstone,
             PinType.STRING to c.pinString,
             PinType.VEC2 to c.pinVec2,
             PinType.VEC3 to c.pinVec3,

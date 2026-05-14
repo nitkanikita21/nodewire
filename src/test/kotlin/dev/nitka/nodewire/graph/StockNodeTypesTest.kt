@@ -24,11 +24,9 @@ class StockNodeTypesTest {
 
     @Test
     fun stockTypesRegistered() {
-        // Bumped to 41 after the round-2 expansion (logic family, math
-        // suite, conversion, flow). Update this number when the catalog
-        // changes — it's a coarse "did anyone forget to wire registerAll"
-        // smoke test, not a contract on the exact count.
-        assertEquals(41, NodeTypeRegistry.all().size)
+        // After round-3: BLOCK_INPUT/OUTPUT removed, SIDE_IN/OUT +
+        // CHANNEL_IN/OUT + CONVERT_TO_REDSTONE added (-2 +5 = +3).
+        assertEquals(44, NodeTypeRegistry.all().size)
     }
 
     @Test
@@ -41,12 +39,18 @@ class StockNodeTypesTest {
     }
 
     @Test
-    fun blockInputHasSixFaceOutputs() {
-        val t = StockNodeTypes.BLOCK_INPUT
-        assertEquals(0, t.inputs.size)
-        assertEquals(6, t.outputs.size)
-        assertEquals(listOf("down", "up", "north", "south", "west", "east"), t.outputs.map { it.id })
-        assertTrue(t.outputs.all { it.type == PinType.BOOL })
+    fun sideOutputHasSingleRedstoneInput() {
+        val t = StockNodeTypes.SIDE_OUTPUT
+        assertEquals(1, t.inputs.size)
+        assertEquals(0, t.outputs.size)
+        assertEquals(PinType.REDSTONE, t.inputs[0].type)
+    }
+
+    @Test
+    fun channelInputDefaultsToBool() {
+        val node = StockNodeTypes.CHANNEL_INPUT.newInstance()
+        assertEquals("BOOL", node.config.getString("type"))
+        assertEquals(PinType.BOOL, node.outputs[0].type)
     }
 
     @Test

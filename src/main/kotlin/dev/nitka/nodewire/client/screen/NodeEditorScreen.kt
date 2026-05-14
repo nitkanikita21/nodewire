@@ -169,16 +169,15 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
     private fun seedIfEmpty(g: NodeGraph) {
         if (g.nodes.isNotEmpty()) return
         val bool1 = StockNodeTypes.BOOL_CONST.newInstance(CanvasPos(40f, 40f))
-        val int1 = StockNodeTypes.INT_CONST.newInstance(CanvasPos(40f, 130f))
-        val int2 = StockNodeTypes.INT_CONST.newInstance(CanvasPos(40f, 220f))
-        val and = StockNodeTypes.AND.newInstance(CanvasPos(250f, 40f))
-        val add = StockNodeTypes.ADD_INT.newInstance(CanvasPos(250f, 170f))
-        val out = StockNodeTypes.BLOCK_OUTPUT.newInstance(CanvasPos(480f, 100f))
-        g.add(bool1); g.add(int1); g.add(int2); g.add(and); g.add(add); g.add(out)
-        // BOOL_CONST → AND.a + AND → BLOCK_OUTPUT.down ; INT_CONSTs → ADD_INT
+        val int1 = StockNodeTypes.INT_CONST.newInstance(CanvasPos(40f, 140f))
+        val sideIn = StockNodeTypes.SIDE_INPUT.newInstance(CanvasPos(40f, 240f))
+        val and = StockNodeTypes.AND.newInstance(CanvasPos(260f, 40f))
+        val toRs = StockNodeTypes.CONVERT_TO_REDSTONE.newInstance(CanvasPos(260f, 160f))
+        val sideOut = StockNodeTypes.SIDE_OUTPUT.newInstance(CanvasPos(500f, 160f))
+        g.add(bool1); g.add(int1); g.add(sideIn); g.add(and); g.add(toRs); g.add(sideOut)
+        // bool_const → AND.a; int_const → ConvertToRedstone → SideOutput
         g.addEdge(Edge(PinRef(bool1.id, "out"), PinRef(and.id, "a")))
-        g.addEdge(Edge(PinRef(and.id, "out"), PinRef(out.id, "down")))
-        g.addEdge(Edge(PinRef(int1.id, "out"), PinRef(add.id, "a")))
-        g.addEdge(Edge(PinRef(int2.id, "out"), PinRef(add.id, "b")))
+        g.addEdge(Edge(PinRef(int1.id, "out"), PinRef(toRs.id, "in")))
+        g.addEdge(Edge(PinRef(toRs.id, "out"), PinRef(sideOut.id, "in")))
     }
 }

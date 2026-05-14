@@ -82,6 +82,22 @@ class SaveGraphPacket(val pos: BlockPos, val graphTag: CompoundTag) {
          * string for logging. Public so tests can pin down the rules.
          */
         fun validate(graph: NodeGraph): String? {
+            // Channel name uniqueness — duplicate names within input or
+            // output channels would make link-tool resolution ambiguous.
+            val seenChannelInNames = mutableSetOf<String>()
+            val seenChannelOutNames = mutableSetOf<String>()
+            for (node in graph.nodes.values) {
+                val name = node.config.getString("name").takeIf { it.isNotEmpty() } ?: continue
+                when (node.typeKey.path) {
+                    "channel_input" -> if (!seenChannelInNames.add(name)) {
+                        return "duplicate channel input name: '$name'"
+                    }
+                    "channel_output" -> if (!seenChannelOutNames.add(name)) {
+                        return "duplicate channel output name: '$name'"
+                    }
+                }
+            }
+
             val seenInputs = mutableSetOf<PinRef>()
             for (edge in graph.edges) {
                 val fromNode = graph.nodes[edge.from.node]

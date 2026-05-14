@@ -195,6 +195,37 @@ class EditorState(val graph: NodeGraph) {
      * Bound to right-click in [NodeCard] — gives the user one-action
      * disconnect on both inputs and outputs.
      */
+    /**
+     * Rebuilds [node]'s ChannelInput or ChannelOutput pin to the given
+     * type. Any edges touching the changed pin are disconnected — caller
+     * confirmed the auto-disconnect-on-change UX (option 1a in the round-3
+     * design Q&A).
+     */
+    fun changeChannelType(node: Node, newType: dev.nitka.nodewire.graph.PinType) {
+        val pin = (node.inputs + node.outputs).firstOrNull() ?: return
+        val rebuilt = pin.copy(type = newType)
+        if (node.inputs.isNotEmpty()) node.inputs = listOf(rebuilt) else node.outputs = listOf(rebuilt)
+        node.config.putString("type", newType.name)
+        disconnectAllEdges(node.id)
+        graphVersion++
+    }
+
+    /**
+     * Convert-to-Redstone has a single input pin whose type follows
+     * `config.sourceType`. Rebuild the pin and snip incompatible edges.
+     */
+    fun changeConverterInput(node: Node, newType: dev.nitka.nodewire.graph.PinType) {
+        node.inputs = listOf(node.inputs.first().copy(type = newType))
+        disconnectAllEdges(node.id)
+        graphVersion++
+    }
+
+    private fun disconnectAllEdges(id: dev.nitka.nodewire.graph.NodeId) {
+        val before = graph.edges.size
+        graph.edges.removeAll { it.from.node == id || it.to.node == id }
+        if (graph.edges.size != before) graphVersion++
+    }
+
     fun disconnectPin(key: PinKey) {
         val before = graph.edges.size
         graph.edges.removeAll { edge ->

@@ -30,6 +30,12 @@ sealed class PinValue {
         override fun writeTo(tag: CompoundTag) { tag.putInt("v", value) }
     }
 
+    /** Redstone power 0..15. Constructor clamps so out-of-range upstream values fail gracefully. */
+    data class Redstone(val value: kotlin.Int) : PinValue() {
+        override val type = PinType.REDSTONE
+        override fun writeTo(tag: CompoundTag) { tag.putInt("v", value.coerceIn(0, 15)) }
+    }
+
     data class Float(val value: kotlin.Float) : PinValue() {
         override val type = PinType.FLOAT
         override fun writeTo(tag: CompoundTag) { tag.putFloat("v", value) }
@@ -72,6 +78,7 @@ sealed class PinValue {
             PinType.BOOL -> Bool(false)
             PinType.INT -> Int(0)
             PinType.FLOAT -> Float(0f)
+            PinType.REDSTONE -> Redstone(0)
             PinType.STRING -> Str("")
             PinType.VEC2 -> Vec2(0f, 0f)
             PinType.VEC3 -> Vec3(0f, 0f, 0f)
@@ -83,6 +90,7 @@ sealed class PinValue {
             PinType.BOOL -> Bool(tag.getBoolean("v"))
             PinType.INT -> Int(tag.getInt("v"))
             PinType.FLOAT -> Float(tag.getFloat("v"))
+            PinType.REDSTONE -> Redstone(tag.getInt("v"))
             PinType.STRING -> Str(tag.getString("v"))
             PinType.VEC2 -> Vec2(tag.getFloat("x"), tag.getFloat("y"))
             PinType.VEC3 -> Vec3(tag.getFloat("x"), tag.getFloat("y"), tag.getFloat("z"))

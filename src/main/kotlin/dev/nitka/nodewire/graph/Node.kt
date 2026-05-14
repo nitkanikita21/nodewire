@@ -30,8 +30,15 @@ data class Node(
     val id: NodeId,
     val typeKey: ResourceLocation,
     var pos: CanvasPos,
-    val inputs: List<Pin>,
-    val outputs: List<Pin>,
+    /**
+     * Mutable to support configurable-pin nodes — e.g. a [NodeType] whose
+     * pin type comes from a config field (Channel I/O, ConvertToRedstone)
+     * needs to rebuild its pin list when the user picks a different type.
+     * Edges touching changed pins are caller's responsibility (see
+     * `EditorState.rebuildPinsAndDisconnect`).
+     */
+    var inputs: List<Pin>,
+    var outputs: List<Pin>,
     val config: CompoundTag = CompoundTag(),
 ) {
 

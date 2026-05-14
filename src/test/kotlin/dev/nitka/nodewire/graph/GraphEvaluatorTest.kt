@@ -91,16 +91,19 @@ class GraphEvaluatorTest {
 
     @Test
     fun externalOutputsAreInjectedAndOverrideEvaluator() {
-        // Pretend a block_input provides true on its `north` output.
-        val blockIn = StockNodeTypes.BLOCK_INPUT.newInstance()
+        // A ChannelInput's "out" is overridden by the externally-supplied
+        // value (simulates a tool-bound link from another logic block).
+        val channelIn = StockNodeTypes.CHANNEL_INPUT.newInstance().also {
+            it.config.putString("type", "BOOL")
+        }
         val not = StockNodeTypes.NOT.newInstance()
         val g = NodeGraph().apply {
-            add(blockIn); add(not)
-            addEdge(Edge(PinRef(blockIn.id, "north"), PinRef(not.id, "in")))
+            add(channelIn); add(not)
+            addEdge(Edge(PinRef(channelIn.id, "out"), PinRef(not.id, "in")))
         }
         val r = GraphEvaluator.eval(
             g,
-            externalOutputs = mapOf((blockIn.id to "north") to PinValue.Bool(true)),
+            externalOutputs = mapOf((channelIn.id to "out") to PinValue.Bool(true)),
         )
         assertEquals(PinValue.Bool(false), r.valueAt(not.id, "out"))
     }

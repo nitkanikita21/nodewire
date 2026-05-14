@@ -183,6 +183,97 @@ object StockEvaluators {
         mapOf("out" to PinValue.Bool(intIn(i, "in") != 0))
     }
 
+    /**
+     * Convert to Redstone. One node handles INT / FLOAT / BOOL sources via
+     * config.sourceType. Mode controls how the source maps to 0..15.
+     *
+     * INT modes:
+     *   * `clamp` — out = max(0, min(15, in))
+     *   * `modulo` — out = ((in % 16) + 16) % 16 (positive wrap)
+     *   * `threshold` — out = if in >= config.threshold then 15 else 0
+     *   * `scaled` — linear map [config.min..config.max] → [0..15]
+     * FLOAT modes:
+     *   * `threshold` — same with float compare
+     *   * `scaled` — linear map [config.min..config.max] → [0..15]
+     * BOOL modes:
+     *   * `hi` — true → 15, false → 0
+     *   * `level` — true → config.level (clamped), false → 0
+     *
+     * Defaults read as zero so a freshly placed node doesn't surprise
+     * downstream redstone-out with NaN/range artefacts.
+     */
+    val ConvertToRedstone: NodeEvaluator = { config, inputs ->
+        val sourceType = config.getString("sourceType").ifEmpty { "INT" }
+        val mode = config.getString("mode").ifEmpty { "clamp" }
+        val v = when (sourceType) {
+            "INT" -> {
+                val x = intIn(inputs, "in")
+                when (mode) {
+                    "modulo" -> ((x % 16) + 16) % 16
+                    "threshold" -> if (x >= config.getInt("threshold")) 15 else 0
+                    "scaled" -> {
+                        val lo = config.getInt("min"); val hi = config.getInt("max")
+                        if (hi == lo) 0 else (((x - lo).toFloat() / (hi - lo)) * 15f).toInt().coerceIn(0, 15)
+                    }
+                    else -> x.coerceIn(0, 15) // "clamp"
+                }
+            }
+            "FLOAT" -> {
+                val x = floatIn(inputs, "in")
+                when (mode) {
+                    "threshold" -> if (x >= config.getFloat("threshold")) 15 else 0
+                    else -> { // "scaled"
+                        val lo = config.getFloat("min"); val hi = config.getFloat("max")
+                        if (hi == lo) 0 else (((x - lo) / (hi - lo)) * 15f).toInt().coerceIn(0, 15)
+                    }
+                }
+            }
+            "BOOL" -> {
+                val x = boolIn(inputs, "in")
+                when (mode) {
+                    "level" -> if (x) config.getInt("level").coerceIn(0, 15) else 0
+                    else -> if (x) 15 else 0 // "hi"
+                }
+            }
+            else -> 0
+        }
+        mapOf("out" to PinValue.Redstone(v))
+    }
+
+    /**
+     * SideInput: face-specific redstone reader. Server-side tick supplies
+     * the actual value via externalOutputs; client preview always emits 0
+     * (since no world I/O happens in the editor).
+     */
+    val SideInput: NodeEvaluator = { _, _ ->
+        mapOf("out" to PinValue.Redstone(0))
+    }
+
+    /**
+     * SideOutput / ChannelOutput / ChannelInput: pass-through evaluators.
+     * Real I/O happens on the server-side tick which reads/writes these
+     * nodes' values directly — the evaluator just exposes the input as-is
+     * (for SideOutput / ChannelOutput) or zeroes (for ChannelInput pre-link).
+     */
+    val SideOutput: NodeEvaluator = { _, _ ->
+        // Has only an input pin; no outputs. Eval still runs to "consume"
+        // for the topo sort but produces no values.
+        emptyMap()
+    }
+    val ChannelOutput: NodeEvaluator = { _, _ -> emptyMap() }
+
+    /**
+     * ChannelInput: until the link tool wires a real source, expose the
+     * configured type's default so downstream nodes still get a typed
+     * value. Server-side tick overrides via externalOutputs once the
+     * channel is bound to another block's ChannelOutput.
+     */
+    val ChannelInput: NodeEvaluator = { config, _ ->
+        val typeName = config.getString("type").ifEmpty { PinType.BOOL.name }
+        val type = PinType.fromName(typeName)
+        mapOf("out" to PinValue.default(type))
+    }
+
     // --- Flow ----------------------------------------------------------
 
     /**

@@ -26,18 +26,83 @@ import net.minecraft.resources.ResourceLocation
  */
 object StockNodeTypes {
 
-    val BLOCK_INPUT = nodeType(
-        id = "block_input",
-        displayName = "Block Input",
+    // --- I/O ----------------------------------------------------------
+    //
+    // The legacy multi-face BLOCK_INPUT / BLOCK_OUTPUT are gone — replaced
+    // by:
+    //   * SideInput  — reads vanilla redstone from ONE configured face.
+    //   * SideOutput — writes vanilla redstone to ONE configured face.
+    //   * ChannelInput / ChannelOutput — typed named channels for linking
+    //     between two logic blocks via the (yet-to-be-built) link tool.
+
+    val SIDE_INPUT = nodeType(
+        id = "side_input",
+        displayName = "Side Input",
         category = NodeCategory.IO,
-        outputs = faceBoolPins(),
+        outputs = listOf(Pin("out", "Signal", PinType.REDSTONE)),
+        defaultConfig = { CompoundTag().apply { putString("face", "north") } },
+        configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.SideFace,
+        evaluate = StockEvaluators.SideInput,
     )
 
-    val BLOCK_OUTPUT = nodeType(
-        id = "block_output",
-        displayName = "Block Output",
+    val SIDE_OUTPUT = nodeType(
+        id = "side_output",
+        displayName = "Side Output",
         category = NodeCategory.IO,
-        inputs = faceBoolPins(),
+        inputs = listOf(Pin("in", "Signal", PinType.REDSTONE)),
+        defaultConfig = { CompoundTag().apply { putString("face", "north") } },
+        configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.SideFace,
+        evaluate = StockEvaluators.SideOutput,
+    )
+
+    val CHANNEL_INPUT = nodeType(
+        id = "channel_input",
+        displayName = "Channel Input",
+        category = NodeCategory.IO,
+        outputs = listOf(Pin("out", "Value", PinType.BOOL)),
+        defaultConfig = {
+            CompoundTag().apply {
+                putString("name", "")
+                putString("type", PinType.BOOL.name)
+            }
+        },
+        configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.ChannelEndpoint,
+        evaluate = StockEvaluators.ChannelInput,
+    )
+
+    val CHANNEL_OUTPUT = nodeType(
+        id = "channel_output",
+        displayName = "Channel Output",
+        category = NodeCategory.IO,
+        inputs = listOf(Pin("in", "Value", PinType.BOOL)),
+        defaultConfig = {
+            CompoundTag().apply {
+                putString("name", "")
+                putString("type", PinType.BOOL.name)
+            }
+        },
+        configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.ChannelEndpoint,
+        evaluate = StockEvaluators.ChannelOutput,
+    )
+
+    val CONVERT_TO_REDSTONE = nodeType(
+        id = "convert_to_redstone",
+        displayName = "To Redstone",
+        category = NodeCategory.CONVERSION,
+        inputs = listOf(Pin("in", "In", PinType.INT)),
+        outputs = listOf(Pin("out", "Signal", PinType.REDSTONE)),
+        defaultConfig = {
+            CompoundTag().apply {
+                putString("sourceType", PinType.INT.name)
+                putString("mode", "clamp")
+                putInt("threshold", 1)
+                putInt("min", 0)
+                putInt("max", 15)
+                putInt("level", 15)
+            }
+        },
+        configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.ConvertToRedstone,
+        evaluate = StockEvaluators.ConvertToRedstone,
     )
 
     val AND = nodeType(
@@ -293,7 +358,7 @@ object StockNodeTypes {
     fun registerAll() {
         listOf(
             // IO
-            BLOCK_INPUT, BLOCK_OUTPUT,
+            SIDE_INPUT, SIDE_OUTPUT, CHANNEL_INPUT, CHANNEL_OUTPUT,
             // Logic
             AND, OR, NOT, XOR, NAND, NOR, XNOR,
             // Constants
@@ -306,7 +371,7 @@ object StockNodeTypes {
             NEG_FLOAT, ABS_FLOAT, MIN_FLOAT, MAX_FLOAT, CLAMP_FLOAT,
             COMPARE_INT, COMPARE_FLOAT,
             // Conversion
-            INT_TO_FLOAT, FLOAT_TO_INT, BOOL_TO_INT, INT_TO_BOOL,
+            INT_TO_FLOAT, FLOAT_TO_INT, BOOL_TO_INT, INT_TO_BOOL, CONVERT_TO_REDSTONE,
             // Flow
             SELECT_BOOL, EDGE_RISING, TOGGLE, COUNTER, DELAY,
         ).forEach(NodeTypeRegistry::register)

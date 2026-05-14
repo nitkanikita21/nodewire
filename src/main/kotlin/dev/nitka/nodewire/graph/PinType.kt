@@ -13,6 +13,13 @@ enum class PinType {
     BOOL,
     INT,
     FLOAT,
+    /**
+     * Vanilla-style redstone signal. Internally an int clamped 0..15;
+     * separate from [INT] so connections must go through an explicit
+     * conversion node — prevents accidental wiring of a free-range int
+     * (e.g. a counter at 9000) into a redstone-emitting pin.
+     */
+    REDSTONE,
     STRING,
     VEC2,
     VEC3,
