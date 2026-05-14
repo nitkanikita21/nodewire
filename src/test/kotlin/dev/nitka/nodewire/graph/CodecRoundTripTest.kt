@@ -46,6 +46,14 @@ class CodecRoundTripTest {
     @Test fun pinValueVec3Snbt()  = roundTripSnbt(PinValue.CODEC, PinValue.Vec3(1f, 2f, 3f))
     @Test fun pinValueStrSnbt()   = roundTripSnbt(PinValue.CODEC, PinValue.Str("with spaces"))
 
+    private val nodeA: java.util.UUID = java.util.UUID.fromString("00000000-0000-0000-0000-000000000001")
+    private val nodeB: java.util.UUID = java.util.UUID.fromString("00000000-0000-0000-0000-000000000002")
+
+    @Test fun pinRefNbt()   = roundTripNbt(PinRef.CODEC, PinRef(nodeA, "out"))
+    @Test fun pinRefSnbt()  = roundTripSnbt(PinRef.CODEC, PinRef(nodeA, "out"))
+    @Test fun edgeNbt()     = roundTripNbt(Edge.CODEC, Edge(PinRef(nodeA, "out"), PinRef(nodeB, "in")))
+    @Test fun edgeSnbt()    = roundTripSnbt(Edge.CODEC, Edge(PinRef(nodeA, "out"), PinRef(nodeB, "in")))
+
     /**
      * PinType.CODEC is a primitive-string codec, which encodes to a
      * StringTag — but our roundTrip helpers and SNBT path require a
