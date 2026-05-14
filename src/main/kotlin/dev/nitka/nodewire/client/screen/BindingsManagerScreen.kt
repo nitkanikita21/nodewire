@@ -103,6 +103,10 @@ class BindingsManagerScreen(
         val bindings = remember(version) { sourceBe.bindingsSnapshot() }
         val sideBindings = remember(version) { sourceBe.sideBindingsSnapshot() }
         val totalBindings = bindings.size + sideBindings.size
+        // Pre-group by source channel name once so the per-channel rendering
+        // loop is O(1) lookup instead of O(N) filter per output.
+        val bindingsByChannel = remember(version) { bindings.groupBy { it.sourceChannelName } }
+        val sideBindingsByChannel = remember(version) { sideBindings.groupBy { it.sourceChannelName } }
 
         Box(
             modifier = Modifier
@@ -127,8 +131,8 @@ class BindingsManagerScreen(
                     } else {
                         Column(verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space4)) {
                             for ((name, type) in outputs) {
-                                val myChannelBindings = bindings.filter { it.sourceChannelName == name }
-                                val mySideBindings = sideBindings.filter { it.sourceChannelName == name }
+                                val myChannelBindings = bindingsByChannel[name].orEmpty()
+                                val mySideBindings = sideBindingsByChannel[name].orEmpty()
                                 val count = myChannelBindings.size + mySideBindings.size
 
                                 Column(verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2)) {
