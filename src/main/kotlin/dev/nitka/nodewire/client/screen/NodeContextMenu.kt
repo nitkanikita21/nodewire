@@ -52,6 +52,16 @@ private fun buildCreateItems(
     }
     return listOf(
         ContextMenuItem.Submenu(label = "Add Node", items = categorySubmenus),
+        ContextMenuItem.Separator,
+        ContextMenuItem.Action(label = "Export graph to file") {
+            val path = GraphExporter.exportToFile(editor.graph, editor.pos)
+            if (path != null) toast?.success("Exported to $path")
+            else toast?.warning("Export failed — see log")
+        },
+        ContextMenuItem.Action(label = "Copy graph SNBT") {
+            if (GraphExporter.copyToClipboard(editor.graph)) toast?.success("Copied SNBT to clipboard")
+            else toast?.warning("Copy failed — see log")
+        },
     )
 }
 

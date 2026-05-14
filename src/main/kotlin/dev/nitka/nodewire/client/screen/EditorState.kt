@@ -23,7 +23,7 @@ import dev.nitka.nodewire.graph.PinRef
  * Exposed via [LocalEditorState] so per-card composables (pin handles
  * inside [NodeCard]) can reach it without ceremonial props.
  */
-class EditorState(val graph: NodeGraph) {
+class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = net.minecraft.core.BlockPos.ZERO) {
     val pinPositions = PinPositions()
 
     /**

@@ -72,7 +72,7 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
     override fun Content() {
         NwThemeProvider {
             val canvas = rememberCanvasState()
-            val editor = remember(graph) { EditorState(graph) }
+            val editor = remember(graph) { EditorState(graph, pos) }
             val nodes = remember(editor.nodesVersion) { graph.nodes.values.toList() }
             // Live evaluator: runs once per game tick (50ms) so stateful
             // nodes (Timer) advance smoothly in the editor preview. Graph
