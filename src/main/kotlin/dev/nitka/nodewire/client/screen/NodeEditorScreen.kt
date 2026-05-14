@@ -2,17 +2,20 @@ package dev.nitka.nodewire.client.screen
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import dev.nitka.nodewire.graph.CanvasPos
 import dev.nitka.nodewire.graph.Edge
-import dev.nitka.nodewire.graph.GraphEvaluator
+import dev.nitka.nodewire.graph.EvalResult
 import dev.nitka.nodewire.graph.Node
 import dev.nitka.nodewire.graph.NodeGraph
 import dev.nitka.nodewire.graph.PinRef
+import dev.nitka.nodewire.graph.StatefulGraphEvaluator
 import dev.nitka.nodewire.graph.StockNodeTypes
+import kotlinx.coroutines.delay
 import dev.nitka.nodewire.net.NodewireNetwork
 import dev.nitka.nodewire.net.SaveGraphPacket
 import net.minecraftforge.network.PacketDistributor
@@ -71,12 +74,18 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
             val canvas = rememberCanvasState()
             val editor = remember(graph) { EditorState(graph) }
             val nodes = remember(editor.nodesVersion) { graph.nodes.values.toList() }
-            // Reactive evaluation: re-runs every time the graph changes
-            // (nodes / edges / configs). External inputs are empty for now —
-            // server-side world I/O bridge will inject real values once we
-            // wire LogicBlockEntity tick. GraphEvaluator is pure and cheap
-            // on graphs this size, no debouncing needed.
-            val evalResult = remember(editor.graphVersion) { GraphEvaluator.eval(graph) }
+            // Live evaluator: runs once per game tick (50ms) so stateful
+            // nodes (Timer) advance smoothly in the editor preview. Graph
+            // mutations show up on the next tick. External inputs empty
+            // for now — block_input outputs default to `false`.
+            val evaluator = remember(graph) { StatefulGraphEvaluator(graph) }
+            var evalResult by remember { mutableStateOf(EvalResult(emptyMap())) }
+            LaunchedEffect(evaluator) {
+                while (true) {
+                    delay(TICK_INTERVAL_MS)
+                    evalResult = evaluator.tick()
+                }
+            }
 
             CompositionLocalProvider(
                 LocalEditorState provides editor,
@@ -153,6 +162,8 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
      */
     private companion object {
         private const val RIGHT_BUTTON = 1
+        /** MC's game tick is 50 ms (20 Hz). Match it so Timer pulses align with the server's tick rate. */
+        private const val TICK_INTERVAL_MS = 50L
     }
 
     private fun seedIfEmpty(g: NodeGraph) {

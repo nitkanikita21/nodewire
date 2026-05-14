@@ -130,6 +130,7 @@ object StockNodeTypes {
         defaultConfig = { CompoundTag().apply { putInt("period", 20) } },
         configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.TimerPeriod,
         evaluate = StockEvaluators.Timer,
+        tickEvaluator = StockEvaluators.TimerTick,
     )
 
     val ADD_INT = nodeType(
@@ -192,6 +193,7 @@ object StockNodeTypes {
         defaultConfig: () -> CompoundTag = { CompoundTag() },
         configContent: (@androidx.compose.runtime.Composable (Node) -> Unit)? = null,
         evaluate: NodeEvaluator? = null,
+        tickEvaluator: TickEvaluator? = null,
     ) = NodeType(
         id = ResourceLocation(Nodewire.ID, id),
         displayName = displayName,
@@ -201,6 +203,7 @@ object StockNodeTypes {
         defaultConfig = defaultConfig,
         configContent = configContent,
         evaluate = evaluate,
+        tickEvaluator = tickEvaluator,
     )
 
     private fun faceBoolPins(): List<Pin> = listOf(

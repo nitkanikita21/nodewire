@@ -48,13 +48,26 @@ object StockEvaluators {
     }
 
     /**
-     * Stateless evaluator placeholder. Real Timer needs a per-instance
-     * tick counter — added when graph runtime gains state (deferred slice).
-     * Returns false so the type round-trips and downstream logic doesn't
-     * crash on unbound state.
+     * Stateful Timer: every `config.period` ticks, flips `state.phase`
+     * and emits it on `out`. Counter and phase live in the per-node state
+     * tag managed by [StatefulGraphEvaluator]. Stateless [evaluate] still
+     * returns the last known phase so a stateless walk doesn't crash.
      */
     val Timer: NodeEvaluator = { _, _ ->
         mapOf("out" to PinValue.Bool(false))
+    }
+
+    val TimerTick: TickEvaluator = { state, config, _ ->
+        val period = config.getInt("period").coerceAtLeast(1)
+        var counter = state.getInt("counter") + 1
+        var phase = state.getBoolean("phase")
+        if (counter >= period) {
+            counter = 0
+            phase = !phase
+        }
+        state.putInt("counter", counter)
+        state.putBoolean("phase", phase)
+        mapOf("out" to PinValue.Bool(phase))
     }
 
     // --- Math -----------------------------------------------------------

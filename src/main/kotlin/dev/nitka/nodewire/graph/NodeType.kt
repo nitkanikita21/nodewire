@@ -39,6 +39,18 @@ enum class NodeCategory(val displayName: String) {
  */
 typealias NodeEvaluator = (config: CompoundTag, inputs: Map<String, PinValue>) -> Map<String, PinValue>
 
+/**
+ * Stateful evaluator. The [state] tag is mutable and persists between
+ * ticks (per node instance) — Timer stores a counter and phase there.
+ * If a [NodeType] declares [tickEvaluator] it takes precedence over the
+ * stateless [evaluate] when running under [StatefulGraphEvaluator].
+ */
+typealias TickEvaluator = (
+    state: CompoundTag,
+    config: CompoundTag,
+    inputs: Map<String, PinValue>,
+) -> Map<String, PinValue>
+
 data class NodeType(
     val id: ResourceLocation,
     val displayName: String,
@@ -60,6 +72,12 @@ data class NodeType(
      * zero" so the graph still walks past them.
      */
     val evaluate: NodeEvaluator? = null,
+    /**
+     * Tick-aware evaluator. Use for nodes whose output depends on time —
+     * Timer, debouncers, monostable, etc. Stateless [evaluate] is the
+     * fallback when null.
+     */
+    val tickEvaluator: TickEvaluator? = null,
 ) {
     /** Instantiate a fresh [Node] at [pos] with default config. */
     fun newInstance(pos: CanvasPos = CanvasPos.Zero): Node =
