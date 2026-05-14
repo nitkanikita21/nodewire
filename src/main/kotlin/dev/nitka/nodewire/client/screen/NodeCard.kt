@@ -78,7 +78,23 @@ fun NodeCard(
     Surface(
         modifier = modifier
             .absolutePosition(pos.x.toInt(), pos.y.toInt())
-            .width(CARD_WIDTH),
+            .width(CARD_WIDTH)
+            // Card-wide right-click opens the node context menu. Pin handles
+            // are deeper in the tree so their own RMB-disconnect still wins
+            // when the click lands on a pin; only "empty card area" reaches
+            // this handler.
+            .pointerInput { ev, x, y ->
+                if (ev is PointerEvent.Press && ev.button == RIGHT_BUTTON) {
+                    if (editor != null && canvas != null) {
+                        val worldX = pos.x + x
+                        val worldY = pos.y + y
+                        val screenX = ((worldX + canvas.panX) * canvas.zoom).toInt()
+                        val screenY = ((worldY + canvas.panY) * canvas.zoom).toInt()
+                        editor.openNodeMenu(screenX, screenY, node.id)
+                    }
+                    true
+                } else false
+            },
         style = cardStyle(),
     ) {
         Column {
@@ -89,18 +105,6 @@ fun NodeCard(
                     val updated = CanvasPos(pos.x + dx / zoom, pos.y + dy / zoom)
                     pos = updated
                     node.pos = updated
-                },
-                onContextMenu = { localX, localY ->
-                    if (editor != null && canvas != null) {
-                        // pointerInput coords are world-relative inside the
-                        // canvas pose. World event pos = card pos + local
-                        // offset. Screen = (world + pan) * zoom.
-                        val worldX = pos.x + localX
-                        val worldY = pos.y + localY
-                        val screenX = ((worldX + canvas.panX) * canvas.zoom).toInt()
-                        val screenY = ((worldY + canvas.panY) * canvas.zoom).toInt()
-                        editor.openNodeMenu(screenX, screenY, node.id)
-                    }
                 },
             )
             ConfigSection(node)
@@ -124,23 +128,17 @@ private fun cardStyle(): SurfaceStyle = SurfaceStyle(
 private fun TitleBar(
     node: Node,
     onDragDelta: (Float, Float) -> Unit,
-    onContextMenu: (localX: Int, localY: Int) -> Unit,
 ) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .background(NwTheme.colors.accent)
             .padding(horizontal = NwTheme.dimens.space6, vertical = NwTheme.dimens.space2)
-            .pointerInput { ev, x, y ->
+            // LMB-only handler — RMB falls through to the card-level handler
+            // (which opens the context menu). LMB starts drag-to-move.
+            .pointerInput { ev, _, _ ->
                 when (ev) {
-                    is PointerEvent.Press -> when (ev.button) {
-                        LEFT_BUTTON -> true
-                        RIGHT_BUTTON -> {
-                            onContextMenu(x, y)
-                            true
-                        }
-                        else -> false
-                    }
+                    is PointerEvent.Press -> ev.button == LEFT_BUTTON
                     is PointerEvent.Drag -> {
                         if (ev.button == LEFT_BUTTON) {
                             onDragDelta(ev.deltaX, ev.deltaY)
