@@ -83,6 +83,7 @@ object StockNodeTypes {
         category = NodeCategory.CONSTANTS,
         outputs = listOf(Pin("out", "Value", PinType.STRING)),
         defaultConfig = { CompoundTag().apply { putString("value", "") } },
+        configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.StringConst,
         evaluate = StockEvaluators.StringConst,
     )
 
@@ -92,6 +93,7 @@ object StockNodeTypes {
         category = NodeCategory.CONSTANTS,
         outputs = listOf(Pin("out", "Value", PinType.INT)),
         defaultConfig = { CompoundTag().apply { putInt("value", 0) } },
+        configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.IntConst,
         evaluate = StockEvaluators.IntConst,
     )
 
@@ -101,6 +103,7 @@ object StockNodeTypes {
         category = NodeCategory.CONSTANTS,
         outputs = listOf(Pin("out", "Value", PinType.FLOAT)),
         defaultConfig = { CompoundTag().apply { putFloat("value", 0f) } },
+        configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.FloatConst,
         evaluate = StockEvaluators.FloatConst,
     )
 
@@ -121,9 +124,11 @@ object StockNodeTypes {
         id = "timer",
         displayName = "Timer",
         category = NodeCategory.CONSTANTS,
-        inputs = listOf(Pin("period", "Period", PinType.INT)),
+        // No `period` input pin — value comes from config; the node ticks
+        // a counter on the server and toggles `out` every config.period.
         outputs = listOf(Pin("out", "Pulse", PinType.BOOL)),
         defaultConfig = { CompoundTag().apply { putInt("period", 20) } },
+        configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.TimerPeriod,
         evaluate = StockEvaluators.Timer,
     )
 

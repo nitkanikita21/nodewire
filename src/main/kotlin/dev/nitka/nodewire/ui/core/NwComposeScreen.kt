@@ -2,6 +2,8 @@ package dev.nitka.nodewire.ui.core
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import dev.nitka.nodewire.ui.input.KeyEvent
+import dev.nitka.nodewire.ui.input.LocalKeyFocus
 import dev.nitka.nodewire.ui.input.PointerEvent
 import dev.nitka.nodewire.ui.render.NwCanvas
 import dev.nitka.nodewire.ui.theme.LocalScreenSize
@@ -52,7 +54,10 @@ abstract class NwComposeScreen(title: Component) : Screen(title) {
         // composition. The owner's screenSize state is updated each frame()
         // call, so any composable reading LocalScreenSize sees fresh values.
         owner.start {
-            CompositionLocalProvider(LocalScreenSize provides owner.screenSize.value) {
+            CompositionLocalProvider(
+                LocalScreenSize provides owner.screenSize.value,
+                LocalKeyFocus provides owner.keyFocusController,
+            ) {
                 Content()
             }
         }
@@ -105,5 +110,26 @@ abstract class NwComposeScreen(title: Component) : Screen(title) {
     override fun mouseScrolled(x: Double, y: Double, delta: Double): Boolean {
         if (owner.dispatchPointer(PointerEvent.Scroll(x.toInt(), y.toInt(), delta.toFloat()))) return true
         return super.mouseScrolled(x, y, delta)
+    }
+
+    // --- Keyboard input bridge ---
+    // MC distinguishes `keyPressed` (control keys: Esc, Enter, Backspace,
+    // arrows, …) and `charTyped` (printable Unicode code points emitted
+    // through the IME). We forward both as KeyEvent.{Press, Char} to the
+    // owner; the focused KeyHandler decides what to consume.
+
+    override fun keyPressed(keyCode: Int, scanCode: Int, modifiers: Int): Boolean {
+        if (owner.dispatchKey(KeyEvent.Press(keyCode, scanCode, modifiers))) return true
+        return super.keyPressed(keyCode, scanCode, modifiers)
+    }
+
+    override fun keyReleased(keyCode: Int, scanCode: Int, modifiers: Int): Boolean {
+        if (owner.dispatchKey(KeyEvent.Release(keyCode, scanCode, modifiers))) return true
+        return super.keyReleased(keyCode, scanCode, modifiers)
+    }
+
+    override fun charTyped(codePoint: Char, modifiers: Int): Boolean {
+        if (owner.dispatchKey(KeyEvent.Char(codePoint.code, modifiers))) return true
+        return super.charTyped(codePoint, modifiers)
     }
 }

@@ -8,6 +8,9 @@ import androidx.compose.runtime.Recomposer
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.snapshots.Snapshot
 import dev.nitka.nodewire.ui.canvas.CanvasModifier
+import dev.nitka.nodewire.ui.input.KeyEvent
+import dev.nitka.nodewire.ui.input.KeyFocusController
+import dev.nitka.nodewire.ui.input.KeyHandler
 import dev.nitka.nodewire.ui.input.PointerEvent
 import dev.nitka.nodewire.ui.input.PointerHandler
 import dev.nitka.nodewire.ui.input.absoluteOffset
@@ -76,6 +79,25 @@ class NwUiOwner {
 
     /** Currently-hovered nodes — kept so we can fire `OnHoverModifier(false)` on exit. */
     private val hoveredNodes = mutableSetOf<UiNode>()
+
+    /**
+     * Holder of keyboard focus — receives every key event until released.
+     * Single-slot: requesting focus implicitly releases whoever had it.
+     *
+     * Press anywhere clears focus before hit-testing, so a TextInput that
+     * wants to keep focus re-requests it in its own Press handler. Click-
+     * elsewhere → unfocus falls out of this design without explicit
+     * "outside-click" detection per TextInput.
+     */
+    private var keyFocus: KeyHandler? = null
+
+    val keyFocusController: KeyFocusController = object : KeyFocusController {
+        override fun request(handler: KeyHandler) { keyFocus = handler }
+        override fun release(handler: KeyHandler) {
+            if (keyFocus === handler) keyFocus = null
+        }
+        override fun isFocused(handler: KeyHandler): Boolean = keyFocus === handler
+    }
 
     /**
      * Screen size read by the composition (via `LocalScreenSize`). Updated
@@ -166,6 +188,10 @@ class NwUiOwner {
     fun dispatchPointer(event: PointerEvent): Boolean {
         return when (event) {
             is PointerEvent.Press -> {
+                // Clear keyboard focus on any press; if the press lands on
+                // a TextInput, its handler re-requests focus during hit-
+                // testing and the slot is restored before we return.
+                keyFocus = null
                 val hit = root.hitTest(event)
                 pointerFocus = hit
                 hit != null
@@ -278,6 +304,13 @@ class NwUiOwner {
             }
         }
     }
+
+    /**
+     * Routes a key event to the focused [KeyHandler] (if any). Returns
+     * the handler's `handle` result so MC knows whether the keystroke
+     * was consumed.
+     */
+    fun dispatchKey(event: KeyEvent): Boolean = keyFocus?.handle(event) ?: false
 
     fun dispose() {
         if (!running) return
