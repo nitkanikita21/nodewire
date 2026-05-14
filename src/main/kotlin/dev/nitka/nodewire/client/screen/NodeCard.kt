@@ -32,11 +32,13 @@ import dev.nitka.nodewire.ui.modifier.layout.fillMaxWidth
 import dev.nitka.nodewire.ui.modifier.layout.offset
 import dev.nitka.nodewire.ui.modifier.layout.padding
 import dev.nitka.nodewire.ui.modifier.layout.size
+import dev.nitka.nodewire.ui.modifier.layout.weight
 import dev.nitka.nodewire.ui.modifier.layout.width
 import dev.nitka.nodewire.ui.modifier.style.background
 import dev.nitka.nodewire.ui.modifier.style.border
 import dev.nitka.nodewire.ui.render.BorderStroke
 import dev.nitka.nodewire.ui.render.Color
+import dev.nitka.nodewire.ui.render.TextAlign
 import dev.nitka.nodewire.ui.theme.NwTheme
 import net.minecraft.client.gui.screens.Screen
 
@@ -133,9 +135,13 @@ private fun TitleBar(
 ) {
     val category = NodeTypeRegistry.get(node.typeKey)?.category ?: NodeCategory.LOGIC
     val baseColor = headerColorFor(category)
-    // Re-instantiate renderer when the underlying color changes (e.g.
-    // theme swap). For a stable category the renderer is created once.
-    val headerRenderer = remember(baseColor.argb) { PixelDotHeaderRenderer(baseColor) }
+    val targetColor = NwTheme.colors.surface
+    // Re-instantiate when either endpoint of the gradient changes (theme
+    // swap or category mutation — the latter shouldn't happen but the
+    // cost is one allocation per change so we're not picky).
+    val headerRenderer = remember(baseColor.argb, targetColor.argb) {
+        PixelDotHeaderRenderer(baseColor, targetColor)
+    }
     Layout(
         renderer = headerRenderer,
         modifier = Modifier
@@ -184,19 +190,26 @@ private fun ConfigSection(node: Node) {
 
 @Composable
 private fun CardBody(nodeId: java.util.UUID, node: Node) {
+    // Each column gets half the body width. Inputs left-align inside
+    // their column (cross-axis = Alignment.Start); outputs right-align
+    // (Alignment.End). Combined with content-sized rows, this anchors
+    // input rows to the card's left edge and output rows to its right,
+    // while keeping a normal LTR gap-separated order within each row.
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = NwTheme.dimens.space2),
-        horizontalArrangement = Arrangement.SpaceBetween,
+        horizontalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2),
     ) {
         Column(
+            modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2),
             horizontalAlignment = Alignment.Start,
         ) {
             for (pin in node.inputs) InputPinRow(nodeId, pin)
         }
         Column(
+            modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2),
             horizontalAlignment = Alignment.End,
         ) {
@@ -207,12 +220,13 @@ private fun CardBody(nodeId: java.util.UUID, node: Node) {
 
 @Composable
 private fun InputPinRow(nodeId: java.util.UUID, pin: Pin) {
+    val chip = pinChipText(pin, valueFlowingInto(nodeId, pin.id))
+    // Plain LTR: [●] Name chip. Content-sized row left-aligned by the
+    // surrounding column.
     Row(
         verticalAlignment = Alignment.Center,
         horizontalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2),
     ) {
-        // Negative x offset moves the handle half its width outside the card,
-        // so its centre lines up exactly with the card's left border.
         PinHandle(
             nodeId = nodeId,
             pin = pin,
@@ -220,21 +234,23 @@ private fun InputPinRow(nodeId: java.util.UUID, pin: Pin) {
             modifier = Modifier.offset(-PIN_HANDLE_HALF, 0),
         )
         Text(pin.name, style = NwTheme.typography.caption)
-        TypeLabel(pin.type)
+        ChipLabel(chip)
     }
 }
 
 @Composable
 private fun OutputPinRow(nodeId: java.util.UUID, pin: Pin) {
     val evalResult = LocalEvalResult.current
-    val value = evalResult?.valueAt(nodeId, pin.id)
+    val chip = pinChipText(pin, evalResult?.valueAt(nodeId, pin.id))
+    // Mirror layout: chip, Name, [●]. Content-sized row right-aligned by
+    // the surrounding column (cross-axis Alignment.End), so the handle
+    // sits at the card's right edge and chip+name pack in LTR order
+    // immediately to its left.
     Row(
         verticalAlignment = Alignment.Center,
         horizontalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2),
     ) {
-        // Show the live computed value if we have one, otherwise fall back
-        // to the static type label so the row still reads as "(type) Name".
-        if (value != null) ValueLabel(value) else TypeLabel(pin.type)
+        ChipLabel(chip)
         Text(pin.name, style = NwTheme.typography.caption)
         PinHandle(
             nodeId = nodeId,
@@ -243,6 +259,20 @@ private fun OutputPinRow(nodeId: java.util.UUID, pin: Pin) {
             modifier = Modifier.offset(PIN_HANDLE_HALF, 0),
         )
     }
+}
+
+/**
+ * For an input pin: looks up the edge that feeds it and returns the
+ * upstream output's currently-evaluated value. Null if the pin is
+ * unconnected or no eval result is available yet.
+ */
+@Composable
+private fun valueFlowingInto(nodeId: java.util.UUID, pinId: String): PinValue? {
+    val editor = LocalEditorState.current ?: return null
+    val result = LocalEvalResult.current ?: return null
+    val edge = editor.graph.edges.firstOrNull { it.to.node == nodeId && it.to.pin == pinId }
+        ?: return null
+    return result.valueAt(edge.from.node, edge.from.pin)
 }
 
 @Composable
@@ -316,30 +346,33 @@ private fun PinHandle(
 }
 
 @Composable
-private fun TypeLabel(type: PinType) {
+private fun ChipLabel(text: String) {
     Text(
-        type.name.lowercase(),
-        style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceDisabled),
-    )
-}
-
-@Composable
-private fun ValueLabel(value: PinValue) {
-    Text(
-        formatPinValue(value),
+        text,
         style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceMuted),
     )
 }
 
-private fun formatPinValue(v: PinValue): String = when (v) {
-    is PinValue.Bool -> if (v.value) "true" else "false"
-    is PinValue.Int -> v.value.toString()
-    is PinValue.Float -> "%.2f".format(v.value)
-    is PinValue.Redstone -> v.value.toString()
-    is PinValue.Str -> "\"${v.value.take(10)}${if (v.value.length > 10) "…" else ""}\""
-    is PinValue.Vec2 -> "(%.1f, %.1f)".format(v.x, v.y)
-    is PinValue.Vec3 -> "(%.1f, %.1f, %.1f)".format(v.x, v.y, v.z)
-    is PinValue.Quat -> "q(%.1f,%.1f,%.1f,%.1f)".format(v.x, v.y, v.z, v.w)
+/**
+ * The "value or type" chip that sits on a pin row. When [value] is null
+ * (input is unconnected, or output hasn't been evaluated yet) we show the
+ * pin's static type name. Otherwise the formatted value with a short
+ * type-suffix tag so the reader can tell `15i` (int) from `15r` (redstone)
+ * at a glance.
+ */
+private fun pinChipText(pin: Pin, value: PinValue?): String = when (value) {
+    null -> pin.type.name.lowercase()
+    is PinValue.Bool -> if (value.value) "true" else "false"
+    is PinValue.Int -> "${value.value}i"
+    is PinValue.Float -> "%.2ff".format(value.value)
+    is PinValue.Redstone -> "${value.value}r"
+    is PinValue.Str -> {
+        val s = value.value
+        "\"${s.take(10)}${if (s.length > 10) "…" else ""}\""
+    }
+    is PinValue.Vec2 -> "(%.1f; %.1f)".format(value.x, value.y)
+    is PinValue.Vec3 -> "(%.1f; %.1f; %.1f)".format(value.x, value.y, value.z)
+    is PinValue.Quat -> "q(%.1f; %.1f; %.1f; %.1f)".format(value.x, value.y, value.z, value.w)
 }
 
 @Composable

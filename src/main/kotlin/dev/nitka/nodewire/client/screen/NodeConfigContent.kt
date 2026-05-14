@@ -23,6 +23,7 @@ import dev.nitka.nodewire.ui.modifier.input.onHover
 import dev.nitka.nodewire.ui.modifier.input.pointerInput
 import dev.nitka.nodewire.ui.modifier.layout.fillMaxWidth
 import dev.nitka.nodewire.ui.modifier.layout.padding
+import dev.nitka.nodewire.ui.modifier.layout.weight
 import dev.nitka.nodewire.ui.modifier.style.background
 import dev.nitka.nodewire.ui.modifier.style.border
 import dev.nitka.nodewire.ui.render.BorderStroke
@@ -40,85 +41,76 @@ import dev.nitka.nodewire.ui.theme.NwTheme
  */
 object NodeConfigContent {
 
-    /** INT_CONST: numeric text input. Non-numeric chars cause the value to stay at last valid; emptied → 0. */
+    /** INT_CONST: numeric text input. */
     val IntConst: @Composable (Node) -> Unit = { node ->
         val editor = LocalEditorState.current
-        var text by remember { mutableStateOf(node.config.getInt("value").toString()) }
-        TextInput(
-            modifier = Modifier.fillMaxWidth(),
-            value = text,
-            placeholder = "0",
-            onValueChange = { new ->
-                // Accept "", "-", and any prefix of an int. Parse and write
-                // through whatever's numerically valid; the text shown stays
-                // exactly what the user typed (so they can type "-" then "3").
-                val filtered = new.filterIndexed { i, c ->
-                    c.isDigit() || (c == '-' && i == 0)
-                }
-                text = filtered
-                val v = filtered.toIntOrNull() ?: 0
-                node.config.putInt("value", v)
-                editor?.bumpGraphVersion()
-            },
-        )
+        var text by remember(node.id) { mutableStateOf(node.config.getInt("value").toString()) }
+        LabeledRow("Value") {
+            TextInput(
+                modifier = Modifier.fillMaxWidth(),
+                value = text,
+                placeholder = "0",
+                onValueChange = { new ->
+                    val filtered = new.filterIndexed { i, c -> c.isDigit() || (c == '-' && i == 0) }
+                    text = filtered
+                    node.config.putInt("value", filtered.toIntOrNull() ?: 0)
+                    editor?.bumpGraphVersion()
+                },
+            )
+        }
     }
 
     /** FLOAT_CONST: numeric text input accepting optional sign and one dot. */
     val FloatConst: @Composable (Node) -> Unit = { node ->
         val editor = LocalEditorState.current
-        var text by remember { mutableStateOf(node.config.getFloat("value").toString()) }
-        TextInput(
-            modifier = Modifier.fillMaxWidth(),
-            value = text,
-            placeholder = "0.0",
-            onValueChange = { new ->
-                // Accept digits, optional leading '-', and at most one '.'.
-                var dotSeen = false
-                val filtered = buildString {
-                    for ((i, c) in new.withIndex()) {
-                        when {
-                            c.isDigit() -> append(c)
-                            c == '-' && i == 0 -> append(c)
-                            c == '.' && !dotSeen -> { append(c); dotSeen = true }
+        var text by remember(node.id) { mutableStateOf(node.config.getFloat("value").toString()) }
+        LabeledRow("Value") {
+            TextInput(
+                modifier = Modifier.fillMaxWidth(),
+                value = text,
+                placeholder = "0.0",
+                onValueChange = { new ->
+                    var dotSeen = false
+                    val filtered = buildString {
+                        for ((i, c) in new.withIndex()) {
+                            when {
+                                c.isDigit() -> append(c)
+                                c == '-' && i == 0 -> append(c)
+                                c == '.' && !dotSeen -> { append(c); dotSeen = true }
+                            }
                         }
                     }
-                }
-                text = filtered
-                val v = filtered.toFloatOrNull() ?: 0f
-                node.config.putFloat("value", v)
-                editor?.bumpGraphVersion()
-            },
-        )
+                    text = filtered
+                    node.config.putFloat("value", filtered.toFloatOrNull() ?: 0f)
+                    editor?.bumpGraphVersion()
+                },
+            )
+        }
     }
 
-    /** STRING_CONST: plain text input, no filtering. */
+    /** STRING_CONST: plain text input. */
     val StringConst: @Composable (Node) -> Unit = { node ->
         val editor = LocalEditorState.current
-        var text by remember { mutableStateOf(node.config.getString("value")) }
-        TextInput(
-            modifier = Modifier.fillMaxWidth(),
-            value = text,
-            placeholder = "(empty)",
-            onValueChange = { new ->
-                text = new
-                node.config.putString("value", new)
-                editor?.bumpGraphVersion()
-            },
-        )
+        var text by remember(node.id) { mutableStateOf(node.config.getString("value")) }
+        LabeledRow("Value") {
+            TextInput(
+                modifier = Modifier.fillMaxWidth(),
+                value = text,
+                placeholder = "(empty)",
+                onValueChange = { new ->
+                    text = new
+                    node.config.putString("value", new)
+                    editor?.bumpGraphVersion()
+                },
+            )
+        }
     }
 
     /** DELAY: number of ticks the input is held back by. */
     val DelayTicks: @Composable (Node) -> Unit = { node ->
         val editor = LocalEditorState.current
-        var text by remember { mutableStateOf(node.config.getInt("delay").toString()) }
-        Row(
-            verticalAlignment = Alignment.Center,
-            horizontalArrangement = Arrangement.spacedBy(NwTheme.dimens.space4),
-        ) {
-            Text(
-                "Ticks",
-                style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceMuted),
-            )
+        var text by remember(node.id) { mutableStateOf(node.config.getInt("delay").toString()) }
+        LabeledRow("Ticks") {
             TextInput(
                 modifier = Modifier.fillMaxWidth(),
                 value = text,
@@ -133,18 +125,11 @@ object NodeConfigContent {
         }
     }
 
-    /** TIMER: integer period in ticks. Same widget shape as IntConst. */
+    /** TIMER: integer period in ticks. */
     val TimerPeriod: @Composable (Node) -> Unit = { node ->
         val editor = LocalEditorState.current
-        var text by remember { mutableStateOf(node.config.getInt("period").toString()) }
-        Row(
-            verticalAlignment = Alignment.Center,
-            horizontalArrangement = Arrangement.spacedBy(NwTheme.dimens.space4),
-        ) {
-            Text(
-                "Period",
-                style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceMuted),
-            )
+        var text by remember(node.id) { mutableStateOf(node.config.getInt("period").toString()) }
+        LabeledRow("Period") {
             TextInput(
                 modifier = Modifier.fillMaxWidth(),
                 value = text,
@@ -161,20 +146,22 @@ object NodeConfigContent {
 
     private val FACES = listOf("down", "up", "north", "south", "west", "east")
 
-    /** SideInput / SideOutput: dropdown picking which world face this node binds to. */
+    /** SideInput / SideOutput: face picker. */
     val SideFace: @Composable (Node) -> Unit = { node ->
         val editor = LocalEditorState.current
         var face by remember(node.id) { mutableStateOf(node.config.getString("face").ifEmpty { "north" }) }
-        Select(
-            options = FACES,
-            selected = face,
-            onSelect = { next ->
-                face = next
-                node.config.putString("face", next)
-                editor?.bumpGraphVersion()
-            },
-            label = { it },
-        )
+        LabeledRow("Face") {
+            Select(
+                options = FACES,
+                selected = face,
+                onSelect = { next ->
+                    face = next
+                    node.config.putString("face", next)
+                    editor?.bumpGraphVersion()
+                },
+                label = { it },
+            )
+        }
     }
 
     /**
@@ -190,25 +177,28 @@ object NodeConfigContent {
             mutableStateOf(PinType.fromName(node.config.getString("type").ifEmpty { PinType.BOOL.name }))
         }
         Column(verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2)) {
-            TextInput(
-                modifier = Modifier.fillMaxWidth(),
-                value = name,
-                placeholder = "name",
-                onValueChange = { new ->
-                    name = new
-                    node.config.putString("name", new)
-                    editor?.bumpGraphVersion()
-                },
-            )
-            Select(
-                options = CHANNEL_TYPES,
-                selected = type,
-                onSelect = { next ->
-                    type = next
-                    editor?.changeChannelType(node, next)
-                },
-                label = { it.name.lowercase() },
-            )
+            LabeledRow("Name") {
+                TextInput(
+                    value = name,
+                    placeholder = "channel",
+                    onValueChange = { new ->
+                        name = new
+                        node.config.putString("name", new)
+                        editor?.bumpGraphVersion()
+                    },
+                )
+            }
+            LabeledRow("Type") {
+                Select(
+                    options = CHANNEL_TYPES,
+                    selected = type,
+                    onSelect = { next ->
+                        type = next
+                        editor?.changeChannelType(node, next)
+                    },
+                    label = { it.name.lowercase() },
+                )
+            }
         }
     }
 
@@ -232,30 +222,34 @@ object NodeConfigContent {
             mutableStateOf(node.config.getString("mode").ifEmpty { defaultModeFor(sourceType) })
         }
         Column(verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2)) {
-            Select(
-                options = SOURCE_TYPES,
-                selected = sourceType,
-                onSelect = { next ->
-                    val defaultMode = defaultModeFor(next)
-                    node.config.putString("sourceType", next.name)
-                    node.config.putString("mode", defaultMode)
-                    sourceType = next
-                    mode = defaultMode
-                    editor?.changeConverterInput(node, next)
-                },
-                label = { it.name.lowercase() },
-            )
+            LabeledRow("From") {
+                Select(
+                    options = SOURCE_TYPES,
+                    selected = sourceType,
+                    onSelect = { next ->
+                        val defaultMode = defaultModeFor(next)
+                        node.config.putString("sourceType", next.name)
+                        node.config.putString("mode", defaultMode)
+                        sourceType = next
+                        mode = defaultMode
+                        editor?.changeConverterInput(node, next)
+                    },
+                    label = { it.name.lowercase() },
+                )
+            }
             val modes = modesFor(sourceType)
-            Select(
-                options = modes,
-                selected = mode,
-                onSelect = { next ->
-                    mode = next
-                    node.config.putString("mode", next)
-                    editor?.bumpGraphVersion()
-                },
-                label = { it },
-            )
+            LabeledRow("Mode") {
+                Select(
+                    options = modes,
+                    selected = mode,
+                    onSelect = { next ->
+                        mode = next
+                        node.config.putString("mode", next)
+                        editor?.bumpGraphVersion()
+                    },
+                    label = { it },
+                )
+            }
             ModeParams(node, sourceType, mode, editor)
         }
     }
@@ -292,19 +286,14 @@ object NodeConfigContent {
                 FloatField(node, "max", "Max", editor)
             }
             sourceType == PinType.BOOL && mode == "level" ->
-                IntField(node, "level", "Level (0..15)", editor)
+                IntField(node, "level", "Level", editor)
         }
     }
 
     @Composable
     private fun IntField(node: Node, key: String, label: String, editor: EditorState?) {
         var text by remember(key) { mutableStateOf(node.config.getInt(key).toString()) }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.Center,
-            horizontalArrangement = Arrangement.spacedBy(NwTheme.dimens.space4),
-        ) {
-            Text(label, style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceMuted))
+        LabeledRow(label) {
             TextInput(
                 modifier = Modifier.fillMaxWidth(),
                 value = text,
@@ -321,12 +310,7 @@ object NodeConfigContent {
     @Composable
     private fun FloatField(node: Node, key: String, label: String, editor: EditorState?) {
         var text by remember(key) { mutableStateOf(node.config.getFloat(key).toString()) }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.Center,
-            horizontalArrangement = Arrangement.spacedBy(NwTheme.dimens.space4),
-        ) {
-            Text(label, style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceMuted))
+        LabeledRow(label) {
             TextInput(
                 modifier = Modifier.fillMaxWidth(),
                 value = text,
@@ -346,6 +330,37 @@ object NodeConfigContent {
                     editor?.bumpGraphVersion()
                 },
             )
+        }
+    }
+
+    /**
+     * Reusable label + control row. Label takes natural width (a few chars
+     * + colon); control gets [weight] = 1f so it consumes the remaining
+     * space — never overflows the parent card width.
+     *
+     * The wrapper around [content] is a Column with `Alignment.Stretch` so
+     * inner widgets actually fill its cross-axis. A plain Box would have
+     * default flex-start alignment and let the widget size to its content,
+     * which leaves a Select's chevron stuck right next to the value text
+     * instead of pushed to the far edge.
+     */
+    @Composable
+    private fun LabeledRow(label: String, content: @Composable () -> Unit) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Center,
+            horizontalArrangement = Arrangement.spacedBy(NwTheme.dimens.space4),
+        ) {
+            Text(
+                "$label:",
+                style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceMuted),
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.Stretch,
+            ) {
+                content()
+            }
         }
     }
 

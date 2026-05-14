@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import dev.nitka.nodewire.ui.canvas.LocalCanvasState
 import dev.nitka.nodewire.ui.core.Modifier
 import dev.nitka.nodewire.ui.input.PointerEvent
 import dev.nitka.nodewire.ui.layout.Alignment
@@ -46,6 +47,11 @@ fun <T> Select(
     var open by remember { mutableStateOf(false) }
     var anchor by remember { mutableStateOf<LayoutCoordinates?>(null) }
     var hovered by remember { mutableStateOf(false) }
+    // If the Select is mounted inside a NodeCanvas, [onPositioned] reports
+    // the anchor's position in WORLD coordinates (pan/zoom not applied).
+    // The Popup renders outside the canvas pose at screen coordinates, so
+    // we transform here: screen = (world + pan) * zoom.
+    val canvas = LocalCanvasState.current
 
     val bg = when {
         open -> NwTheme.colors.surfacePressed
@@ -76,13 +82,21 @@ fun <T> Select(
 
     val a = anchor
     if (open && a != null) {
+        val screenAnchor = if (canvas != null) {
+            LayoutCoordinates(
+                screenX = ((a.screenX + canvas.panX) * canvas.zoom).toInt(),
+                screenY = ((a.screenY + canvas.panY) * canvas.zoom).toInt(),
+                width = (a.width * canvas.zoom).toInt(),
+                height = (a.height * canvas.zoom).toInt(),
+            )
+        } else a
         Popup(
-            position = PopupPosition.Anchored(anchor = a, placement = PopupPlacement.Below, gap = 1),
+            position = PopupPosition.Anchored(anchor = screenAnchor, placement = PopupPlacement.Below, gap = 1),
             dismissOnClickOutside = true,
             onDismissRequest = { open = false },
         ) {
             Surface(
-                modifier = Modifier.width(a.width.coerceAtLeast(60)),
+                modifier = Modifier.width(screenAnchor.width.coerceAtLeast(60)),
                 style = SurfaceStyle(
                     color = NwTheme.colors.surface,
                     shape = NwTheme.shapes.medium,

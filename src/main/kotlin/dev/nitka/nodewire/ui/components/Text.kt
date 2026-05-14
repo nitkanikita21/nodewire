@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import dev.nitka.nodewire.ui.core.Modifier
 import dev.nitka.nodewire.ui.layout.Layout
+import dev.nitka.nodewire.ui.render.TextAlign
 import dev.nitka.nodewire.ui.render.TextRenderer
 import dev.nitka.nodewire.ui.theme.LocalContentColor
 import dev.nitka.nodewire.ui.theme.LocalFont
@@ -28,6 +29,7 @@ fun Text(
     text: String,
     modifier: Modifier = Modifier,
     style: TextStyle = NwTheme.typography.body,
+    textAlign: TextAlign = TextAlign.Start,
 ) {
     val font = LocalFont.current
     // Color cascade: explicit > content-color from surrounding container > theme default.
@@ -45,7 +47,7 @@ fun Text(
     val scale = style.scale
     Layout(
         modifier = modifier,
-        renderer = TextRenderer(component, color, style.shadow, scale),
+        renderer = TextRenderer(component, color, style.shadow, scale, textAlign),
         yogaConfig = {
             setMeasureFunction { _, w, widthMode, _, _ ->
                 val intrinsicW = font.width(component) * scale

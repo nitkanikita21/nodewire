@@ -28,6 +28,10 @@ internal fun YogaNode.applyArrangement(arrangement: Arrangement) {
             setJustifyContent(YogaJustify.FLEX_START)
             setGap(YogaGutter.ALL, StyleLength.points(arrangement.space.toFloat()))
         }
+        is Arrangement.SpacedByEnd -> {
+            setJustifyContent(YogaJustify.FLEX_END)
+            setGap(YogaGutter.ALL, StyleLength.points(arrangement.space.toFloat()))
+        }
     }
 }
 
