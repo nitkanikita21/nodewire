@@ -20,7 +20,7 @@ class GraphEvaluatorTest {
     fun andOfTwoBoolConstsTrue() {
         val a = StockNodeTypes.CONSTANT.newInstance().also { it.config.putBoolean("bool", true) }
         val b = StockNodeTypes.CONSTANT.newInstance().also { it.config.putBoolean("bool", true) }
-        val and = StockNodeTypes.AND.newInstance()
+        val and = StockNodeTypes.LOGIC_GATE.newInstance() // default op=AND
         val g = NodeGraph().apply {
             add(a); add(b); add(and)
             addEdge(Edge(PinRef(a.id, "out"), PinRef(and.id, "a")))
@@ -34,7 +34,7 @@ class GraphEvaluatorTest {
     fun andOfTrueAndFalseFalse() {
         val a = StockNodeTypes.CONSTANT.newInstance().also { it.config.putBoolean("bool", true) }
         val b = StockNodeTypes.CONSTANT.newInstance().also { it.config.putBoolean("bool", false) }
-        val and = StockNodeTypes.AND.newInstance()
+        val and = StockNodeTypes.LOGIC_GATE.newInstance() // default op=AND
         val g = NodeGraph().apply {
             add(a); add(b); add(and)
             addEdge(Edge(PinRef(a.id, "out"), PinRef(and.id, "a")))
@@ -108,15 +108,27 @@ class GraphEvaluatorTest {
         val channelIn = StockNodeTypes.CHANNEL_INPUT.newInstance().also {
             it.config.putString("type", "BOOL")
         }
-        val not = StockNodeTypes.NOT.newInstance()
+        val not = StockNodeTypes.LOGIC_GATE.newInstance().also {
+            it.config.putString("op", "NOT")
+            // Rebuild inputs to single "in" pin for NOT
+            // (EditorState.changeLogicGateOp does this in a live editor;
+            //  here we manually replicate the structural change since we
+            //  bypass EditorState.)
+        }
+        // Note: the test wires channelIn.out → not.in, but LOGIC_GATE defaults
+        // to 2 binary inputs (a, b). We patch the node's inputs list via a
+        // copy to match NOT's single-pin shape so the evaluator key "in" resolves.
+        val notNode = not.copy(
+            inputs = listOf(dev.nitka.nodewire.graph.Pin("in", "In", dev.nitka.nodewire.graph.PinType.BOOL))
+        )
         val g = NodeGraph().apply {
-            add(channelIn); add(not)
-            addEdge(Edge(PinRef(channelIn.id, "out"), PinRef(not.id, "in")))
+            add(channelIn); add(notNode)
+            addEdge(Edge(PinRef(channelIn.id, "out"), PinRef(notNode.id, "in")))
         }
         val r = GraphEvaluator.eval(
             g,
             externalOutputs = mapOf((channelIn.id to "out") to PinValue.Bool(true)),
         )
-        assertEquals(PinValue.Bool(false), r.valueAt(not.id, "out"))
+        assertEquals(PinValue.Bool(false), r.valueAt(notNode.id, "out"))
     }
 }

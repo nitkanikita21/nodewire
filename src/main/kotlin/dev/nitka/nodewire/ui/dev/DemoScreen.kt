@@ -219,7 +219,7 @@ class DemoScreen : NwComposeScreen(Component.literal("Nodewire Demo")) {
                         },
                         StockNodeTypes.ADD_INT.newInstance(CanvasPos(0f, 90f)),
                         StockNodeTypes.COMPARE_INT.newInstance(CanvasPos(160f, 90f)),
-                        StockNodeTypes.AND.newInstance(CanvasPos(320f, 90f)),
+                        StockNodeTypes.LOGIC_GATE.newInstance(CanvasPos(320f, 90f)), // default op=AND
                     ).forEach { g.add(it) }
                     EditorState(g)
                 }

@@ -122,37 +122,16 @@ object StockNodeTypes {
         evaluate = StockEvaluators.FromRedstone,
     )
 
-    val AND = nodeType(
-        id = "and",
-        displayName = "AND",
+    val LOGIC_GATE = nodeType(
+        id = "logic_gate",
+        displayName = "Logic Gate",
         category = NodeCategory.LOGIC,
         inputs = listOf(Pin("a", "A", PinType.BOOL), Pin("b", "B", PinType.BOOL)),
         outputs = listOf(Pin("out", "Out", PinType.BOOL)),
-        evaluate = StockEvaluators.And,
+        defaultConfig = { CompoundTag().apply { putString("op", "AND") } },
+        configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.LogicGate,
+        evaluate = StockEvaluators.LogicGate,
     )
-
-    val OR = nodeType(
-        id = "or",
-        displayName = "OR",
-        category = NodeCategory.LOGIC,
-        inputs = listOf(Pin("a", "A", PinType.BOOL), Pin("b", "B", PinType.BOOL)),
-        outputs = listOf(Pin("out", "Out", PinType.BOOL)),
-        evaluate = StockEvaluators.Or,
-    )
-
-    val NOT = nodeType(
-        id = "not",
-        displayName = "NOT",
-        category = NodeCategory.LOGIC,
-        inputs = listOf(Pin("in", "In", PinType.BOOL)),
-        outputs = listOf(Pin("out", "Out", PinType.BOOL)),
-        evaluate = StockEvaluators.Not,
-    )
-
-    val XOR = boolBinary("xor", "XOR", StockEvaluators.Xor)
-    val NAND = boolBinary("nand", "NAND", StockEvaluators.Nand)
-    val NOR = boolBinary("nor", "NOR", StockEvaluators.Nor)
-    val XNOR = boolBinary("xnor", "XNOR", StockEvaluators.Xnor)
 
     val CONSTANT = nodeType(
         id = "constant",
@@ -376,7 +355,7 @@ object StockNodeTypes {
             // IO
             SIDE_INPUT, SIDE_OUTPUT, CHANNEL_INPUT, CHANNEL_OUTPUT,
             // Logic
-            AND, OR, NOT, XOR, NAND, NOR, XNOR,
+            LOGIC_GATE,
             // Constants
             CONSTANT, TIMER,
             // Math
@@ -418,13 +397,6 @@ object StockNodeTypes {
     )
 
     // --- Helpers for common pin shapes ---------------------------------
-
-    private fun boolBinary(id: String, displayName: String, eval: NodeEvaluator) = nodeType(
-        id = id, displayName = displayName, category = NodeCategory.LOGIC,
-        inputs = listOf(Pin("a", "A", PinType.BOOL), Pin("b", "B", PinType.BOOL)),
-        outputs = listOf(Pin("out", "Out", PinType.BOOL)),
-        evaluate = eval,
-    )
 
     private fun intBinary(id: String, displayName: String, eval: NodeEvaluator) = nodeType(
         id = id, displayName = displayName, category = NodeCategory.MATH,

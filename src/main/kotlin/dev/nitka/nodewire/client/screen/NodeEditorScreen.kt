@@ -228,7 +228,7 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
             it.config.putString("type", "INT")
         }
         val sideIn = StockNodeTypes.SIDE_INPUT.newInstance(CanvasPos(40f, 240f))
-        val and = StockNodeTypes.AND.newInstance(CanvasPos(260f, 40f))
+        val and = StockNodeTypes.LOGIC_GATE.newInstance(CanvasPos(260f, 40f)) // default op=AND
         val toRs = StockNodeTypes.CONVERT_TO_REDSTONE.newInstance(CanvasPos(260f, 160f))
         val sideOut = StockNodeTypes.SIDE_OUTPUT.newInstance(CanvasPos(500f, 160f))
         g.add(bool1); g.add(int1); g.add(sideIn); g.add(and); g.add(toRs); g.add(sideOut)

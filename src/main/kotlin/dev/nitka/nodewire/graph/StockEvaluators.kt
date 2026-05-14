@@ -13,32 +13,24 @@ object StockEvaluators {
 
     // --- Logic ----------------------------------------------------------
 
-    val And: NodeEvaluator = { _, inputs ->
-        mapOf("out" to PinValue.Bool(boolIn(inputs, "a") && boolIn(inputs, "b")))
-    }
-
-    val Or: NodeEvaluator = { _, inputs ->
-        mapOf("out" to PinValue.Bool(boolIn(inputs, "a") || boolIn(inputs, "b")))
-    }
-
-    val Not: NodeEvaluator = { _, inputs ->
-        mapOf("out" to PinValue.Bool(!boolIn(inputs, "in")))
-    }
-
-    val Xor: NodeEvaluator = { _, inputs ->
-        mapOf("out" to PinValue.Bool(boolIn(inputs, "a") xor boolIn(inputs, "b")))
-    }
-
-    val Nand: NodeEvaluator = { _, inputs ->
-        mapOf("out" to PinValue.Bool(!(boolIn(inputs, "a") && boolIn(inputs, "b"))))
-    }
-
-    val Nor: NodeEvaluator = { _, inputs ->
-        mapOf("out" to PinValue.Bool(!(boolIn(inputs, "a") || boolIn(inputs, "b"))))
-    }
-
-    val Xnor: NodeEvaluator = { _, inputs ->
-        mapOf("out" to PinValue.Bool(boolIn(inputs, "a") == boolIn(inputs, "b")))
+    /**
+     * LogicGate: dispatches to one of AND/OR/NOT/XOR/NAND/NOR/XNOR based on
+     * `config.op`. NOT reads from pin "in"; all binary ops read from "a" and "b".
+     * Unknown op → false.
+     */
+    val LogicGate: NodeEvaluator = { config, inputs ->
+        val op = config.getString("op").ifEmpty { "AND" }
+        val out = when (op) {
+            "NOT"  -> !boolIn(inputs, "in")
+            "AND"  -> boolIn(inputs, "a") && boolIn(inputs, "b")
+            "OR"   -> boolIn(inputs, "a") || boolIn(inputs, "b")
+            "XOR"  -> boolIn(inputs, "a") xor boolIn(inputs, "b")
+            "NAND" -> !(boolIn(inputs, "a") && boolIn(inputs, "b"))
+            "NOR"  -> !(boolIn(inputs, "a") || boolIn(inputs, "b"))
+            "XNOR" -> !(boolIn(inputs, "a") xor boolIn(inputs, "b"))
+            else   -> false
+        }
+        mapOf("out" to PinValue.Bool(out))
     }
 
     // --- Constants ------------------------------------------------------

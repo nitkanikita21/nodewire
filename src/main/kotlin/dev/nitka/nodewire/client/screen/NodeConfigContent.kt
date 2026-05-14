@@ -617,4 +617,28 @@ object NodeConfigContent {
     private val CONSTANT_TYPES = listOf(
         PinType.BOOL, PinType.INT, PinType.FLOAT, PinType.STRING, PinType.VEC3,
     )
+
+    /**
+     * LogicGate: single op selector. Switching op calls [EditorState.changeLogicGateOp]
+     * which rebuilds the input pins (NOT → 1 pin; binary → 2 pins) and disconnects edges.
+     */
+    val LogicGate: @Composable (Node) -> Unit = { node ->
+        val editor = LocalEditorState.current
+        var op by remember(node.id) {
+            mutableStateOf(node.config.getString("op").ifEmpty { "AND" })
+        }
+        LabeledRow("Op") {
+            Select(
+                options = LOGIC_OPS,
+                selected = op,
+                onSelect = { next ->
+                    op = next
+                    editor?.changeLogicGateOp(node.id, next)
+                },
+                label = { it },
+            )
+        }
+    }
+
+    private val LOGIC_OPS = listOf("AND", "OR", "NOT", "XOR", "NAND", "NOR", "XNOR")
 }
