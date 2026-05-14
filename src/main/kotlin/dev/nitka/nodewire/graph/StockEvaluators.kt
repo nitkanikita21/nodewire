@@ -80,12 +80,32 @@ object StockEvaluators {
 
     // --- Math -----------------------------------------------------------
 
-    val AddInt: NodeEvaluator = { _, inputs ->
-        mapOf("out" to PinValue.Int(intIn(inputs, "a") + intIn(inputs, "b")))
-    }
-
-    val AddFloat: NodeEvaluator = { _, inputs ->
-        mapOf("out" to PinValue.Float(floatIn(inputs, "a") + floatIn(inputs, "b")))
+    /**
+     * Math: dispatches on config.type (INT/FLOAT) then config.op
+     * (ADD/SUB/MUL/DIV/MOD). MOD is INT-only; DIV/MOD by zero returns 0.
+     */
+    val Math: NodeEvaluator = { config, inputs ->
+        val op = config.getString("op").ifEmpty { "ADD" }
+        val type = config.getString("type").ifEmpty { "INT" }
+        val out: PinValue = if (type == "FLOAT") {
+            val a = floatIn(inputs, "a"); val b = floatIn(inputs, "b")
+            PinValue.Float(when (op) {
+                "SUB" -> a - b
+                "MUL" -> a * b
+                "DIV" -> if (b == 0f) 0f else a / b
+                else -> a + b // "ADD"
+            })
+        } else {
+            val a = intIn(inputs, "a"); val b = intIn(inputs, "b")
+            PinValue.Int(when (op) {
+                "SUB" -> a - b
+                "MUL" -> a * b
+                "DIV" -> if (b == 0) 0 else a / b
+                "MOD" -> if (b == 0) 0 else a % b
+                else -> a + b // "ADD"
+            })
+        }
+        mapOf("out" to out)
     }
 
     val AddVec3: NodeEvaluator = { _, inputs ->
@@ -114,33 +134,6 @@ object StockEvaluators {
         )
     }
 
-    val SubInt: NodeEvaluator = { _, i ->
-        mapOf("out" to PinValue.Int(intIn(i, "a") - intIn(i, "b")))
-    }
-    val SubFloat: NodeEvaluator = { _, i ->
-        mapOf("out" to PinValue.Float(floatIn(i, "a") - floatIn(i, "b")))
-    }
-    val MulInt: NodeEvaluator = { _, i ->
-        mapOf("out" to PinValue.Int(intIn(i, "a") * intIn(i, "b")))
-    }
-    val MulFloat: NodeEvaluator = { _, i ->
-        mapOf("out" to PinValue.Float(floatIn(i, "a") * floatIn(i, "b")))
-    }
-    val DivInt: NodeEvaluator = { _, i ->
-        // Defensive divide-by-zero handling — returning 0 mirrors what
-        // most node-editor toolkits do (Blender, UE). Crashing or NaN
-        // propagation would be worse UX in a live preview.
-        val b = intIn(i, "b")
-        mapOf("out" to PinValue.Int(if (b == 0) 0 else intIn(i, "a") / b))
-    }
-    val DivFloat: NodeEvaluator = { _, i ->
-        val b = floatIn(i, "b")
-        mapOf("out" to PinValue.Float(if (b == 0f) 0f else floatIn(i, "a") / b))
-    }
-    val ModInt: NodeEvaluator = { _, i ->
-        val b = intIn(i, "b")
-        mapOf("out" to PinValue.Int(if (b == 0) 0 else intIn(i, "a") % b))
-    }
     val NegFloat: NodeEvaluator = { _, i ->
         mapOf("out" to PinValue.Float(-floatIn(i, "in")))
     }

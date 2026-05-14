@@ -165,22 +165,20 @@ object StockNodeTypes {
         tickEvaluator = StockEvaluators.TimerTick,
     )
 
-    val ADD_INT = nodeType(
-        id = "add_int",
-        displayName = "Add Int",
+    val MATH = nodeType(
+        id = "math",
+        displayName = "Math",
         category = NodeCategory.MATH,
         inputs = listOf(Pin("a", "A", PinType.INT), Pin("b", "B", PinType.INT)),
         outputs = listOf(Pin("out", "Out", PinType.INT)),
-        evaluate = StockEvaluators.AddInt,
-    )
-
-    val ADD_FLOAT = nodeType(
-        id = "add_float",
-        displayName = "Add Float",
-        category = NodeCategory.MATH,
-        inputs = listOf(Pin("a", "A", PinType.FLOAT), Pin("b", "B", PinType.FLOAT)),
-        outputs = listOf(Pin("out", "Out", PinType.FLOAT)),
-        evaluate = StockEvaluators.AddFloat,
+        defaultConfig = {
+            CompoundTag().apply {
+                putString("op", "ADD")
+                putString("type", PinType.INT.name)
+            }
+        },
+        configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.Math,
+        evaluate = StockEvaluators.Math,
     )
 
     val ADD_VEC3 = nodeType(
@@ -218,13 +216,6 @@ object StockNodeTypes {
         evaluate = StockEvaluators.CompareFloat,
     )
 
-    val SUB_INT = intBinary("sub_int", "Subtract Int", StockEvaluators.SubInt)
-    val SUB_FLOAT = floatBinary("sub_float", "Subtract Float", StockEvaluators.SubFloat)
-    val MUL_INT = intBinary("mul_int", "Multiply Int", StockEvaluators.MulInt)
-    val MUL_FLOAT = floatBinary("mul_float", "Multiply Float", StockEvaluators.MulFloat)
-    val DIV_INT = intBinary("div_int", "Divide Int", StockEvaluators.DivInt)
-    val DIV_FLOAT = floatBinary("div_float", "Divide Float", StockEvaluators.DivFloat)
-    val MOD_INT = intBinary("mod_int", "Modulo Int", StockEvaluators.ModInt)
     val NEG_FLOAT = floatUnary("neg_float", "Negate Float", StockEvaluators.NegFloat)
     val ABS_FLOAT = floatUnary("abs_float", "Abs Float", StockEvaluators.AbsFloat)
     val MIN_FLOAT = floatBinary("min_float", "Min Float", StockEvaluators.MinFloat)
@@ -359,10 +350,7 @@ object StockNodeTypes {
             // Constants
             CONSTANT, TIMER,
             // Math
-            ADD_INT, ADD_FLOAT, ADD_VEC3,
-            SUB_INT, SUB_FLOAT,
-            MUL_INT, MUL_FLOAT,
-            DIV_INT, DIV_FLOAT, MOD_INT,
+            MATH, ADD_VEC3,
             NEG_FLOAT, ABS_FLOAT, MIN_FLOAT, MAX_FLOAT, CLAMP_FLOAT,
             COMPARE_INT, COMPARE_FLOAT,
             // Conversion

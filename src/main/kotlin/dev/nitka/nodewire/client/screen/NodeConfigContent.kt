@@ -641,4 +641,52 @@ object NodeConfigContent {
     }
 
     private val LOGIC_OPS = listOf("AND", "OR", "NOT", "XOR", "NAND", "NOR", "XNOR")
+
+    /**
+     * Math: type selector (INT/FLOAT) + op selector. MOD is hidden when
+     * type is FLOAT. Switching to FLOAT while op=MOD coerces op to ADD.
+     */
+    val Math: @Composable (Node) -> Unit = { node ->
+        val editor = LocalEditorState.current
+        var type by remember(node.id) {
+            mutableStateOf(PinType.fromName(node.config.getString("type").ifEmpty { PinType.INT.name }))
+        }
+        var op by remember(node.id) {
+            mutableStateOf(node.config.getString("op").ifEmpty { "ADD" })
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2)) {
+            LabeledRow("Type") {
+                Select(
+                    options = MATH_TYPES,
+                    selected = type,
+                    onSelect = { next ->
+                        type = next
+                        // MOD is INT-only; coerce op if switching to FLOAT
+                        val coercedOp = if (next == PinType.FLOAT && op == "MOD") "ADD" else op
+                        op = coercedOp
+                        editor?.changeMathConfig(node.id, coercedOp, next)
+                    },
+                    label = { it.name.lowercase() },
+                )
+            }
+            LabeledRow("Op") {
+                Select(
+                    options = opsForMathType(type),
+                    selected = op,
+                    onSelect = { next ->
+                        op = next
+                        editor?.changeMathConfig(node.id, next, type)
+                    },
+                    label = { it },
+                )
+            }
+        }
+    }
+
+    private val MATH_TYPES = listOf(PinType.INT, PinType.FLOAT)
+
+    private fun opsForMathType(t: PinType) = when (t) {
+        PinType.INT -> listOf("ADD", "SUB", "MUL", "DIV", "MOD")
+        else -> listOf("ADD", "SUB", "MUL", "DIV")
+    }
 }

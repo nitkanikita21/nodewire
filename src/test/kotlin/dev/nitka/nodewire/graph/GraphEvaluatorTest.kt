@@ -55,8 +55,8 @@ class GraphEvaluatorTest {
         val c7 = StockNodeTypes.CONSTANT.newInstance().also {
             it.config.putString("type", "INT"); it.config.putInt("int", 7)
         }
-        val add1 = StockNodeTypes.ADD_INT.newInstance()
-        val add2 = StockNodeTypes.ADD_INT.newInstance()
+        val add1 = StockNodeTypes.MATH.newInstance() // default op=ADD, type=INT
+        val add2 = StockNodeTypes.MATH.newInstance() // default op=ADD, type=INT
         val g = NodeGraph().apply {
             add(c3); add(c5); add(c7); add(add1); add(add2)
             addEdge(Edge(PinRef(c3.id, "out"), PinRef(add1.id, "a")))
@@ -89,11 +89,11 @@ class GraphEvaluatorTest {
 
     @Test
     fun unconnectedInputDefaultsToZero() {
-        // ADD_INT with only `a` connected → `b` defaults to 0, so result == a.
+        // MATH(ADD, INT) with only `a` connected → `b` defaults to 0, so result == a.
         val a = StockNodeTypes.CONSTANT.newInstance().also {
             it.config.putString("type", "INT"); it.config.putInt("int", 42)
         }
-        val add = StockNodeTypes.ADD_INT.newInstance()
+        val add = StockNodeTypes.MATH.newInstance() // default op=ADD, type=INT
         val g = NodeGraph().apply {
             add(a); add(add)
             addEdge(Edge(PinRef(a.id, "out"), PinRef(add.id, "a")))

@@ -277,6 +277,31 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
     }
 
     /**
+     * Math node: rebuild all input + output pins to [newType] and store
+     * both [newOp] and [newType] in config. Disconnects all edges because
+     * pin types may have changed.
+     */
+    fun changeMathConfig(
+        id: NodeId,
+        newOp: String,
+        newType: dev.nitka.nodewire.graph.PinType,
+    ) {
+        updateNode(id) { n ->
+            val inputs = listOf(
+                dev.nitka.nodewire.graph.Pin("a", "A", newType),
+                dev.nitka.nodewire.graph.Pin("b", "B", newType),
+            )
+            val outputs = listOf(dev.nitka.nodewire.graph.Pin("out", "Out", newType))
+            val newConfig = n.config.copy().apply {
+                putString("op", newOp)
+                putString("type", newType.name)
+            }
+            n.copy(inputs = inputs, outputs = outputs, config = newConfig)
+        }
+        disconnectAllEdges(id)
+    }
+
+    /**
      * Constant node: rebuild the single output pin to the given type and
      * record it in `config.type`. Any outgoing edges are disconnected because
      * downstream pins may no longer match the new type.

@@ -32,14 +32,16 @@ class StockNodeTypesTest {
         //          replaced by single CONSTANT (-5 +1 = -4 → 44).
         // Phase 2: AND, OR, NOT, XOR, NAND, NOR, XNOR replaced by LOGIC_GATE
         //          (-7 +1 = -6 → 38).
-        assertEquals(38, NodeTypeRegistry.all().size)
+        // Phase 3: ADD_INT, ADD_FLOAT, SUB_INT, SUB_FLOAT, MUL_INT, MUL_FLOAT,
+        //          DIV_INT, DIV_FLOAT, MOD_INT replaced by MATH (-9 +1 = -8 → 30).
+        assertEquals(30, NodeTypeRegistry.all().size)
     }
 
     @Test
     fun categoriesAreCovered() {
         val groups = NodeTypeRegistry.byCategory()
         assertTrue(groups[NodeCategory.LOGIC]!!.size >= 1, "logic should have ≥1 type")
-        assertTrue(groups[NodeCategory.MATH]!!.size >= 4, "math should have ≥4 types")
+        assertTrue(groups[NodeCategory.MATH]!!.size >= 1, "math should have ≥1 type")
         assertTrue(groups[NodeCategory.CONSTANTS]!!.size >= 5, "constants should have ≥5 types")
         assertTrue(groups[NodeCategory.IO]!!.size >= 2, "I/O should have ≥2 types")
     }
