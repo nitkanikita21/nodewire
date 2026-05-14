@@ -10,6 +10,7 @@ import dev.nitka.nodewire.graph.Node
 import dev.nitka.nodewire.graph.NodeTypeRegistry
 import dev.nitka.nodewire.graph.Pin
 import dev.nitka.nodewire.graph.PinType
+import dev.nitka.nodewire.graph.PinValue
 import dev.nitka.nodewire.ui.canvas.LocalCanvasState
 import dev.nitka.nodewire.ui.modifier.input.onPositioned
 import dev.nitka.nodewire.ui.components.Surface
@@ -218,11 +219,15 @@ private fun InputPinRow(nodeId: java.util.UUID, pin: Pin) {
 
 @Composable
 private fun OutputPinRow(nodeId: java.util.UUID, pin: Pin) {
+    val evalResult = LocalEvalResult.current
+    val value = evalResult?.valueAt(nodeId, pin.id)
     Row(
         verticalAlignment = Alignment.Center,
         horizontalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2),
     ) {
-        TypeLabel(pin.type)
+        // Show the live computed value if we have one, otherwise fall back
+        // to the static type label so the row still reads as "(type) Name".
+        if (value != null) ValueLabel(value) else TypeLabel(pin.type)
         Text(pin.name, style = NwTheme.typography.caption)
         PinHandle(
             nodeId = nodeId,
@@ -309,6 +314,24 @@ private fun TypeLabel(type: PinType) {
         type.name.lowercase(),
         style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceDisabled),
     )
+}
+
+@Composable
+private fun ValueLabel(value: PinValue) {
+    Text(
+        formatPinValue(value),
+        style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceMuted),
+    )
+}
+
+private fun formatPinValue(v: PinValue): String = when (v) {
+    is PinValue.Bool -> if (v.value) "true" else "false"
+    is PinValue.Int -> v.value.toString()
+    is PinValue.Float -> "%.2f".format(v.value)
+    is PinValue.Str -> "\"${v.value.take(10)}${if (v.value.length > 10) "…" else ""}\""
+    is PinValue.Vec2 -> "(%.1f, %.1f)".format(v.x, v.y)
+    is PinValue.Vec3 -> "(%.1f, %.1f, %.1f)".format(v.x, v.y, v.z)
+    is PinValue.Quat -> "q(%.1f,%.1f,%.1f,%.1f)".format(v.x, v.y, v.z, v.w)
 }
 
 @Composable

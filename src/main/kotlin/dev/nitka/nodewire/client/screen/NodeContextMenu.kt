@@ -5,6 +5,7 @@ import dev.nitka.nodewire.graph.NodeCategory
 import dev.nitka.nodewire.graph.NodeTypeRegistry
 import dev.nitka.nodewire.ui.components.ContextMenu
 import dev.nitka.nodewire.ui.components.ContextMenuItem
+import dev.nitka.nodewire.ui.feedback.LocalToastManager
 import dev.nitka.nodewire.ui.overlay.PopupPosition
 
 /**
@@ -16,9 +17,13 @@ import dev.nitka.nodewire.ui.overlay.PopupPosition
  */
 @Composable
 fun NodeContextMenu(target: ContextMenuTarget, editor: EditorState) {
+    // Capture toast manager once — it's a stable session-scoped object so
+    // closures inside the menu items can fire toasts without re-reading
+    // composition state on each click.
+    val toast = LocalToastManager.current
     val items = when (target) {
-        is ContextMenuTarget.Create -> buildCreateItems(editor, target)
-        is ContextMenuTarget.Node -> buildNodeItems(editor, target)
+        is ContextMenuTarget.Create -> buildCreateItems(editor, target, toast)
+        is ContextMenuTarget.Node -> buildNodeItems(editor, target, toast)
     }
     ContextMenu(
         items = items,
@@ -27,7 +32,11 @@ fun NodeContextMenu(target: ContextMenuTarget, editor: EditorState) {
     )
 }
 
-private fun buildCreateItems(editor: EditorState, target: ContextMenuTarget.Create): List<ContextMenuItem> {
+private fun buildCreateItems(
+    editor: EditorState,
+    target: ContextMenuTarget.Create,
+    toast: dev.nitka.nodewire.ui.feedback.ToastManager?,
+): List<ContextMenuItem> {
     val grouped = NodeTypeRegistry.byCategory()
     val categorySubmenus = NodeCategory.entries.mapNotNull { category ->
         val types = grouped[category] ?: return@mapNotNull null
@@ -36,24 +45,28 @@ private fun buildCreateItems(editor: EditorState, target: ContextMenuTarget.Crea
             items = types.map { type ->
                 ContextMenuItem.Action(label = type.displayName) {
                     editor.addNode(type.newInstance(target.world))
+                    toast?.success("Added ${type.displayName}")
                 }
             },
         )
     }
-    // Top-level wrapper keeps the menu's title focused — Blender does the
-    // same ("Add" → categories → types) and it scales when we add other
-    // canvas-level actions like Paste / Select All.
     return listOf(
         ContextMenuItem.Submenu(label = "Add Node", items = categorySubmenus),
     )
 }
 
-private fun buildNodeItems(editor: EditorState, target: ContextMenuTarget.Node): List<ContextMenuItem> = listOf(
+private fun buildNodeItems(
+    editor: EditorState,
+    target: ContextMenuTarget.Node,
+    toast: dev.nitka.nodewire.ui.feedback.ToastManager?,
+): List<ContextMenuItem> = listOf(
     ContextMenuItem.Action(label = "Duplicate") {
         editor.duplicateNode(target.nodeId)
+        toast?.info("Duplicated")
     },
     ContextMenuItem.Separator,
     ContextMenuItem.Action(label = "Delete") {
         editor.removeNode(target.nodeId)
+        toast?.info("Deleted")
     },
 )

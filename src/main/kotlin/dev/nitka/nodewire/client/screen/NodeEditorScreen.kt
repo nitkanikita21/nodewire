@@ -8,6 +8,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import dev.nitka.nodewire.graph.CanvasPos
 import dev.nitka.nodewire.graph.Edge
+import dev.nitka.nodewire.graph.GraphEvaluator
 import dev.nitka.nodewire.graph.Node
 import dev.nitka.nodewire.graph.NodeGraph
 import dev.nitka.nodewire.graph.PinRef
@@ -69,12 +70,18 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
         NwThemeProvider {
             val canvas = rememberCanvasState()
             val editor = remember(graph) { EditorState(graph) }
-            // Read nodesVersion as a state to trigger recomposition when the
-            // node set changes. The version key in remember recomputes the
-            // list snapshot whenever editor.addNode() bumps the counter.
             val nodes = remember(editor.nodesVersion) { graph.nodes.values.toList() }
+            // Reactive evaluation: re-runs every time the graph changes
+            // (nodes / edges / configs). External inputs are empty for now —
+            // server-side world I/O bridge will inject real values once we
+            // wire LogicBlockEntity tick. GraphEvaluator is pure and cheap
+            // on graphs this size, no debouncing needed.
+            val evalResult = remember(editor.graphVersion) { GraphEvaluator.eval(graph) }
 
-            CompositionLocalProvider(LocalEditorState provides editor) {
+            CompositionLocalProvider(
+                LocalEditorState provides editor,
+                LocalEvalResult provides evalResult,
+            ) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()

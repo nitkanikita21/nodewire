@@ -28,6 +28,7 @@ object NodeConfigContent {
 
     /** BOOL_CONST: single checkbox bound to `config.value`. */
     val BoolConst: @Composable (Node) -> Unit = { node ->
+        val editor = LocalEditorState.current
         var value by remember { mutableStateOf(node.config.getBoolean("value")) }
         Row(
             modifier = Modifier,
@@ -39,6 +40,7 @@ object NodeConfigContent {
                 onCheckedChange = { v ->
                     value = v
                     node.config.putBoolean("value", v)
+                    editor?.bumpGraphVersion()
                 },
             )
             Text(

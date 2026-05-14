@@ -2,6 +2,7 @@ package dev.nitka.nodewire.ui.theme
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import dev.nitka.nodewire.ui.feedback.ToastHost
 import dev.nitka.nodewire.ui.overlay.OverlayHost
 import net.minecraft.client.Minecraft
 
@@ -29,6 +30,11 @@ fun NwThemeProvider(
         LocalNwTypography provides typography,
         LocalFont provides Minecraft.getInstance().font,
     ) {
-        OverlayHost(content = content)
+        // Order: ToastHost outside OverlayHost so toasts render on top of
+        // popups (a confirmation dialog still being open shouldn't hide an
+        // error toast firing underneath it).
+        ToastHost {
+            OverlayHost(content = content)
+        }
     }
 }

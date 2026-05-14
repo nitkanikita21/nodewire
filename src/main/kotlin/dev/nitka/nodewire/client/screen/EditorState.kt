@@ -1,6 +1,7 @@
 package dev.nitka.nodewire.client.screen
 
 import androidx.compose.runtime.compositionLocalOf
+import dev.nitka.nodewire.graph.EvalResult
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -34,14 +35,29 @@ class EditorState(val graph: NodeGraph) {
     var nodesVersion: Int by mutableStateOf(0)
         private set
 
+    /**
+     * Bumped on any logical change to the graph — nodes, edges, configs.
+     * Used as a remember key for downstream consumers that depend on the
+     * full graph state (e.g. the live [GraphEvaluator] overlay). Distinct
+     * from [nodesVersion] which only tracks node-set membership.
+     */
+    var graphVersion: Int by mutableStateOf(0)
+        private set
+
+    fun bumpGraphVersion() {
+        graphVersion++
+    }
+
     fun addNode(node: Node) {
         graph.add(node)
         nodesVersion++
+        graphVersion++
     }
 
     fun removeNode(id: dev.nitka.nodewire.graph.NodeId) {
         graph.removeNode(id)
         nodesVersion++
+        graphVersion++
     }
 
     /**
@@ -62,6 +78,7 @@ class EditorState(val graph: NodeGraph) {
         )
         graph.add(copy)
         nodesVersion++
+        graphVersion++
         return copy
     }
 
@@ -147,6 +164,7 @@ class EditorState(val graph: NodeGraph) {
         val (output, input) = orderOutputInput(src, target)
         if (pinType(output) != pinType(input)) return false
         graph.connectReplacing(Edge(PinRef(output.node, output.pin), PinRef(input.node, input.pin)))
+        graphVersion++
         return true
     }
 
@@ -161,6 +179,7 @@ class EditorState(val graph: NodeGraph) {
         if (target != null) {
             val (output, input) = orderOutputInput(src, target)
             graph.connectReplacing(Edge(PinRef(output.node, output.pin), PinRef(input.node, input.pin)))
+            graphVersion++
         }
         if (!wireDragSticky) wireDragSource = null
         return target != null
@@ -177,10 +196,12 @@ class EditorState(val graph: NodeGraph) {
      * disconnect on both inputs and outputs.
      */
     fun disconnectPin(key: PinKey) {
+        val before = graph.edges.size
         graph.edges.removeAll { edge ->
             (edge.from.node == key.node && edge.from.pin == key.pin && key.side == PinSide.Output) ||
                 (edge.to.node == key.node && edge.to.pin == key.pin && key.side == PinSide.Input)
         }
+        if (graph.edges.size != before) graphVersion++
     }
 
     /** Look for the nearest opposite-side pin within hit radius whose type matches [src]. */
@@ -224,3 +245,9 @@ class EditorState(val graph: NodeGraph) {
 }
 
 val LocalEditorState = compositionLocalOf<EditorState?> { null }
+
+/**
+ * Latest [GraphEvaluator] result for the open editor. NodeCard's output
+ * pins read it to show their live value. Null outside an editor screen.
+ */
+val LocalEvalResult = compositionLocalOf<EvalResult?> { null }
