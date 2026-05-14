@@ -54,7 +54,7 @@ class PixelDotHeaderRenderer(
                 if (t > threshold) {
                     fillRect(x, y, 1, 1, target)
                 }
-            }м
+            }
         }
     }
 
