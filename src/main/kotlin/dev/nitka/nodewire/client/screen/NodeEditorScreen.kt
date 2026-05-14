@@ -81,9 +81,11 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
      * the BE either way.
      */
     override fun removed() {
+        val editor = editorRef
+        val snapshot = editor?.snapshotGraph() ?: graph
         NodewireNetwork.CHANNEL.send(
             PacketDistributor.SERVER.noArg(),
-            SaveGraphPacket(pos, graph),
+            SaveGraphPacket(pos, snapshot),
         )
         super.removed()
     }

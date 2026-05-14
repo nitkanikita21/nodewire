@@ -65,34 +65,10 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         graph.nodes[id] = updated
     }
 
-    /**
-     * Bumped every time the node set changes (add / remove). NodeEditorScreen
-     * reads it as a remember key so the rendered card list refreshes; edge
-     * mutations don't need this since WireLayer paints from the graph on
-     * every frame.
-     */
-    var nodesVersion: Int by mutableStateOf(0)
-        private set
-
-    /**
-     * Bumped on any logical change to the graph — nodes, edges, configs.
-     * Used as a remember key for downstream consumers that depend on the
-     * full graph state (e.g. the live [GraphEvaluator] overlay). Distinct
-     * from [nodesVersion] which only tracks node-set membership.
-     */
-    var graphVersion: Int by mutableStateOf(0)
-        private set
-
-    fun bumpGraphVersion() {
-        graphVersion++
-    }
-
     fun addNode(node: Node) {
         graph.add(node)
         nodeFlows[node.id] = MutableStateFlow(node)
         _nodes.value = _nodes.value + node.id
-        nodesVersion++
-        graphVersion++
     }
 
     fun removeNode(id: dev.nitka.nodewire.graph.NodeId) {
@@ -100,8 +76,6 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         nodeFlows.remove(id)
         _nodes.value = _nodes.value - id
         _edges.value = _edges.value.filter { it.from.node != id && it.to.node != id }
-        nodesVersion++
-        graphVersion++
     }
 
     /**
@@ -121,8 +95,6 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
             config = src.config.copy(),
         )
         graph.add(copy)
-        nodesVersion++
-        graphVersion++
         return copy
     }
 
@@ -210,7 +182,6 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         val edge = Edge(PinRef(output.node, output.pin), PinRef(input.node, input.pin))
         graph.connectReplacing(edge)
         _edges.value = graph.edges.toList()
-        graphVersion++
         return true
     }
 
@@ -227,7 +198,6 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
             val edge = Edge(PinRef(output.node, output.pin), PinRef(input.node, input.pin))
             graph.connectReplacing(edge)
             _edges.value = graph.edges.toList()
-            graphVersion++
         }
         if (!wireDragSticky) wireDragSource = null
         return target != null
@@ -258,7 +228,6 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
             else n.copy(outputs = listOf(rebuilt), config = newConfig)
         }
         disconnectAllEdges(id)
-        graphVersion++
     }
 
     /**
@@ -270,7 +239,6 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
             n.copy(inputs = listOf(n.inputs.first().copy(type = newType)))
         }
         disconnectAllEdges(id)
-        graphVersion++
     }
 
     private fun disconnectAllEdges(id: dev.nitka.nodewire.graph.NodeId) {
@@ -278,7 +246,6 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         graph.edges.removeAll { it.from.node == id || it.to.node == id }
         if (graph.edges.size != before) {
             _edges.value = graph.edges.toList()
-            graphVersion++
         }
     }
 
@@ -290,7 +257,6 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         }
         if (graph.edges.size != before) {
             _edges.value = graph.edges.toList()
-            graphVersion++
         }
     }
 
@@ -378,7 +344,6 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         for (id in selectedNodes) {
             updateNode(id) { n -> n.copy(pos = CanvasPos(n.pos.x + dxWorld, n.pos.y + dyWorld)) }
         }
-        graphVersion++
     }
 
     /**
@@ -444,6 +409,21 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
     fun cancelSelectionDrag() {
         selectionDragStart = null
         selectionDragCurrent = null
+    }
+
+    /**
+     * Build a fresh [NodeGraph] from the current per-node + edge flows.
+     * Called on screen close to ship the latest state to the server via
+     * [dev.nitka.nodewire.net.SaveGraphPacket].
+     */
+    fun snapshotGraph(): NodeGraph {
+        val g = NodeGraph()
+        for (id in _nodes.value) {
+            val n = nodeFlows[id]?.value ?: continue
+            g.add(n)
+        }
+        for (e in _edges.value) g.addEdge(e)
+        return g
     }
 
     companion object {

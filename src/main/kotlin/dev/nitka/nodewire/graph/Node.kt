@@ -35,9 +35,9 @@ data class CanvasPos(val x: Float, val y: Float) {
 data class Node(
     val id: NodeId,
     val typeKey: ResourceLocation,
-    var pos: CanvasPos,
-    var inputs: List<Pin>,
-    var outputs: List<Pin>,
+    val pos: CanvasPos,
+    val inputs: List<Pin>,
+    val outputs: List<Pin>,
     val config: CompoundTag = CompoundTag(),
 ) {
     companion object {
