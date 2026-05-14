@@ -96,5 +96,91 @@ sealed class PinValue {
             PinType.VEC3 -> Vec3(tag.getFloat("x"), tag.getFloat("y"), tag.getFloat("z"))
             PinType.QUAT -> Quat(tag.getFloat("x"), tag.getFloat("y"), tag.getFloat("z"), tag.getFloat("w"))
         }
+
+        // ── Per-variant codecs ────────────────────────────────────────
+        private val BoolCodec: com.mojang.serialization.Codec<Bool> =
+            com.mojang.serialization.codecs.RecordCodecBuilder.create { i ->
+                i.group(com.mojang.serialization.Codec.BOOL.fieldOf("v").forGetter(Bool::value))
+                    .apply(i, ::Bool)
+            }
+        private val IntCodec: com.mojang.serialization.Codec<Int> =
+            com.mojang.serialization.codecs.RecordCodecBuilder.create { i ->
+                i.group(com.mojang.serialization.Codec.INT.fieldOf("v").forGetter(Int::value))
+                    .apply(i, ::Int)
+            }
+        private val RedstoneCodec: com.mojang.serialization.Codec<Redstone> =
+            com.mojang.serialization.codecs.RecordCodecBuilder.create { i ->
+                i.group(com.mojang.serialization.Codec.INT.fieldOf("v").forGetter(Redstone::value))
+                    .apply(i, ::Redstone)
+            }
+        private val FloatCodec: com.mojang.serialization.Codec<Float> =
+            com.mojang.serialization.codecs.RecordCodecBuilder.create { i ->
+                i.group(com.mojang.serialization.Codec.FLOAT.fieldOf("v").forGetter(Float::value))
+                    .apply(i, ::Float)
+            }
+        private val StrCodec: com.mojang.serialization.Codec<Str> =
+            com.mojang.serialization.codecs.RecordCodecBuilder.create { i ->
+                i.group(com.mojang.serialization.Codec.STRING.fieldOf("v").forGetter(Str::value))
+                    .apply(i, ::Str)
+            }
+        private val Vec2Codec: com.mojang.serialization.Codec<Vec2> =
+            com.mojang.serialization.codecs.RecordCodecBuilder.create { i ->
+                i.group(
+                    com.mojang.serialization.Codec.FLOAT.fieldOf("x").forGetter(Vec2::x),
+                    com.mojang.serialization.Codec.FLOAT.fieldOf("y").forGetter(Vec2::y),
+                ).apply(i, ::Vec2)
+            }
+        private val Vec3Codec: com.mojang.serialization.Codec<Vec3> =
+            com.mojang.serialization.codecs.RecordCodecBuilder.create { i ->
+                i.group(
+                    com.mojang.serialization.Codec.FLOAT.fieldOf("x").forGetter(Vec3::x),
+                    com.mojang.serialization.Codec.FLOAT.fieldOf("y").forGetter(Vec3::y),
+                    com.mojang.serialization.Codec.FLOAT.fieldOf("z").forGetter(Vec3::z),
+                ).apply(i, ::Vec3)
+            }
+        private val QuatCodec: com.mojang.serialization.Codec<Quat> =
+            com.mojang.serialization.codecs.RecordCodecBuilder.create { i ->
+                i.group(
+                    com.mojang.serialization.Codec.FLOAT.fieldOf("x").forGetter(Quat::x),
+                    com.mojang.serialization.Codec.FLOAT.fieldOf("y").forGetter(Quat::y),
+                    com.mojang.serialization.Codec.FLOAT.fieldOf("z").forGetter(Quat::z),
+                    com.mojang.serialization.Codec.FLOAT.fieldOf("w").forGetter(Quat::w),
+                ).apply(i, ::Quat)
+            }
+
+        /**
+         * Sealed dispatch: emits a `type` field plus the variant's fields
+         * inline. Decode looks at `type` and routes to the per-variant
+         * codec. Adding a new variant means: new data class, new per-
+         * variant codec, two more entries here.
+         */
+        val CODEC: com.mojang.serialization.Codec<PinValue> = com.mojang.serialization.Codec.STRING.dispatch(
+            "type",
+            { pv -> typeKey(pv) },
+            { key -> codecFor(key) },
+        )
+
+        private fun typeKey(pv: PinValue): String = when (pv) {
+            is Bool     -> "bool"
+            is Int      -> "int"
+            is Redstone -> "redstone"
+            is Float    -> "float"
+            is Str      -> "str"
+            is Vec2     -> "vec2"
+            is Vec3     -> "vec3"
+            is Quat     -> "quat"
+        }
+
+        private fun codecFor(key: String): com.mojang.serialization.Codec<out PinValue> = when (key) {
+            "bool"     -> BoolCodec
+            "int"      -> IntCodec
+            "redstone" -> RedstoneCodec
+            "float"    -> FloatCodec
+            "str"      -> StrCodec
+            "vec2"     -> Vec2Codec
+            "vec3"     -> Vec3Codec
+            "quat"     -> QuatCodec
+            else       -> error("Unknown PinValue type key: $key")
+        }
     }
 }
