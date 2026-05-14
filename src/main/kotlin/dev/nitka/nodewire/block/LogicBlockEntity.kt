@@ -8,8 +8,7 @@ import dev.nitka.nodewire.graph.StatefulGraphEvaluator
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
-import net.minecraft.nbt.ListTag
-import net.minecraft.nbt.Tag
+import net.minecraft.nbt.NbtOps
 import net.minecraft.network.Connection
 import net.minecraft.network.protocol.Packet
 import net.minecraft.network.protocol.game.ClientGamePacketListener
@@ -199,25 +198,37 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
 
     override fun saveAdditional(tag: CompoundTag) {
         super.saveAdditional(tag)
-        tag.put("graph", graph.toNbt())
+        tag.put(
+            "graph",
+            dev.nitka.nodewire.graph.NodeGraph.CODEC
+                .encodeStart(NbtOps.INSTANCE, graph).result()
+                .orElseThrow { IllegalStateException("graph encode failed") },
+        )
         if (bindings.isNotEmpty()) {
-            val list = ListTag()
-            for (b in bindings) list.add(b.toNbt())
-            tag.put("bindings", list)
+            tag.put(
+                "bindings",
+                ChannelBinding.CODEC.listOf()
+                    .encodeStart(NbtOps.INSTANCE, bindings.toList()).result()
+                    .orElseThrow { IllegalStateException("bindings encode failed") },
+            )
         }
     }
 
     override fun load(tag: CompoundTag) {
         super.load(tag)
         graph = if (tag.contains("graph")) {
-            NodeGraph.fromNbt(tag.getCompound("graph"))
+            dev.nitka.nodewire.graph.NodeGraph.CODEC
+                .parse(NbtOps.INSTANCE, tag.getCompound("graph")).result()
+                .orElse(dev.nitka.nodewire.graph.NodeGraph())
         } else {
-            NodeGraph()
+            dev.nitka.nodewire.graph.NodeGraph()
         }
         bindings.clear()
         if (tag.contains("bindings")) {
-            val list = tag.getList("bindings", Tag.TAG_COMPOUND.toInt())
-            for (i in 0 until list.size) bindings.add(ChannelBinding.fromNbt(list.getCompound(i)))
+            val list = ChannelBinding.CODEC.listOf()
+                .parse(NbtOps.INSTANCE, tag.get("bindings")).result()
+                .orElse(emptyList())
+            bindings.addAll(list)
         }
         invalidateEvaluator()
     }
