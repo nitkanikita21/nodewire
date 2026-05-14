@@ -9,7 +9,11 @@ import dev.nitka.nodewire.graph.CanvasPos
 import dev.nitka.nodewire.graph.Edge
 import dev.nitka.nodewire.graph.Node
 import dev.nitka.nodewire.graph.NodeGraph
+import dev.nitka.nodewire.graph.NodeId
 import dev.nitka.nodewire.graph.PinRef
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Aggregate session state for one open [NodeEditorScreen]. Holds:
@@ -25,6 +29,41 @@ import dev.nitka.nodewire.graph.PinRef
  */
 class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = net.minecraft.core.BlockPos.ZERO) {
     val pinPositions = PinPositions()
+
+    // ── StateFlow plumbing (additive in this task; counters above are kept) ──
+    //
+    // Each node has its own MutableStateFlow<Node> so card composables only
+    // recompose when their own data changes. The flows are populated from
+    // the initial graph here and updated by [updateNode] / [addNode] /
+    // [removeNode]. The underlying [graph] is still mutated for now so that
+    // pre-flow consumers continue to work; final task drops the mirroring.
+
+    private val nodeFlows: MutableMap<NodeId, MutableStateFlow<Node>> =
+        graph.nodes.mapValues { (_, n) -> MutableStateFlow(n) }.toMutableMap()
+
+    private val _nodes: MutableStateFlow<List<NodeId>> =
+        MutableStateFlow(graph.nodes.keys.toList())
+    val nodes: StateFlow<List<NodeId>> = _nodes.asStateFlow()
+
+    private val _edges: MutableStateFlow<List<Edge>> =
+        MutableStateFlow(graph.edges.toList())
+    val edges: StateFlow<List<Edge>> = _edges.asStateFlow()
+
+    /** Per-node flow, or null if [id] is unknown. */
+    fun nodeFlow(id: NodeId): StateFlow<Node>? = nodeFlows[id]?.asStateFlow()
+
+    /**
+     * Apply [transform] to the current Node value and emit the result.
+     * No-op if [id] is gone. Both the per-node flow and the underlying
+     * [graph.nodes] map are updated so old `graphVersion`-based callers
+     * still see consistent state during the migration.
+     */
+    fun updateNode(id: NodeId, transform: (Node) -> Node) {
+        val flow = nodeFlows[id] ?: return
+        val updated = transform(flow.value)
+        flow.value = updated
+        graph.nodes[id] = updated
+    }
 
     /**
      * Bumped every time the node set changes (add / remove). NodeEditorScreen
@@ -50,12 +89,17 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
 
     fun addNode(node: Node) {
         graph.add(node)
+        nodeFlows[node.id] = MutableStateFlow(node)
+        _nodes.value = _nodes.value + node.id
         nodesVersion++
         graphVersion++
     }
 
     fun removeNode(id: dev.nitka.nodewire.graph.NodeId) {
         graph.removeNode(id)
+        nodeFlows.remove(id)
+        _nodes.value = _nodes.value - id
+        _edges.value = _edges.value.filter { it.from.node != id && it.to.node != id }
         nodesVersion++
         graphVersion++
     }
