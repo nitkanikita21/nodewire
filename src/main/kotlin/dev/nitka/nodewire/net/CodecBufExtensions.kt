@@ -16,14 +16,14 @@ import net.minecraft.network.FriendlyByteBuf
  */
 fun <T> FriendlyByteBuf.writeCodec(codec: Codec<T>, value: T) {
     val encoded = codec.encodeStart(NbtOps.INSTANCE, value).result()
-        .orElseThrow { IllegalStateException("Codec encode failed for $value") }
+        .orElseThrow { error("Codec encode failed for $value") }
     val tag = encoded as? CompoundTag
-        ?: error("Top-level codec must produce a CompoundTag, got ${encoded::class.simpleName}")
+        ?: error("Expected CompoundTag from top-level codec, got ${encoded::class.qualifiedName}: $encoded")
     writeNbt(tag)
 }
 
 fun <T> FriendlyByteBuf.readCodec(codec: Codec<T>): T {
-    val tag = readNbt() ?: error("readNbt() returned null — buffer empty?")
+    val tag = readNbt() ?: error("NBT read failed — buffer corrupted or incomplete")
     return codec.parse(NbtOps.INSTANCE, tag).result()
-        .orElseThrow { IllegalStateException("Codec decode failed for tag $tag") }
+        .orElseThrow { error("Codec decode failed for tag $tag") }
 }
