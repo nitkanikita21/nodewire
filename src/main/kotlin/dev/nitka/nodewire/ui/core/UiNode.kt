@@ -24,20 +24,37 @@ class UiNode {
     var modifier: Modifier = Modifier
         set(value) {
             field = value
-            resetYogaStyle(yoga)
-            // Single fold collects all three buckets in tree (chain) order.
-            val styles = mutableListOf<StyleModifierElement<*>>()
-            val inputs = mutableListOf<InputModifierElement<*>>()
-            value.foldIn(Unit) { _, element ->
-                when (element) {
-                    is LayoutModifierElement<*> -> element.applyTo(yoga)
-                    is StyleModifierElement<*> -> styles.add(element)
-                    is InputModifierElement<*> -> inputs.add(element)
-                }
-            }
-            styleModifiers = styles
-            inputModifiers = inputs
+            rebuildStyle()
         }
+
+    /**
+     * Yoga properties that come from the composable's own `Layout(yogaConfig = ...)`
+     * lambda (Row's `justifyContent`/`gap`, Text's `measureFunc`, etc.) —
+     * distinct from the modifier chain. We reset Yoga and re-apply both
+     * whenever either input changes, so swapping a Row's arrangement
+     * doesn't leave stale state in Yoga.
+     */
+    var yogaConfig: (org.appliedenergistics.yoga.YogaNode.() -> Unit) = {}
+        set(value) {
+            field = value
+            rebuildStyle()
+        }
+
+    private fun rebuildStyle() {
+        resetYogaStyle(yoga)
+        val styles = mutableListOf<StyleModifierElement<*>>()
+        val inputs = mutableListOf<InputModifierElement<*>>()
+        modifier.foldIn(Unit) { _, element ->
+            when (element) {
+                is LayoutModifierElement<*> -> element.applyTo(yoga)
+                is StyleModifierElement<*> -> styles.add(element)
+                is InputModifierElement<*> -> inputs.add(element)
+            }
+        }
+        styleModifiers = styles
+        inputModifiers = inputs
+        yoga.apply(yogaConfig)
+    }
 
     var styleModifiers: List<StyleModifierElement<*>> = emptyList()
         private set

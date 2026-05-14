@@ -30,7 +30,7 @@ inline fun Layout(
         update = {
             set(modifier) { this.modifier = it }
             set(renderer) { this.renderer = it }
-            set(yogaConfig) { yoga.apply(it) }
+            set(yogaConfig) { this.yogaConfig = it }
         },
         content = content,
     )
