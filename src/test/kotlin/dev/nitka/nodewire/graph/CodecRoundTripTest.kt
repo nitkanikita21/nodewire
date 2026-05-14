@@ -118,4 +118,40 @@ class CodecRoundTripTest {
         assertEquals(g.nodes.keys, decoded.nodes.keys)
         assertEquals(g.edges, decoded.edges)
     }
+
+    @Test fun channelBindingNbt() = roundTripNbt(
+        dev.nitka.nodewire.block.ChannelBinding.CODEC,
+        dev.nitka.nodewire.block.ChannelBinding(
+            sourceChannelName = "speed",
+            targetPos = net.minecraft.core.BlockPos(1, 2, 3),
+            targetChannelName = "thrust",
+        ),
+    )
+
+    @Test fun channelBindingSnbt() = roundTripSnbt(
+        dev.nitka.nodewire.block.ChannelBinding.CODEC,
+        dev.nitka.nodewire.block.ChannelBinding(
+            sourceChannelName = "x",
+            targetPos = net.minecraft.core.BlockPos(-1, -2, -3),
+            targetChannelName = "y",
+        ),
+    )
+
+    @Test fun sideBindingNbt() = roundTripNbt(
+        dev.nitka.nodewire.block.SideBinding.CODEC,
+        dev.nitka.nodewire.block.SideBinding(
+            sourceChannelName = "latch",
+            targetPos = net.minecraft.core.BlockPos(10, 20, 30),
+            targetSide = net.minecraft.core.Direction.UP,
+        ),
+    )
+
+    @Test fun sideBindingSnbt() = roundTripSnbt(
+        dev.nitka.nodewire.block.SideBinding.CODEC,
+        dev.nitka.nodewire.block.SideBinding(
+            sourceChannelName = "fire",
+            targetPos = net.minecraft.core.BlockPos.ZERO,
+            targetSide = net.minecraft.core.Direction.NORTH,
+        ),
+    )
 }

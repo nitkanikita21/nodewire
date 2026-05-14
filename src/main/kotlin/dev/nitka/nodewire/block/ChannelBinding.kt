@@ -1,36 +1,27 @@
 package dev.nitka.nodewire.block
 
+import com.mojang.serialization.Codec
+import com.mojang.serialization.codecs.RecordCodecBuilder
 import net.minecraft.core.BlockPos
-import net.minecraft.nbt.CompoundTag
-import net.minecraft.nbt.NbtUtils
 
 /**
  * One cross-block channel link. A [LogicBlockEntity] keeps a list of these
  * on the **source** side; on each server tick it iterates them and pushes
- * the value of its [sourceChannelName] [ChannelOutput] into the target
- * BE's external-channel-input slot of the same name.
- *
- * The match is by-name on both sides: a `speed` ChannelOutput on the
- * source feeds a `speed` ChannelInput on the target. Type compatibility
- * is checked at bind time by [LogicBlockEntity.bindChannelsTo]; mismatched
- * pairs never become bindings.
+ * the value of its [sourceChannelName] ChannelOutput into the target BE's
+ * external-channel-input slot named [targetChannelName].
  */
 data class ChannelBinding(
     val sourceChannelName: String,
     val targetPos: BlockPos,
     val targetChannelName: String,
 ) {
-    fun toNbt(): CompoundTag = CompoundTag().also {
-        it.putString("src", sourceChannelName)
-        it.putString("dst", targetChannelName)
-        it.put("pos", NbtUtils.writeBlockPos(targetPos))
-    }
-
     companion object {
-        fun fromNbt(tag: CompoundTag) = ChannelBinding(
-            sourceChannelName = tag.getString("src").ifEmpty { tag.getString("name") },
-            targetChannelName = tag.getString("dst").ifEmpty { tag.getString("name") },
-            targetPos = NbtUtils.readBlockPos(tag.getCompound("pos")),
-        )
+        val CODEC: Codec<ChannelBinding> = RecordCodecBuilder.create { i ->
+            i.group(
+                Codec.STRING.fieldOf("src").forGetter(ChannelBinding::sourceChannelName),
+                BlockPos.CODEC.fieldOf("pos").forGetter(ChannelBinding::targetPos),
+                Codec.STRING.fieldOf("dst").forGetter(ChannelBinding::targetChannelName),
+            ).apply(i, ::ChannelBinding)
+        }
     }
 }
