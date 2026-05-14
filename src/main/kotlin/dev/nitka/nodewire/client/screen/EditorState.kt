@@ -268,10 +268,118 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
     private fun orderOutputInput(a: PinKey, b: PinKey): Pair<PinKey, PinKey> =
         if (a.side == PinSide.Output) a to b else b to a
 
+    // ── Multi-selection + rubber-band ─────────────────────────────────
+    //
+    // The selection is a Compose state value so NodeCard recomposes when
+    // membership changes. We hold the *contents* in a mutableStateOf<Set>
+    // (immutable snapshots) rather than a MutableSet — that's the pattern
+    // that Compose actually observes.
+
+    var selectedNodes: Set<dev.nitka.nodewire.graph.NodeId> by mutableStateOf(emptySet())
+        private set
+
+    fun isSelected(id: dev.nitka.nodewire.graph.NodeId): Boolean = id in selectedNodes
+
+    fun clearSelection() { if (selectedNodes.isNotEmpty()) selectedNodes = emptySet() }
+
+    /** Replace the selection with this one node. */
+    fun selectOnly(id: dev.nitka.nodewire.graph.NodeId) { selectedNodes = setOf(id) }
+
+    /** Toggle an id in the current selection (used for Shift+click). */
+    fun toggleSelection(id: dev.nitka.nodewire.graph.NodeId) {
+        selectedNodes = if (id in selectedNodes) selectedNodes - id else selectedNodes + id
+    }
+
+    fun selectAll(ids: Collection<dev.nitka.nodewire.graph.NodeId>) {
+        selectedNodes = ids.toSet()
+    }
+
+    /**
+     * Move every selected node by the given world delta. Called from a
+     * card's title-bar drag when that card is part of the selection — all
+     * cards shift together visually because their `pos` is read from
+     * [Node.pos] which we mutate here.
+     */
+    fun moveSelected(dxWorld: Float, dyWorld: Float) {
+        if (selectedNodes.isEmpty()) return
+        for (id in selectedNodes) {
+            val n = graph.nodes[id] ?: continue
+            n.pos = CanvasPos(n.pos.x + dxWorld, n.pos.y + dyWorld)
+        }
+        // Bump version so NodeCard reads the new pos and recomposes its
+        // absolutePosition.
+        graphVersion++
+    }
+
+    /**
+     * Rubber-band drag in canvas-world coordinates. Non-null only while
+     * the user is dragging an empty-area selection rectangle. The screen
+     * renders the box and `commitSelectionDrag` finalises which nodes are
+     * inside.
+     */
+    var selectionDragStart: CanvasPos? by mutableStateOf(null)
+        private set
+    var selectionDragCurrent: CanvasPos? by mutableStateOf(null)
+        private set
+
+    fun beginSelectionDrag(worldX: Float, worldY: Float) {
+        selectionDragStart = CanvasPos(worldX, worldY)
+        selectionDragCurrent = CanvasPos(worldX, worldY)
+    }
+
+    fun updateSelectionDrag(worldX: Float, worldY: Float) {
+        selectionDragCurrent = CanvasPos(worldX, worldY)
+    }
+
+    /**
+     * Finalise: pick up every node whose card AABB intersects the
+     * rectangle. Card width is fixed at [NODE_CARD_WIDTH]; for height we
+     * use a conservative constant since pin rows vary — overshooting a
+     * bit is friendlier than missing a node by a pixel. Press-without-
+     * drag (start ≈ current) is treated as "clear selection".
+     */
+    fun commitSelectionDrag(additive: Boolean) {
+        val s = selectionDragStart
+        val e = selectionDragCurrent
+        selectionDragStart = null
+        selectionDragCurrent = null
+        if (s == null || e == null) return
+        val dx = e.x - s.x
+        val dy = e.y - s.y
+        val isClick = dx * dx + dy * dy < CLICK_THRESHOLD * CLICK_THRESHOLD
+        if (isClick) {
+            if (!additive) clearSelection()
+            return
+        }
+        val minX = minOf(s.x, e.x)
+        val maxX = maxOf(s.x, e.x)
+        val minY = minOf(s.y, e.y)
+        val maxY = maxOf(s.y, e.y)
+        val hits = graph.nodes.values.filter { n ->
+            val left = n.pos.x
+            val top = n.pos.y
+            val right = left + NODE_CARD_WIDTH
+            val bottom = top + NODE_CARD_HEIGHT_GUESS
+            !(right < minX || left > maxX || bottom < minY || top > maxY)
+        }.map { it.id }
+        selectedNodes = if (additive) selectedNodes + hits else hits.toSet()
+    }
+
+    fun cancelSelectionDrag() {
+        selectionDragStart = null
+        selectionDragCurrent = null
+    }
+
     companion object {
         /** World-space radius around an input pin that counts as "dropped on it". */
         private const val PIN_HIT_RADIUS = 12f
         private const val DUPLICATE_OFFSET = 20f
+        /** Match `NodeCard.CARD_WIDTH`; duplicated as a constant rather than imported to avoid a cyclic dep. */
+        private const val NODE_CARD_WIDTH = 200f
+        /** Cards vary in height by pin count; use a tall-ish guess so AABB tests are inclusive. */
+        private const val NODE_CARD_HEIGHT_GUESS = 120f
+        /** World-space distance below which a press+release is treated as a click, not a drag. */
+        private const val CLICK_THRESHOLD = 4f
     }
 }
 

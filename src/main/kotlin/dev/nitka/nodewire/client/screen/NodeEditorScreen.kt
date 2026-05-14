@@ -50,6 +50,25 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
 
     private val graph: NodeGraph = initialGraph.also { seedIfEmpty(it) }
 
+    /** Set on first composition. Read from [keyPressed] so ESC can talk to the editor. */
+    private var editorRef: EditorState? = null
+
+    /**
+     * ESC clears selection (if any) before falling through to the default
+     * which closes the screen. Lets the user de-select without leaving the
+     * editor.
+     */
+    override fun keyPressed(keyCode: Int, scanCode: Int, modifiers: Int): Boolean {
+        if (keyCode == 256 /* GLFW_KEY_ESCAPE */) {
+            val e = editorRef
+            if (e != null && e.selectedNodes.isNotEmpty()) {
+                e.clearSelection()
+                return true
+            }
+        }
+        return super.keyPressed(keyCode, scanCode, modifiers)
+    }
+
     /**
      * Send the (possibly edited) graph back to the server when the screen
      * closes. The packet handler validates everything; rejections show up
@@ -72,7 +91,7 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
     override fun Content() {
         NwThemeProvider {
             val canvas = rememberCanvasState()
-            val editor = remember(graph) { EditorState(graph, pos) }
+            val editor = remember(graph) { EditorState(graph, pos).also { editorRef = it } }
             val nodes = remember(editor.nodesVersion) { graph.nodes.values.toList() }
             // Live evaluator: runs once per game tick (50ms) so stateful
             // nodes (Timer) advance smoothly in the editor preview. Graph
@@ -133,6 +152,35 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
                                     }
                                     else -> false
                                 }
+                                // Rubber-band selection. LMB Press on empty
+                                // area (this Box is the catch-all when no
+                                // card consumed the press) starts a drag in
+                                // world coords; subsequent Drag updates the
+                                // far corner; Release commits.
+                                ev is PointerEvent.Press
+                                    && ev.button == LEFT_BUTTON
+                                -> {
+                                    val worldX = ev.x.toFloat() / canvas.zoom - canvas.panX
+                                    val worldY = ev.y.toFloat() / canvas.zoom - canvas.panY
+                                    editor.beginSelectionDrag(worldX, worldY)
+                                    true
+                                }
+                                ev is PointerEvent.Drag
+                                    && ev.button == LEFT_BUTTON
+                                    && editor.selectionDragStart != null
+                                -> {
+                                    val worldX = ev.x.toFloat() / canvas.zoom - canvas.panX
+                                    val worldY = ev.y.toFloat() / canvas.zoom - canvas.panY
+                                    editor.updateSelectionDrag(worldX, worldY)
+                                    true
+                                }
+                                ev is PointerEvent.Release
+                                    && ev.button == LEFT_BUTTON
+                                    && editor.selectionDragStart != null
+                                -> {
+                                    editor.commitSelectionDrag(additive = net.minecraft.client.gui.screens.Screen.hasShiftDown())
+                                    true
+                                }
                                 else -> false
                             }
                         },
@@ -144,6 +192,9 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
                         for (node in nodes) {
                             NodeCard(node = node)
                         }
+                        // Rubber-band rect on top of everything inside the
+                        // canvas pose, so it pans/zooms with the world.
+                        SelectionRect()
                     }
                     // Context menu — rendered when state is non-null. The
                     // Popup handles overlay layering itself.
@@ -161,6 +212,7 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
      * content — the user's own work is never overwritten.
      */
     private companion object {
+        private const val LEFT_BUTTON = 0
         private const val RIGHT_BUTTON = 1
         /** MC's game tick is 50 ms (20 Hz). Match it so Timer pulses align with the server's tick rate. */
         private const val TICK_INTERVAL_MS = 50L

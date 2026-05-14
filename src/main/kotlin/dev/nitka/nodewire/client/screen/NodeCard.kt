@@ -70,14 +70,15 @@ fun NodeCard(
     node: Node,
     modifier: Modifier = Modifier,
 ) {
-    var pos by remember(node) { mutableStateOf(node.pos) }
     val canvas = LocalCanvasState.current
     val editor = LocalEditorState.current
-    // Read graphVersion so any mutation that bumps it (incl. pin-type
-    // rebuilds for Channel/Convert nodes) triggers a recomposition here.
-    // node.inputs / node.outputs are plain `var`s — Compose can't observe
+    // Read graphVersion so any mutation that bumps it (pin-type rebuilds,
+    // group drags via moveSelected, etc.) triggers a recomposition here.
+    // node.pos / inputs / outputs are plain `var`s — Compose can't observe
     // them on its own.
     editor?.graphVersion
+    val pos = node.pos
+    val selected = editor?.isSelected(node.id) == true
 
     Surface(
         modifier = modifier
@@ -99,16 +100,37 @@ fun NodeCard(
                     true
                 } else false
             },
-        style = cardStyle(),
+        style = cardStyle(selected),
     ) {
         Column {
             TitleBar(
                 node = node,
+                onPress = {
+                    if (editor == null) return@TitleBar
+                    val shift = net.minecraft.client.gui.screens.Screen.hasShiftDown()
+                    when {
+                        shift -> editor.toggleSelection(node.id)
+                        // Single click without shift on a non-selected node
+                        // replaces the selection. If already selected, leave
+                        // the group intact so the subsequent drag moves all.
+                        !editor.isSelected(node.id) -> editor.selectOnly(node.id)
+                    }
+                },
                 onDragDelta = { dx, dy ->
                     val zoom = canvas?.zoom ?: 1f
-                    val updated = CanvasPos(pos.x + dx / zoom, pos.y + dy / zoom)
-                    pos = updated
-                    node.pos = updated
+                    val dxWorld = dx / zoom
+                    val dyWorld = dy / zoom
+                    // Group drag: any drag on a selected card moves every
+                    // selected card by the same world delta. Else fall back
+                    // to single-node move; bump graphVersion so the card
+                    // recomposes with the new pos (we no longer cache pos
+                    // in a local mutableState).
+                    if (editor != null && editor.isSelected(node.id) && editor.selectedNodes.size > 1) {
+                        editor.moveSelected(dxWorld, dyWorld)
+                    } else {
+                        node.pos = CanvasPos(node.pos.x + dxWorld, node.pos.y + dyWorld)
+                        editor?.bumpGraphVersion()
+                    }
                 },
             )
             ConfigSection(node)
@@ -118,19 +140,20 @@ fun NodeCard(
 }
 
 @Composable
-private fun cardStyle(): SurfaceStyle = SurfaceStyle(
+private fun cardStyle(selected: Boolean): SurfaceStyle = SurfaceStyle(
     color = NwTheme.colors.surface,
     shape = NwTheme.shapes.medium,
-    // No border — pin handles straddle the card edge and a stroke under
-    // them creates the ugly "pin overlapping a line" artefact. Surface
-    // colour gives enough separation against the canvas grid.
-    border = null,
+    // Normally no border (pin handles straddling a stroke look ugly), but
+    // a selected node needs a clear affordance. Accept the artefact when
+    // selected since the user is actively manipulating these nodes.
+    border = if (selected) dev.nitka.nodewire.ui.render.BorderStroke(2, NwTheme.colors.accent) else null,
     padding = PaddingValues.Zero,
 )
 
 @Composable
 private fun TitleBar(
     node: Node,
+    onPress: () -> Unit = {},
     onDragDelta: (Float, Float) -> Unit,
 ) {
     val category = NodeTypeRegistry.get(node.typeKey)?.category ?: NodeCategory.LOGIC
@@ -153,7 +176,12 @@ private fun TitleBar(
             // (which opens the context menu). LMB starts drag-to-move.
             .pointerInput { ev, _, _ ->
                 when (ev) {
-                    is PointerEvent.Press -> ev.button == LEFT_BUTTON
+                    is PointerEvent.Press -> {
+                        if (ev.button == LEFT_BUTTON) {
+                            onPress()
+                            true
+                        } else false
+                    }
                     is PointerEvent.Drag -> {
                         if (ev.button == LEFT_BUTTON) {
                             onDragDelta(ev.deltaX, ev.deltaY)
