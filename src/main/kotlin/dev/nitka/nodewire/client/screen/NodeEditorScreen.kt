@@ -3,6 +3,7 @@ package dev.nitka.nodewire.client.screen
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -92,7 +93,7 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
         NwThemeProvider {
             val canvas = rememberCanvasState()
             val editor = remember(graph) { EditorState(graph, pos).also { editorRef = it } }
-            val nodes = remember(editor.nodesVersion) { graph.nodes.values.toList() }
+            val nodeIds by editor.nodes.collectAsState()
             // Live evaluator: runs once per game tick (50ms) so stateful
             // nodes (Timer) advance smoothly in the editor preview. Graph
             // mutations show up on the next tick. External inputs empty
@@ -189,8 +190,8 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
                         // Wires render BEFORE cards so they pass under the
                         // node bodies instead of clipping over them.
                         WireLayer()
-                        for (node in nodes) {
-                            NodeCard(node = node)
+                        for (id in nodeIds) {
+                            NodeCard(nodeId = id)
                         }
                         // Rubber-band rect on top of everything inside the
                         // canvas pose, so it pans/zooms with the world.

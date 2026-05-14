@@ -1,6 +1,7 @@
 package dev.nitka.nodewire.client.screen
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -68,18 +69,18 @@ import net.minecraft.client.gui.screens.Screen
  */
 @Composable
 fun NodeCard(
-    node: Node,
+    nodeId: dev.nitka.nodewire.graph.NodeId,
     modifier: Modifier = Modifier,
 ) {
     val canvas = LocalCanvasState.current
     val editor = LocalEditorState.current
-    // Read graphVersion so any mutation that bumps it (pin-type rebuilds,
-    // group drags via moveSelected, etc.) triggers a recomposition here.
-    // node.pos / inputs / outputs are plain `var`s — Compose can't observe
-    // them on its own.
-    editor?.graphVersion
+    // Subscribe to the per-node flow so only this card recomposes when its
+    // own Node changes. If the editor isn't present (shouldn't happen in
+    // production paths but keeps the type system happy) we render nothing.
+    val flow = editor?.nodeFlow(nodeId) ?: return
+    val node by flow.collectAsState()
     val pos = node.pos
-    val selected = editor?.isSelected(node.id) == true
+    val selected = editor.isSelected(nodeId)
 
     Surface(
         modifier = modifier
@@ -88,7 +89,7 @@ fun NodeCard(
             // Report measured size to the editor so rubber-band hit-tests
             // use the real card bounds, not a constant guess.
             .onSizeChanged { size ->
-                editor?.setCardSize(node.id, size.width, size.height)
+                editor?.setCardSize(nodeId, size.width, size.height)
             }
             // Card-wide right-click opens the node context menu. Pin handles
             // are deeper in the tree so their own RMB-disconnect still wins
@@ -101,7 +102,7 @@ fun NodeCard(
                         val worldY = pos.y + y
                         val screenX = ((worldX + canvas.panX) * canvas.zoom).toInt()
                         val screenY = ((worldY + canvas.panY) * canvas.zoom).toInt()
-                        editor.openNodeMenu(screenX, screenY, node.id)
+                        editor.openNodeMenu(screenX, screenY, nodeId)
                     }
                     true
                 } else false
@@ -115,11 +116,11 @@ fun NodeCard(
                     if (editor == null) return@TitleBar
                     val shift = net.minecraft.client.gui.screens.Screen.hasShiftDown()
                     when {
-                        shift -> editor.toggleSelection(node.id)
+                        shift -> editor.toggleSelection(nodeId)
                         // Single click without shift on a non-selected node
                         // replaces the selection. If already selected, leave
                         // the group intact so the subsequent drag moves all.
-                        !editor.isSelected(node.id) -> editor.selectOnly(node.id)
+                        !editor.isSelected(nodeId) -> editor.selectOnly(nodeId)
                     }
                 },
                 onDragDelta = { dx, dy ->
@@ -131,16 +132,17 @@ fun NodeCard(
                     // to single-node move; bump graphVersion so the card
                     // recomposes with the new pos (we no longer cache pos
                     // in a local mutableState).
-                    if (editor != null && editor.isSelected(node.id) && editor.selectedNodes.size > 1) {
+                    if (editor != null && editor.isSelected(nodeId) && editor.selectedNodes.size > 1) {
                         editor.moveSelected(dxWorld, dyWorld)
                     } else {
-                        node.pos = CanvasPos(node.pos.x + dxWorld, node.pos.y + dyWorld)
-                        editor?.bumpGraphVersion()
+                        editor?.updateNode(nodeId) {
+                            it.copy(pos = CanvasPos(it.pos.x + dxWorld, it.pos.y + dyWorld))
+                        }
                     }
                 },
             )
             ConfigSection(node)
-            CardBody(node.id, node)
+            CardBody(nodeId, node)
         }
     }
 }

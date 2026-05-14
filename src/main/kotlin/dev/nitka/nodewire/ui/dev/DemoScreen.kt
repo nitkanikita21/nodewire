@@ -1,10 +1,15 @@
 package dev.nitka.nodewire.ui.dev
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import dev.nitka.nodewire.client.screen.EditorState
+import dev.nitka.nodewire.client.screen.LocalEditorState
+import dev.nitka.nodewire.graph.NodeGraph
 import dev.nitka.nodewire.ui.components.Button
 import dev.nitka.nodewire.ui.components.ButtonDefaults
 import dev.nitka.nodewire.ui.components.Dialog
@@ -199,16 +204,31 @@ class DemoScreen : NwComposeScreen(Component.literal("Nodewire Demo")) {
                     .fillMaxWidth()
                     .size(400, 220),
             ) {
+                // Build a small demo graph so NodeCard can read from per-node
+                // flows via LocalEditorState. The graph is stable for the
+                // lifetime of this screen (remember with no keys).
+                val demoEditor = remember {
+                    val g = NodeGraph()
+                    listOf(
+                        StockNodeTypes.BOOL_CONST.newInstance(CanvasPos(0f, 0f)),
+                        StockNodeTypes.INT_CONST.newInstance(CanvasPos(160f, 0f)),
+                        StockNodeTypes.STRING_CONST.newInstance(CanvasPos(320f, 0f)),
+                        StockNodeTypes.ADD_INT.newInstance(CanvasPos(0f, 90f)),
+                        StockNodeTypes.COMPARE_INT.newInstance(CanvasPos(160f, 90f)),
+                        StockNodeTypes.AND.newInstance(CanvasPos(320f, 90f)),
+                    ).forEach { g.add(it) }
+                    EditorState(g)
+                }
+                val demoNodeIds by demoEditor.nodes.collectAsState()
                 NodeCanvas(state = canvas, modifier = Modifier.fillMaxSize()) {
                     // Real NodeCards built from registered StockNodeTypes —
                     // verifies pin alignment on borders, type labels, and
                     // the config-section hook (BOOL_CONST renders a checkbox).
-                    NodeCard(node = remember { StockNodeTypes.BOOL_CONST.newInstance(CanvasPos(0f, 0f)) })
-                    NodeCard(node = remember { StockNodeTypes.INT_CONST.newInstance(CanvasPos(160f, 0f)) })
-                    NodeCard(node = remember { StockNodeTypes.STRING_CONST.newInstance(CanvasPos(320f, 0f)) })
-                    NodeCard(node = remember { StockNodeTypes.ADD_INT.newInstance(CanvasPos(0f, 90f)) })
-                    NodeCard(node = remember { StockNodeTypes.COMPARE_INT.newInstance(CanvasPos(160f, 90f)) })
-                    NodeCard(node = remember { StockNodeTypes.AND.newInstance(CanvasPos(320f, 90f)) })
+                    CompositionLocalProvider(LocalEditorState provides demoEditor) {
+                        for (id in demoNodeIds) {
+                            NodeCard(nodeId = id)
+                        }
+                    }
                 }
             }
         }
