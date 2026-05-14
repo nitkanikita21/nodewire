@@ -23,10 +23,7 @@ class BindSideChannelPacket(
     val targetSide: Direction,
 ) {
     fun encode(buf: FriendlyByteBuf) {
-        buf.writeBlockPos(sourcePos)
-        buf.writeUtf(sourceChannelName)
-        buf.writeBlockPos(targetPos)
-        buf.writeEnum(targetSide)
+        buf.writeCodec(CODEC, this)
     }
 
     fun handle(ctx: Supplier<NetworkEvent.Context>): Boolean {
@@ -59,11 +56,16 @@ class BindSideChannelPacket(
         private val LOG: Logger = LogUtils.getLogger()
         private const val MAX_REACH_SQ = 16.0 * 16.0
 
-        fun decode(buf: FriendlyByteBuf): BindSideChannelPacket = BindSideChannelPacket(
-            sourcePos = buf.readBlockPos(),
-            sourceChannelName = buf.readUtf(),
-            targetPos = buf.readBlockPos(),
-            targetSide = buf.readEnum(Direction::class.java),
-        )
+        val CODEC: com.mojang.serialization.Codec<BindSideChannelPacket> =
+            com.mojang.serialization.codecs.RecordCodecBuilder.create { i ->
+                i.group(
+                    net.minecraft.core.BlockPos.CODEC.fieldOf("src_pos").forGetter(BindSideChannelPacket::sourcePos),
+                    com.mojang.serialization.Codec.STRING.fieldOf("src_ch").forGetter(BindSideChannelPacket::sourceChannelName),
+                    net.minecraft.core.BlockPos.CODEC.fieldOf("tgt_pos").forGetter(BindSideChannelPacket::targetPos),
+                    net.minecraft.core.Direction.CODEC.fieldOf("tgt_side").forGetter(BindSideChannelPacket::targetSide),
+                ).apply(i, ::BindSideChannelPacket)
+            }
+
+        fun decode(buf: FriendlyByteBuf): BindSideChannelPacket = buf.readCodec(CODEC)
     }
 }

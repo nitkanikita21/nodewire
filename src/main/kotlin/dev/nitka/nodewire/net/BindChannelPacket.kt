@@ -24,10 +24,7 @@ class BindChannelPacket(
     val targetChannelName: String,
 ) {
     fun encode(buf: FriendlyByteBuf) {
-        buf.writeBlockPos(sourcePos)
-        buf.writeUtf(sourceChannelName)
-        buf.writeBlockPos(targetPos)
-        buf.writeUtf(targetChannelName)
+        buf.writeCodec(CODEC, this)
     }
 
     fun handle(ctx: Supplier<NetworkEvent.Context>): Boolean {
@@ -58,11 +55,16 @@ class BindChannelPacket(
         // Generous reach — link tool can be used while peeking around.
         private const val MAX_REACH_SQ = 16.0 * 16.0
 
-        fun decode(buf: FriendlyByteBuf): BindChannelPacket = BindChannelPacket(
-            sourcePos = buf.readBlockPos(),
-            sourceChannelName = buf.readUtf(),
-            targetPos = buf.readBlockPos(),
-            targetChannelName = buf.readUtf(),
-        )
+        val CODEC: com.mojang.serialization.Codec<BindChannelPacket> =
+            com.mojang.serialization.codecs.RecordCodecBuilder.create { i ->
+                i.group(
+                    net.minecraft.core.BlockPos.CODEC.fieldOf("src_pos").forGetter(BindChannelPacket::sourcePos),
+                    com.mojang.serialization.Codec.STRING.fieldOf("src_ch").forGetter(BindChannelPacket::sourceChannelName),
+                    net.minecraft.core.BlockPos.CODEC.fieldOf("tgt_pos").forGetter(BindChannelPacket::targetPos),
+                    com.mojang.serialization.Codec.STRING.fieldOf("tgt_ch").forGetter(BindChannelPacket::targetChannelName),
+                ).apply(i, ::BindChannelPacket)
+            }
+
+        fun decode(buf: FriendlyByteBuf): BindChannelPacket = buf.readCodec(CODEC)
     }
 }
