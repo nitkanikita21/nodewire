@@ -86,9 +86,27 @@ class BindingsManagerScreen(
         val mc = Minecraft.getInstance()
         val w = mc.window.guiScaledWidth
         val h = mc.window.guiScaledHeight
+
+        // Bump on every successful remove so snapshots re-read after the
+        // server pushes the BE update.
+        var version by remember { mutableStateOf(0) }
+
+        val outputs = remember(version) {
+            sourceBe.graph.nodes.values
+                .filter { it.typeKey.path == "channel_output" }
+                .mapNotNull { node ->
+                    val name = node.config.getString("name")
+                    if (name.isEmpty()) null
+                    else name to PinType.fromName(node.config.getString("type"))
+                }
+        }
+        val bindings = remember(version) { sourceBe.bindingsSnapshot() }
+        val sideBindings = remember(version) { sourceBe.sideBindingsSnapshot() }
+        val totalBindings = bindings.size + sideBindings.size
+
         Box(
             modifier = Modifier
-                .padding(start = ((w - PANEL_WIDTH) / 2), top = ((h - 240).coerceAtLeast(20) / 2)),
+                .padding(start = ((w - PANEL_WIDTH) / 2), top = ((h - 260).coerceAtLeast(20) / 2)),
         ) {
             Surface(
                 modifier = Modifier
@@ -102,10 +120,60 @@ class BindingsManagerScreen(
                 ),
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space6)) {
-                    // TODO Task 5: wire real counts from sourceBe
-                    PanelHeader(channelCount = 0, bindingCount = 0)
-                    SourceList()
-                    ExistingList()
+                    PanelHeader(channelCount = outputs.size, bindingCount = totalBindings)
+
+                    if (outputs.isEmpty()) {
+                        MutedLine("Add a Channel Output node to this block first.")
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space4)) {
+                            for ((name, type) in outputs) {
+                                val myChannelBindings = bindings.filter { it.sourceChannelName == name }
+                                val mySideBindings = sideBindings.filter { it.sourceChannelName == name }
+                                val count = myChannelBindings.size + mySideBindings.size
+
+                                Column(verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2)) {
+                                    GroupHeader(name = name, type = type, bindingCount = count) {
+                                        onPickSource(name)
+                                        Minecraft.getInstance().setScreen(null)
+                                    }
+                                    for (b in myChannelBindings) {
+                                        TargetRow(
+                                            description = "(${b.targetPos.toShortString()}) ${b.targetChannelName}",
+                                            kindChip = "ch",
+                                        ) {
+                                            NodewireNetwork.CHANNEL.sendToServer(
+                                                RemoveBindingPacket(
+                                                    sourcePos = sourceBe.blockPos,
+                                                    sourceChannelName = b.sourceChannelName,
+                                                    targetPos = b.targetPos,
+                                                    kind = RemoveBindingPacket.Kind.CHANNEL,
+                                                    extra = b.targetChannelName,
+                                                ),
+                                            )
+                                            version++
+                                        }
+                                    }
+                                    for (sb in mySideBindings) {
+                                        TargetRow(
+                                            description = "(${sb.targetPos.toShortString()}) ${sideGlyph(sb.targetSide)}",
+                                            kindChip = "side",
+                                        ) {
+                                            NodewireNetwork.CHANNEL.sendToServer(
+                                                RemoveBindingPacket(
+                                                    sourcePos = sourceBe.blockPos,
+                                                    sourceChannelName = sb.sourceChannelName,
+                                                    targetPos = sb.targetPos,
+                                                    kind = RemoveBindingPacket.Kind.SIDE,
+                                                    extra = sb.targetSide.name,
+                                                ),
+                                            )
+                                            version++
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -130,111 +198,7 @@ class BindingsManagerScreen(
         }
     }
 
-    @Composable
-    private fun SourceList() {
-        val outputs = sourceBe.graph.nodes.values
-            .filter { it.typeKey.path == "channel_output" }
-            .mapNotNull { node ->
-                val name = node.config.getString("name")
-                if (name.isEmpty()) null else name to PinType.fromName(node.config.getString("type"))
-            }
-        if (outputs.isEmpty()) {
-            MutedLine("(no channel outputs on this block)")
-            return
-        }
-        Column(verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2)) {
-            for ((name, type) in outputs) {
-                SourceRow(name, type) {
-                    onPickSource(name)
-                    Minecraft.getInstance().setScreen(null)
-                }
-            }
-        }
-    }
-
-    @Composable
-    private fun ExistingList() {
-        // Refresh trigger — bump on remove so the recomposition re-reads
-        // the snapshots after the server pushes the BE update.
-        var version by remember { mutableStateOf(0) }
-        val bindings = remember(version) { sourceBe.bindingsSnapshot() }
-        val sideBindings = remember(version) { sourceBe.sideBindingsSnapshot() }
-
-        if (bindings.isEmpty() && sideBindings.isEmpty()) {
-            MutedLine("(no outgoing links yet)")
-            return
-        }
-        Column(verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2)) {
-            for (b in bindings) {
-                TargetRow(
-                    description = "(${b.targetPos.toShortString()}) ${b.targetChannelName}",
-                    kindChip = "ch",
-                ) {
-                    NodewireNetwork.CHANNEL.sendToServer(
-                        RemoveBindingPacket(
-                            sourcePos = sourceBe.blockPos,
-                            sourceChannelName = b.sourceChannelName,
-                            targetPos = b.targetPos,
-                            kind = RemoveBindingPacket.Kind.CHANNEL,
-                            extra = b.targetChannelName,
-                        ),
-                    )
-                    version++
-                }
-            }
-            for (sb in sideBindings) {
-                TargetRow(
-                    description = "(${sb.targetPos.toShortString()}) ${sideGlyph(sb.targetSide)}",
-                    kindChip = "side",
-                ) {
-                    NodewireNetwork.CHANNEL.sendToServer(
-                        RemoveBindingPacket(
-                            sourcePos = sourceBe.blockPos,
-                            sourceChannelName = sb.sourceChannelName,
-                            targetPos = sb.targetPos,
-                            kind = RemoveBindingPacket.Kind.SIDE,
-                            extra = sb.targetSide.name,
-                        ),
-                    )
-                    version++
-                }
-            }
-        }
-    }
-
-    private fun totalBindings(): Int =
-        sourceBe.bindingsSnapshot().size + sourceBe.sideBindingsSnapshot().size
 }
-
-@Composable
-private fun SourceRow(name: String, type: PinType, onClick: () -> Unit) {
-    var hovered by remember { mutableStateOf(false) }
-    val bg = if (hovered) NwTheme.colors.surfaceHover else NwTheme.colors.surface
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(bg, NwTheme.shapes.medium)
-            .padding(horizontal = NwTheme.dimens.space6, vertical = NwTheme.dimens.space4)
-            .onHover { hovered = it }
-            .pointerInput { ev, _, _ ->
-                if (ev is PointerEvent.Press) { onClick(); true } else false
-            },
-        verticalAlignment = Alignment.Center,
-        horizontalArrangement = Arrangement.spacedBy(NwTheme.dimens.space6),
-    ) {
-        Box(modifier = Modifier.size(6).background(pinColor(type), NwTheme.shapes.medium))
-        // Name takes natural width; type label sits at the row's natural end.
-        // weight()-on-Text doesn't work reliably with the Yoga-backed text
-        // measure, so we lay out compactly and rely on PANEL_WIDTH for room.
-        Text(name, style = NwTheme.typography.caption)
-        Box(modifier = Modifier.weight(1f))
-        Text(
-            type.name.lowercase(),
-            style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceMuted),
-        )
-    }
-}
-
 
 /**
  * One indented row under a [GroupHeader]. Always single-line. The `×` is a
@@ -364,4 +328,4 @@ internal fun sideGlyph(face: net.minecraft.core.Direction): String = when (face)
     net.minecraft.core.Direction.EAST  -> "E"
 }
 
-private const val PANEL_WIDTH = 380
+private const val PANEL_WIDTH = 400
