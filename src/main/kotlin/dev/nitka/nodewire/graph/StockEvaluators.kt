@@ -241,6 +241,52 @@ object StockEvaluators {
     }
 
     /**
+     * From-Redstone: vanilla redstone signal (0..15) → typed output. The
+     * output type and conversion behavior are driven by `config.targetType`
+     * and `config.mode`. Mirrors [ConvertToRedstone].
+     *
+     * Modes:
+     *   * INT/raw          → signal
+     *   * INT/scaled       → lerp(signal, 0..15 → min..max), int
+     *   * FLOAT/normalized → signal / 15f
+     *   * FLOAT/raw        → signal.toFloat()
+     *   * FLOAT/scaled     → lerp(signal, 0..15 → min..max), float
+     *   * BOOL/any         → signal > 0
+     *   * BOOL/threshold   → signal >= config.threshold
+     */
+    val FromRedstone: NodeEvaluator = { config, inputs ->
+        val signal = ((inputs["in"] as? PinValue.Redstone)?.value ?: 0).coerceIn(0, 15)
+        val targetType = config.getString("targetType").ifEmpty { "INT" }
+        val mode = config.getString("mode")
+        val out: PinValue = when (targetType) {
+            "INT" -> when (mode) {
+                "scaled" -> {
+                    val lo = config.getInt("min"); val hi = config.getInt("max")
+                    val v = if (hi == lo) lo
+                    else (lo + ((signal.toFloat() / 15f) * (hi - lo)).toInt())
+                    PinValue.Int(v)
+                }
+                else -> PinValue.Int(signal) // "raw"
+            }
+            "FLOAT" -> when (mode) {
+                "raw" -> PinValue.Float(signal.toFloat())
+                "scaled" -> {
+                    val lo = config.getFloat("min"); val hi = config.getFloat("max")
+                    val v = if (hi == lo) lo else lo + (signal / 15f) * (hi - lo)
+                    PinValue.Float(v)
+                }
+                else -> PinValue.Float(signal / 15f) // "normalized"
+            }
+            "BOOL" -> when (mode) {
+                "threshold" -> PinValue.Bool(signal >= config.getInt("threshold"))
+                else -> PinValue.Bool(signal > 0) // "any"
+            }
+            else -> PinValue.Int(signal)
+        }
+        mapOf("out" to out)
+    }
+
+    /**
      * SideInput: face-specific redstone reader. Server-side tick supplies
      * the actual value via externalOutputs; client preview always emits 0
      * (since no world I/O happens in the editor).
