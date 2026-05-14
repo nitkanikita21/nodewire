@@ -9,16 +9,13 @@ import dev.nitka.nodewire.ui.layout.LayoutCoordinates
  * frames. The callback receives a [LayoutCoordinates] snapshot — use it to
  * anchor popups (tooltip / dropdown / context menu) to a moving target.
  *
- * NwUiOwner runs this during its post-layout walk; each modifier tracks its
- * own [lastCoords] so the callback only fires on actual change.
+ * Dedup happens in [dev.nitka.nodewire.ui.core.NwUiOwner]'s post-layout
+ * walk (per-UiNode map keyed by identity), not in this modifier instance —
+ * see [OnSizeChangedModifier] for the rationale.
  */
 class OnPositionedModifier(
     val callback: (LayoutCoordinates) -> Unit,
-) : InputModifierElement<OnPositionedModifier> {
-    var lastCoords: LayoutCoordinates? = null
-
-    override fun mergeWith(other: OnPositionedModifier) = other
-}
+) : InputModifierElement<OnPositionedModifier>
 
 fun Modifier.onPositioned(callback: (LayoutCoordinates) -> Unit) =
     this then OnPositionedModifier(callback)

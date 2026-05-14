@@ -76,6 +76,21 @@ class NwUiOwner {
         }
     }
 
+    /**
+     * Per-UiNode dedup maps for `onSizeChanged` / `onPositioned`. Kept on
+     * the owner (long-lived) rather than on each modifier instance (short-
+     * lived: `Modifier.then` rebuilds the chain every recompose).
+     *
+     * Identity-hashed because `UiNode` doesn't override `equals` and we
+     * want pointer-stable keys. Entries are never explicitly purged. The
+     * owner lives for the lifetime of one Screen, and UiNode count per
+     * screen is bounded by the visible graph — well under a few thousand.
+     * If we ever have a long-lived screen with massive node churn, switch
+     * to a WeakHashMap (would require UiNode to override equals/hashCode).
+     */
+    private val lastSizeByNode: java.util.IdentityHashMap<UiNode, IntSize> = java.util.IdentityHashMap()
+    private val lastCoordsByNode: java.util.IdentityHashMap<UiNode, LayoutCoordinates> = java.util.IdentityHashMap()
+
     /** Drag focus owner: set on Press, routed-to on Drag/Release, cleared on Release. */
     private var pointerFocus: UiNode? = null
 
@@ -148,13 +163,19 @@ class NwUiOwner {
         val coords = LayoutCoordinates(screenX, screenY, size.width, size.height)
         for (mod in node.inputModifiers) {
             when (mod) {
-                is OnSizeChangedModifier -> if (mod.lastSize != size) {
-                    mod.lastSize = size
-                    mod.callback(size)
+                is OnSizeChangedModifier -> {
+                    val prev = lastSizeByNode[node]
+                    if (prev != size) {
+                        lastSizeByNode[node] = size
+                        mod.callback(size)
+                    }
                 }
-                is OnPositionedModifier -> if (mod.lastCoords != coords) {
-                    mod.lastCoords = coords
-                    mod.callback(coords)
+                is OnPositionedModifier -> {
+                    val prev = lastCoordsByNode[node]
+                    if (prev != coords) {
+                        lastCoordsByNode[node] = coords
+                        mod.callback(coords)
+                    }
                 }
                 is CanvasModifier -> mod.state.advance()
                 is ScrollModifier -> {
