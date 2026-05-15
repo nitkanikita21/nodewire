@@ -17,6 +17,7 @@ data class SideBinding(
     val sourceChannelName: String,
     val targetPos: BlockPos,
     val targetSide: Direction,
+    val name: String = "",
 ) {
     companion object {
         val CODEC: Codec<SideBinding> = RecordCodecBuilder.create { i ->
@@ -24,6 +25,7 @@ data class SideBinding(
                 Codec.STRING.fieldOf("src").forGetter(SideBinding::sourceChannelName),
                 BlockPos.CODEC.fieldOf("pos").forGetter(SideBinding::targetPos),
                 Direction.CODEC.fieldOf("side").forGetter(SideBinding::targetSide),
+                Codec.STRING.optionalFieldOf("name", "").forGetter(SideBinding::name),
             ).apply(i, ::SideBinding)
         }
     }
