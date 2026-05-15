@@ -55,6 +55,19 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
      */
     private val sideBindings: MutableList<SideBinding> = mutableListOf()
 
+    private var blockName: String = ""
+
+    fun getBlockName(): String = blockName
+
+    fun setBlockName(value: String) {
+        val sanitized = value.take(MAX_NAME_LENGTH)
+        if (blockName == sanitized) return
+        blockName = sanitized
+        setChanged()
+        val l = level ?: return
+        l.sendBlockUpdated(blockPos, blockState, blockState, 3)
+    }
+
     /**
      * Values pushed in from other BEs' [ChannelOutput] nodes via their
      * bindings. Keyed by THIS BE's channel-input name. Read at the start
@@ -199,6 +212,26 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
         sideBindings.add(SideBinding(sourceChannelName, targetPos, targetSide))
         setChanged()
         return true
+    }
+
+    fun renameSideBinding(
+        sourceChannelName: String,
+        targetPos: BlockPos,
+        targetSide: Direction,
+        newName: String,
+    ) {
+        val idx = sideBindings.indexOfFirst {
+            it.sourceChannelName == sourceChannelName
+                && it.targetPos == targetPos
+                && it.targetSide == targetSide
+        }
+        if (idx < 0) return
+        val sanitized = newName.take(64)
+        if (sideBindings[idx].name == sanitized) return
+        sideBindings[idx] = sideBindings[idx].copy(name = sanitized)
+        setChanged()
+        val l = level ?: return
+        l.sendBlockUpdated(blockPos, blockState, blockState, 3)
     }
 
     fun serverTick(level: Level, pos: BlockPos, state: BlockState) {
@@ -379,10 +412,14 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
                     .orElseThrow { IllegalStateException("side_bindings encode failed") },
             )
         }
+        if (blockName.isNotEmpty()) {
+            tag.putString("name", blockName)
+        }
     }
 
     override fun load(tag: CompoundTag) {
         super.load(tag)
+        blockName = tag.getString("name")  // returns "" if missing
         graph = if (tag.contains("graph")) {
             dev.nitka.nodewire.graph.NodeGraph.CODEC
                 .parse(NbtOps.INSTANCE, tag.getCompound("graph")).result()
@@ -451,6 +488,7 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
     }
 
     companion object {
+        private const val MAX_NAME_LENGTH = 64
         private val DIRECTIONS_BY_NAME = Direction.entries.associateBy { it.name.lowercase() }
 
         private fun directionOf(name: String): Direction? =
