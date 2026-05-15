@@ -49,6 +49,10 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         MutableStateFlow(graph.edges.toList())
     val edges: StateFlow<List<Edge>> = _edges.asStateFlow()
 
+    private val _blockName = MutableStateFlow("")
+    val blockName: StateFlow<String> = _blockName.asStateFlow()
+    fun setBlockName(name: String) { _blockName.value = name }
+
     /** Per-node flow, or null if [id] is unknown. */
     fun nodeFlow(id: NodeId): StateFlow<Node>? = nodeFlows[id]?.asStateFlow()
 

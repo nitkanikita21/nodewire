@@ -26,8 +26,11 @@ import dev.nitka.nodewire.ui.core.Modifier
 import dev.nitka.nodewire.ui.core.NwComposeScreen
 import dev.nitka.nodewire.ui.input.PointerEvent
 import dev.nitka.nodewire.ui.layout.Box
+import dev.nitka.nodewire.ui.layout.Column
 import dev.nitka.nodewire.ui.modifier.input.pointerInput
 import dev.nitka.nodewire.ui.modifier.layout.fillMaxSize
+import dev.nitka.nodewire.ui.modifier.layout.fillMaxWidth
+import dev.nitka.nodewire.ui.modifier.layout.weight
 import dev.nitka.nodewire.ui.modifier.style.background
 import dev.nitka.nodewire.ui.theme.NwTheme
 import dev.nitka.nodewire.ui.theme.NwThemeProvider
@@ -94,7 +97,14 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
     override fun Content() {
         NwThemeProvider {
             val canvas = rememberCanvasState()
-            val editor = remember(graph) { EditorState(graph, pos).also { editorRef = it } }
+            val editor = remember(graph) {
+                EditorState(graph, pos).also { e ->
+                    editorRef = e
+                    val be = net.minecraft.client.Minecraft.getInstance().level
+                        ?.getBlockEntity(pos) as? dev.nitka.nodewire.block.LogicBlockEntity
+                    e.setBlockName(be?.getBlockName() ?: "")
+                }
+            }
             val nodeIds by editor.nodes.collectAsState()
             // Live evaluator: runs once per game tick (50ms) so stateful
             // nodes (Timer) advance smoothly in the editor preview. Graph
@@ -113,10 +123,19 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
                 LocalEditorState provides editor,
                 LocalEvalResult provides evalResult,
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(NwTheme.colors.background)
+                Column(modifier = Modifier.fillMaxSize()) {
+                    EditorToolbar(pos = pos, onOpenBindings = {
+                        val mc = net.minecraft.client.Minecraft.getInstance()
+                        val be = mc.level?.getBlockEntity(pos)
+                            as? dev.nitka.nodewire.block.LogicBlockEntity
+                            ?: return@EditorToolbar
+                        mc.setScreen(BindingsManagerScreen(sourceBe = be, onPickSource = { }))
+                    })
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .background(NwTheme.colors.background)
                         // Catch-all handler for sticky wire drags:
                         //   * Move events follow the cursor so the sticky
                         //     wire trails the mouse with no button held —
@@ -205,6 +224,7 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
                         NodeContextMenu(target = target, editor = editor)
                     }
                 }
+                } // end Column
             }
         }
     }
