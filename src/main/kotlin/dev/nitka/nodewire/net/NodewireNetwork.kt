@@ -45,5 +45,15 @@ object NodewireNetwork {
             .decoder(RemoveBindingPacket::decode)
             .consumerMainThread(RemoveBindingPacket::handle)
             .add()
+        CHANNEL.messageBuilder(SetBlockNamePacket::class.java, id++)
+            .encoder(SetBlockNamePacket::encode)
+            .decoder(SetBlockNamePacket::decode)
+            .consumerMainThread(SetBlockNamePacket::handle)
+            .add()
+        CHANNEL.messageBuilder(SetSideBindingNamePacket::class.java, id++)
+            .encoder(SetSideBindingNamePacket::encode)
+            .decoder(SetSideBindingNamePacket::decode)
+            .consumerMainThread(SetSideBindingNamePacket::handle)
+            .add()
     }
 }
