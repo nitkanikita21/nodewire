@@ -119,6 +119,92 @@ class CodecRoundTripTest {
         assertEquals(g.edges, decoded.edges)
     }
 
+    // --- Consolidated node codec roundtrips (Phase 6) ---
+
+    private val nodeC: java.util.UUID = java.util.UUID.fromString("00000000-0000-0000-0000-000000000003")
+
+    @Test fun constantStringRoundTrip() {
+        val cfg = net.minecraft.nbt.CompoundTag().apply {
+            putString("type", "STRING")
+            putBoolean("bool", false)
+            putInt("int", 0)
+            putFloat("float", 0f)
+            putString("string", "hello")
+            putFloat("x", 0f); putFloat("y", 0f); putFloat("z", 0f)
+        }
+        val n = Node(
+            id = nodeC,
+            typeKey = net.minecraft.resources.ResourceLocation("nodewire", "constant"),
+            pos = CanvasPos(0f, 0f),
+            inputs = emptyList(),
+            outputs = listOf(Pin("out", "Value", PinType.STRING)),
+            config = cfg,
+        )
+        roundTripNbt(Node.CODEC, n)
+    }
+
+    @Test fun logicGateXorRoundTrip() {
+        val cfg = net.minecraft.nbt.CompoundTag().apply { putString("op", "XOR") }
+        val n = Node(
+            id = nodeC,
+            typeKey = net.minecraft.resources.ResourceLocation("nodewire", "logic_gate"),
+            pos = CanvasPos(10f, 10f),
+            inputs = listOf(Pin("a", "A", PinType.BOOL), Pin("b", "B", PinType.BOOL)),
+            outputs = listOf(Pin("out", "Out", PinType.BOOL)),
+            config = cfg,
+        )
+        roundTripNbt(Node.CODEC, n)
+    }
+
+    @Test fun mathDivFloatRoundTrip() {
+        val cfg = net.minecraft.nbt.CompoundTag().apply {
+            putString("op", "DIV")
+            putString("type", "FLOAT")
+        }
+        val n = Node(
+            id = nodeC,
+            typeKey = net.minecraft.resources.ResourceLocation("nodewire", "math"),
+            pos = CanvasPos(20f, 0f),
+            inputs = listOf(Pin("a", "A", PinType.FLOAT), Pin("b", "B", PinType.FLOAT)),
+            outputs = listOf(Pin("out", "Out", PinType.FLOAT)),
+            config = cfg,
+        )
+        roundTripNbt(Node.CODEC, n)
+    }
+
+    @Test fun compareFloatRoundTrip() {
+        val cfg = net.minecraft.nbt.CompoundTag().apply { putString("type", "FLOAT") }
+        val n = Node(
+            id = nodeC,
+            typeKey = net.minecraft.resources.ResourceLocation("nodewire", "compare"),
+            pos = CanvasPos(30f, 0f),
+            inputs = listOf(Pin("a", "A", PinType.FLOAT), Pin("b", "B", PinType.FLOAT)),
+            outputs = listOf(
+                Pin("gt", "A > B", PinType.BOOL),
+                Pin("eq", "A = B", PinType.BOOL),
+                Pin("lt", "A < B", PinType.BOOL),
+            ),
+            config = cfg,
+        )
+        roundTripNbt(Node.CODEC, n)
+    }
+
+    @Test fun convertBoolToIntRoundTrip() {
+        val cfg = net.minecraft.nbt.CompoundTag().apply {
+            putString("sourceType", "BOOL")
+            putString("targetType", "INT")
+        }
+        val n = Node(
+            id = nodeC,
+            typeKey = net.minecraft.resources.ResourceLocation("nodewire", "convert"),
+            pos = CanvasPos(40f, 0f),
+            inputs = listOf(Pin("in", "In", PinType.BOOL)),
+            outputs = listOf(Pin("out", "Out", PinType.INT)),
+            config = cfg,
+        )
+        roundTripNbt(Node.CODEC, n)
+    }
+
     @Test fun channelBindingNbt() = roundTripNbt(
         dev.nitka.nodewire.block.ChannelBinding.CODEC,
         dev.nitka.nodewire.block.ChannelBinding(
