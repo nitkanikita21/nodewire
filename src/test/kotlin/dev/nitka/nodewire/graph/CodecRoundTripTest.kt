@@ -205,6 +205,42 @@ class CodecRoundTripTest {
         roundTripNbt(Node.CODEC, n)
     }
 
+    @Test fun convertIntToRedstoneScaledRoundTrip() {
+        val cfg = net.minecraft.nbt.CompoundTag().apply {
+            putString("sourceType", "INT")
+            putString("targetType", "REDSTONE")
+            putString("mode", "scaled")
+            putInt("min", 0)
+            putInt("max", 100)
+        }
+        val n = Node(
+            id = nodeC,
+            typeKey = net.minecraft.resources.ResourceLocation("nodewire", "convert"),
+            pos = CanvasPos(50f, 0f),
+            inputs = listOf(Pin("in", "In", PinType.INT)),
+            outputs = listOf(Pin("out", "Out", PinType.REDSTONE)),
+            config = cfg,
+        )
+        roundTripNbt(Node.CODEC, n)
+    }
+
+    @Test fun convertRedstoneToFloatNormalizedRoundTrip() {
+        val cfg = net.minecraft.nbt.CompoundTag().apply {
+            putString("sourceType", "REDSTONE")
+            putString("targetType", "FLOAT")
+            putString("mode", "normalized")
+        }
+        val n = Node(
+            id = nodeC,
+            typeKey = net.minecraft.resources.ResourceLocation("nodewire", "convert"),
+            pos = CanvasPos(60f, 0f),
+            inputs = listOf(Pin("in", "In", PinType.REDSTONE)),
+            outputs = listOf(Pin("out", "Out", PinType.FLOAT)),
+            config = cfg,
+        )
+        roundTripNbt(Node.CODEC, n)
+    }
+
     @Test fun channelBindingNbt() = roundTripNbt(
         dev.nitka.nodewire.block.ChannelBinding.CODEC,
         dev.nitka.nodewire.block.ChannelBinding(
