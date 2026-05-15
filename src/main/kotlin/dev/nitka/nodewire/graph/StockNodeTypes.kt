@@ -83,45 +83,6 @@ object StockNodeTypes {
         evaluate = StockEvaluators.ChannelOutput,
     )
 
-    val CONVERT_TO_REDSTONE = nodeType(
-        id = "convert_to_redstone",
-        displayName = "To Redstone",
-        category = NodeCategory.CONVERSION,
-        inputs = listOf(Pin("in", "In", PinType.INT)),
-        outputs = listOf(Pin("out", "Signal", PinType.REDSTONE)),
-        defaultConfig = {
-            CompoundTag().apply {
-                putString("sourceType", PinType.INT.name)
-                putString("mode", "clamp")
-                putInt("threshold", 1)
-                putInt("min", 0)
-                putInt("max", 15)
-                putInt("level", 15)
-            }
-        },
-        configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.ConvertToRedstone,
-        evaluate = StockEvaluators.ConvertToRedstone,
-    )
-
-    val FROM_REDSTONE = nodeType(
-        id = "from_redstone",
-        displayName = "From Redstone",
-        category = NodeCategory.CONVERSION,
-        inputs = listOf(Pin("in", "Signal", PinType.REDSTONE)),
-        outputs = listOf(Pin("out", "Out", PinType.INT)),
-        defaultConfig = {
-            CompoundTag().apply {
-                putString("targetType", PinType.INT.name)
-                putString("mode", "raw")
-                putInt("threshold", 1)
-                putInt("min", 0)
-                putInt("max", 15)
-            }
-        },
-        configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.FromRedstone,
-        evaluate = StockEvaluators.FromRedstone,
-    )
-
     val LOGIC_GATE = nodeType(
         id = "logic_gate",
         displayName = "Logic Gate",
@@ -342,7 +303,7 @@ object StockNodeTypes {
             NEG_FLOAT, ABS_FLOAT, MIN_FLOAT, MAX_FLOAT, CLAMP_FLOAT,
             COMPARE,
             // Conversion
-            CONVERT, CONVERT_TO_REDSTONE, FROM_REDSTONE,
+            CONVERT,
             // Flow
             SELECT_BOOL, EDGE_RISING, TOGGLE, COUNTER, DELAY,
             // Test / Generators

@@ -229,10 +229,14 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
         }
         val sideIn = StockNodeTypes.SIDE_INPUT.newInstance(CanvasPos(40f, 240f))
         val and = StockNodeTypes.LOGIC_GATE.newInstance(CanvasPos(260f, 40f)) // default op=AND
-        val toRs = StockNodeTypes.CONVERT_TO_REDSTONE.newInstance(CanvasPos(260f, 160f))
+        val toRs = StockNodeTypes.CONVERT.newInstance(CanvasPos(260f, 160f)).also {
+            it.config.putString("sourceType", "INT")
+            it.config.putString("targetType", "REDSTONE")
+            it.config.putString("mode", "clamp")
+        }
         val sideOut = StockNodeTypes.SIDE_OUTPUT.newInstance(CanvasPos(500f, 160f))
         g.add(bool1); g.add(int1); g.add(sideIn); g.add(and); g.add(toRs); g.add(sideOut)
-        // bool_const → AND.a; int_const → ConvertToRedstone → SideOutput
+        // bool_const → AND.a; int_const → Convert(INT→REDSTONE) → SideOutput
         g.addEdge(Edge(PinRef(bool1.id, "out"), PinRef(and.id, "a")))
         g.addEdge(Edge(PinRef(int1.id, "out"), PinRef(toRs.id, "in")))
         g.addEdge(Edge(PinRef(toRs.id, "out"), PinRef(sideOut.id, "in")))

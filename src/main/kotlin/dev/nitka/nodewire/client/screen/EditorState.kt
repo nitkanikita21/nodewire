@@ -231,31 +231,6 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
     }
 
     /**
-     * Convert-to-Redstone has a single input pin whose type follows
-     * `config.sourceType`. Rebuild the pin and snip incompatible edges.
-     */
-    fun changeConverterInput(id: dev.nitka.nodewire.graph.NodeId, newType: dev.nitka.nodewire.graph.PinType) {
-        updateNode(id) { n ->
-            n.copy(inputs = listOf(n.inputs.first().copy(type = newType)))
-        }
-        disconnectAllEdges(id)
-    }
-
-    /**
-     * From-Redstone has a single output pin whose type follows
-     * `config.targetType`. Rebuild the pin and snip incompatible edges.
-     */
-    fun changeFromRedstoneOutput(
-        id: dev.nitka.nodewire.graph.NodeId,
-        newType: dev.nitka.nodewire.graph.PinType,
-    ) {
-        updateNode(id) { n ->
-            n.copy(outputs = listOf(n.outputs.first().copy(type = newType)))
-        }
-        disconnectAllEdges(id)
-    }
-
-    /**
      * LogicGate: write the new op, rebuild input pins (NOT → single "in";
      * any other op → two pins "a" and "b"), and disconnect all edges because
      * the pin IDs may have changed.
