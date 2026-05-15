@@ -2,10 +2,13 @@ package dev.nitka.nodewire.client
 
 import com.mojang.blaze3d.platform.InputConstants
 import com.mojang.logging.LogUtils
+import dev.nitka.nodewire.client.command.HighlightCommand
+import dev.nitka.nodewire.client.highlight.BlockHighlightRenderer
 import dev.nitka.nodewire.client.wire.WireWorldRenderer
 import dev.nitka.nodewire.ui.dev.DemoScreen
 import net.minecraft.client.KeyMapping
 import net.minecraft.client.Minecraft
+import net.minecraftforge.client.event.RegisterClientCommandsEvent
 import net.minecraftforge.client.event.RegisterKeyMappingsEvent
 import net.minecraftforge.client.event.RenderLevelStageEvent
 import net.minecraftforge.client.settings.KeyConflictContext
@@ -39,6 +42,8 @@ object NodewireClient {
         bus.addListener<RegisterKeyMappingsEvent> { it.register(OPEN_DEMO_KEY) }
         FORGE_BUS.addListener(::onClientTick)
         FORGE_BUS.addListener<RenderLevelStageEvent>(WireWorldRenderer::render)
+        FORGE_BUS.addListener<RenderLevelStageEvent>(BlockHighlightRenderer::onRender)
+        FORGE_BUS.addListener<RegisterClientCommandsEvent>(HighlightCommand::register)
         LOG.info("Nodewire client handlers registered (MOD bus + FORGE bus)")
     }
 
