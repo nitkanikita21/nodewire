@@ -4,16 +4,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import dev.nitka.nodewire.block.LogicBlockEntity
 import dev.nitka.nodewire.graph.PinType
 import dev.nitka.nodewire.net.NodewireNetwork
 import dev.nitka.nodewire.net.RemoveBindingPacket
+import dev.nitka.nodewire.net.SetSideBindingNamePacket
 import dev.nitka.nodewire.ui.components.Button
 import dev.nitka.nodewire.ui.components.ButtonDefaults
 import dev.nitka.nodewire.ui.components.Surface
 import dev.nitka.nodewire.ui.components.SurfaceStyle
 import dev.nitka.nodewire.ui.components.Text
+import dev.nitka.nodewire.ui.components.TextInput
 import dev.nitka.nodewire.ui.core.Modifier
 import dev.nitka.nodewire.ui.core.NwComposeScreen
 import dev.nitka.nodewire.ui.input.PointerEvent
@@ -36,8 +39,12 @@ import dev.nitka.nodewire.ui.render.BorderStroke
 import dev.nitka.nodewire.ui.render.Color
 import dev.nitka.nodewire.ui.theme.NwTheme
 import dev.nitka.nodewire.ui.theme.NwThemeProvider
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import net.minecraft.client.Minecraft
 import net.minecraft.network.chat.Component
+import net.minecraftforge.network.PacketDistributor
 
 /**
  * Modal opened by Shift + right-click on a logic block with the Channel
@@ -135,36 +142,52 @@ class BindingsManagerScreen(
                                             description = "(${b.targetPos.toShortString()}) ${b.targetChannelName}",
                                             kindChip = "ch",
                                             targetPos = b.targetPos,
-                                        ) {
-                                            NodewireNetwork.CHANNEL.sendToServer(
-                                                RemoveBindingPacket(
-                                                    sourcePos = sourceBe.blockPos,
-                                                    sourceChannelName = b.sourceChannelName,
-                                                    targetPos = b.targetPos,
-                                                    kind = RemoveBindingPacket.Kind.CHANNEL,
-                                                    extra = b.targetChannelName,
-                                                ),
-                                            )
-                                            version++
-                                        }
+                                            onRemove = {
+                                                NodewireNetwork.CHANNEL.sendToServer(
+                                                    RemoveBindingPacket(
+                                                        sourcePos = sourceBe.blockPos,
+                                                        sourceChannelName = b.sourceChannelName,
+                                                        targetPos = b.targetPos,
+                                                        kind = RemoveBindingPacket.Kind.CHANNEL,
+                                                        extra = b.targetChannelName,
+                                                    ),
+                                                )
+                                                version++
+                                            },
+                                        )
                                     }
                                     for (sb in mySideBindings) {
                                         TargetRow(
                                             description = "(${sb.targetPos.toShortString()}) ${sideGlyph(sb.targetSide)}",
                                             kindChip = "side",
                                             targetPos = sb.targetPos,
-                                        ) {
-                                            NodewireNetwork.CHANNEL.sendToServer(
-                                                RemoveBindingPacket(
-                                                    sourcePos = sourceBe.blockPos,
-                                                    sourceChannelName = sb.sourceChannelName,
-                                                    targetPos = sb.targetPos,
-                                                    kind = RemoveBindingPacket.Kind.SIDE,
-                                                    extra = sb.targetSide.name,
-                                                ),
-                                            )
-                                            version++
-                                        }
+                                            bindingName = sb.name,
+                                            onRename = { newName ->
+                                                NodewireNetwork.CHANNEL.send(
+                                                    PacketDistributor.SERVER.noArg(),
+                                                    SetSideBindingNamePacket(
+                                                        sourcePos = sourceBe.blockPos,
+                                                        sourceChannelName = sb.sourceChannelName,
+                                                        targetPos = sb.targetPos,
+                                                        targetSide = sb.targetSide,
+                                                        name = newName,
+                                                    ),
+                                                )
+                                                version++
+                                            },
+                                            onRemove = {
+                                                NodewireNetwork.CHANNEL.sendToServer(
+                                                    RemoveBindingPacket(
+                                                        sourcePos = sourceBe.blockPos,
+                                                        sourceChannelName = sb.sourceChannelName,
+                                                        targetPos = sb.targetPos,
+                                                        kind = RemoveBindingPacket.Kind.SIDE,
+                                                        extra = sb.targetSide.name,
+                                                    ),
+                                                )
+                                                version++
+                                            },
+                                        )
                                     }
                                 }
                             }
@@ -187,8 +210,9 @@ class BindingsManagerScreen(
                     style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceMuted),
                 )
             }
+            val displayName = sourceBe.getBlockName().ifBlank { "(${pos.toShortString()})" }
             Text(
-                "Block (${pos.toShortString()}) · click a channel to arm tool, ✕ to disconnect",
+                "Block $displayName · click a channel to arm tool, ✕ to disconnect",
                 style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceMuted),
             )
         }
@@ -206,8 +230,12 @@ private fun TargetRow(
     description: String,
     kindChip: String,
     targetPos: net.minecraft.core.BlockPos,
+    bindingName: String = "",
+    onRename: ((String) -> Unit)? = null,
     onRemove: () -> Unit,
 ) {
+    val scope = rememberCoroutineScope()
+    val debouncer = remember { SideBindingNameDebouncer(scope) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -224,7 +252,21 @@ private fun TargetRow(
             "→",
             style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceMuted),
         )
-        Text(description, style = NwTheme.typography.caption)
+        if (onRename != null) {
+            TextInput(
+                modifier = Modifier.width(BINDING_NAME_INPUT_WIDTH),
+                value = bindingName,
+                placeholder = description,
+                onValueChange = { next ->
+                    debouncer.schedule(next) { onRename(next) }
+                },
+            )
+        }
+        if (onRename == null || bindingName.isEmpty()) {
+            Text(description, style = NwTheme.typography.caption)
+        } else {
+            Text(description, style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceMuted))
+        }
         Box(modifier = Modifier.weight(1f))
         Box(
             modifier = Modifier
@@ -365,3 +407,18 @@ internal fun sideGlyph(face: net.minecraft.core.Direction): String = when (face)
 }
 
 private const val PANEL_WIDTH = 400
+private const val BINDING_NAME_INPUT_WIDTH = 100
+
+private class SideBindingNameDebouncer(private val scope: kotlinx.coroutines.CoroutineScope) {
+    private var pending: Job? = null
+    fun schedule(name: String, onFire: () -> Unit) {
+        pending?.cancel()
+        pending = scope.launch {
+            delay(DEBOUNCE_MS)
+            onFire()
+        }
+    }
+    companion object {
+        private const val DEBOUNCE_MS = 300L
+    }
+}
