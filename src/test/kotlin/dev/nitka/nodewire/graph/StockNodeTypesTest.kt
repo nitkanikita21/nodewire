@@ -38,7 +38,8 @@ class StockNodeTypesTest {
         // Phase 5: INT_TO_FLOAT, FLOAT_TO_INT, BOOL_TO_INT, INT_TO_BOOL replaced by CONVERT
         //          (-4 +1 = -3 → 26).
         // CV2: CONVERT_TO_REDSTONE and FROM_REDSTONE removed (-2 → 24).
-        assertEquals(24, NodeTypeRegistry.all().size)
+        // CV2.7: ADD_VEC3, NEG_FLOAT, ABS_FLOAT, MIN_FLOAT, MAX_FLOAT, CLAMP_FLOAT removed (-6 → 18).
+        assertEquals(18, NodeTypeRegistry.all().size)
     }
 
     @Test

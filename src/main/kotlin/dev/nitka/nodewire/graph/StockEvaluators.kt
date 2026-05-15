@@ -108,12 +108,6 @@ object StockEvaluators {
         mapOf("out" to out)
     }
 
-    val AddVec3: NodeEvaluator = { _, inputs ->
-        val a = vec3In(inputs, "a")
-        val b = vec3In(inputs, "b")
-        mapOf("out" to PinValue.Vec3(a.x + b.x, a.y + b.y, a.z + b.z))
-    }
-
     /**
      * Compare: dispatches on config.type (INT/FLOAT), compares `a` and `b`,
      * and returns all three boolean relations: gt/eq/lt.
@@ -133,25 +127,6 @@ object StockEvaluators {
             "eq" to PinValue.Bool(eq),
             "lt" to PinValue.Bool(lt),
         )
-    }
-
-    val NegFloat: NodeEvaluator = { _, i ->
-        mapOf("out" to PinValue.Float(-floatIn(i, "in")))
-    }
-    val AbsFloat: NodeEvaluator = { _, i ->
-        mapOf("out" to PinValue.Float(kotlin.math.abs(floatIn(i, "in"))))
-    }
-    val MinFloat: NodeEvaluator = { _, i ->
-        mapOf("out" to PinValue.Float(kotlin.math.min(floatIn(i, "a"), floatIn(i, "b"))))
-    }
-    val MaxFloat: NodeEvaluator = { _, i ->
-        mapOf("out" to PinValue.Float(kotlin.math.max(floatIn(i, "a"), floatIn(i, "b"))))
-    }
-    val ClampFloat: NodeEvaluator = { _, i ->
-        val v = floatIn(i, "in")
-        val lo = floatIn(i, "min")
-        val hi = floatIn(i, "max")
-        mapOf("out" to PinValue.Float(v.coerceIn(lo, hi)))
     }
 
     // --- Conversion ----------------------------------------------------
@@ -407,7 +382,4 @@ object StockEvaluators {
 
     private fun floatIn(inputs: Map<String, PinValue>, pin: String): Float =
         (inputs[pin] as? PinValue.Float)?.value ?: 0f
-
-    private fun vec3In(inputs: Map<String, PinValue>, pin: String): PinValue.Vec3 =
-        (inputs[pin] as? PinValue.Vec3) ?: PinValue.Vec3(0f, 0f, 0f)
 }

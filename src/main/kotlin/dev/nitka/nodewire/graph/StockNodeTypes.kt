@@ -142,15 +142,6 @@ object StockNodeTypes {
         evaluate = StockEvaluators.Math,
     )
 
-    val ADD_VEC3 = nodeType(
-        id = "add_vec3",
-        displayName = "Add Vec3",
-        category = NodeCategory.MATH,
-        inputs = listOf(Pin("a", "A", PinType.VEC3), Pin("b", "B", PinType.VEC3)),
-        outputs = listOf(Pin("out", "Out", PinType.VEC3)),
-        evaluate = StockEvaluators.AddVec3,
-    )
-
     val COMPARE = nodeType(
         id = "compare",
         displayName = "Compare",
@@ -164,24 +155,6 @@ object StockNodeTypes {
         defaultConfig = { CompoundTag().apply { putString("type", PinType.INT.name) } },
         configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.Compare,
         evaluate = StockEvaluators.Compare,
-    )
-
-    val NEG_FLOAT = floatUnary("neg_float", "Negate Float", StockEvaluators.NegFloat)
-    val ABS_FLOAT = floatUnary("abs_float", "Abs Float", StockEvaluators.AbsFloat)
-    val MIN_FLOAT = floatBinary("min_float", "Min Float", StockEvaluators.MinFloat)
-    val MAX_FLOAT = floatBinary("max_float", "Max Float", StockEvaluators.MaxFloat)
-
-    val CLAMP_FLOAT = nodeType(
-        id = "clamp_float",
-        displayName = "Clamp Float",
-        category = NodeCategory.MATH,
-        inputs = listOf(
-            Pin("in", "Value", PinType.FLOAT),
-            Pin("min", "Min", PinType.FLOAT),
-            Pin("max", "Max", PinType.FLOAT),
-        ),
-        outputs = listOf(Pin("out", "Out", PinType.FLOAT)),
-        evaluate = StockEvaluators.ClampFloat,
     )
 
     // --- Conversion ----------------------------------------------------
@@ -299,9 +272,7 @@ object StockNodeTypes {
             // Constants
             CONSTANT, TIMER,
             // Math
-            MATH, ADD_VEC3,
-            NEG_FLOAT, ABS_FLOAT, MIN_FLOAT, MAX_FLOAT, CLAMP_FLOAT,
-            COMPARE,
+            MATH, COMPARE,
             // Conversion
             CONVERT,
             // Flow
@@ -331,29 +302,6 @@ object StockNodeTypes {
         configContent = configContent,
         evaluate = evaluate,
         tickEvaluator = tickEvaluator,
-    )
-
-    // --- Helpers for common pin shapes ---------------------------------
-
-    private fun intBinary(id: String, displayName: String, eval: NodeEvaluator) = nodeType(
-        id = id, displayName = displayName, category = NodeCategory.MATH,
-        inputs = listOf(Pin("a", "A", PinType.INT), Pin("b", "B", PinType.INT)),
-        outputs = listOf(Pin("out", "Out", PinType.INT)),
-        evaluate = eval,
-    )
-
-    private fun floatBinary(id: String, displayName: String, eval: NodeEvaluator) = nodeType(
-        id = id, displayName = displayName, category = NodeCategory.MATH,
-        inputs = listOf(Pin("a", "A", PinType.FLOAT), Pin("b", "B", PinType.FLOAT)),
-        outputs = listOf(Pin("out", "Out", PinType.FLOAT)),
-        evaluate = eval,
-    )
-
-    private fun floatUnary(id: String, displayName: String, eval: NodeEvaluator) = nodeType(
-        id = id, displayName = displayName, category = NodeCategory.MATH,
-        inputs = listOf(Pin("in", "In", PinType.FLOAT)),
-        outputs = listOf(Pin("out", "Out", PinType.FLOAT)),
-        evaluate = eval,
     )
 
     private fun faceBoolPins(): List<Pin> = listOf(
