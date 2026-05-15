@@ -235,6 +235,14 @@ object StockNodeTypes {
             CompoundTag().apply {
                 putString("sourceType", PinType.INT.name)
                 putString("targetType", PinType.FLOAT.name)
+                putString("mode", "")
+                putInt("threshold", 1)
+                putFloat("thresholdF", 1f)
+                putInt("min", 0)
+                putInt("max", 15)
+                putFloat("minF", 0f)
+                putFloat("maxF", 1f)
+                putInt("level", 15)
             }
         },
         configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.Convert,
