@@ -340,8 +340,8 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
 
     /**
      * Convert node: rebuild input pin to [source] type and output pin to
-     * [target] type, write both config keys, and disconnect all edges because
-     * both pin types may have changed.
+     * [target] type, write both config keys (+ default mode for REDSTONE pairs),
+     * and disconnect all edges because both pin types may have changed.
      */
     fun changeConvertTypes(
         id: NodeId,
@@ -349,15 +349,36 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         target: dev.nitka.nodewire.graph.PinType,
     ) {
         updateNode(id) { n ->
-            val inputs = listOf(dev.nitka.nodewire.graph.Pin("in", "In", source))
+            val inputs  = listOf(dev.nitka.nodewire.graph.Pin("in",  "In",  source))
             val outputs = listOf(dev.nitka.nodewire.graph.Pin("out", "Out", target))
+            val mode = defaultConvertModeFor(source, target)
             val newConfig = n.config.copy().apply {
                 putString("sourceType", source.name)
                 putString("targetType", target.name)
+                putString("mode", mode)
             }
             n.copy(inputs = inputs, outputs = outputs, config = newConfig)
         }
         disconnectAllEdges(id)
+    }
+
+    fun changeConvertMode(id: NodeId, mode: String) {
+        updateNode(id) { n ->
+            n.copy(config = n.config.copy().apply { putString("mode", mode) })
+        }
+    }
+
+    private fun defaultConvertModeFor(
+        s: dev.nitka.nodewire.graph.PinType,
+        t: dev.nitka.nodewire.graph.PinType,
+    ): String = when (s to t) {
+        dev.nitka.nodewire.graph.PinType.INT      to dev.nitka.nodewire.graph.PinType.REDSTONE -> "clamp"
+        dev.nitka.nodewire.graph.PinType.FLOAT    to dev.nitka.nodewire.graph.PinType.REDSTONE -> "scaled"
+        dev.nitka.nodewire.graph.PinType.BOOL     to dev.nitka.nodewire.graph.PinType.REDSTONE -> "hi"
+        dev.nitka.nodewire.graph.PinType.REDSTONE to dev.nitka.nodewire.graph.PinType.INT      -> "raw"
+        dev.nitka.nodewire.graph.PinType.REDSTONE to dev.nitka.nodewire.graph.PinType.FLOAT    -> "normalized"
+        dev.nitka.nodewire.graph.PinType.REDSTONE to dev.nitka.nodewire.graph.PinType.BOOL     -> "any"
+        else -> ""
     }
 
     private fun disconnectAllEdges(id: dev.nitka.nodewire.graph.NodeId) {

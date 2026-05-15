@@ -38,4 +38,47 @@ class EditorStateConvertTest {
         // the edge must have been disconnected
         assertTrue(editor.edges.value.isEmpty())
     }
+
+    @Test
+    fun changeConvertTypesToRedstonePairWritesDefaultMode() {
+        val graph = NodeGraph()
+        val n = StockNodeTypes.CONVERT.newInstance(CanvasPos.Zero)
+        graph.add(n)
+        val editor = EditorState(graph, BlockPos.ZERO)
+        editor.changeConvertTypes(n.id, PinType.INT, PinType.REDSTONE)
+        val updated = editor.nodeFlow(n.id)!!.value
+        assertEquals(PinType.INT, updated.inputs.first().type)
+        assertEquals(PinType.REDSTONE, updated.outputs.first().type)
+        assertEquals("clamp", updated.config.getString("mode"))
+    }
+
+    @Test
+    fun changeConvertTypesBackToCastPairClearsMode() {
+        val graph = NodeGraph()
+        val n = StockNodeTypes.CONVERT.newInstance(CanvasPos.Zero).also {
+            it.config.putString("sourceType","INT"); it.config.putString("targetType","REDSTONE")
+            it.config.putString("mode","scaled")
+        }
+        graph.add(n)
+        val editor = EditorState(graph, BlockPos.ZERO)
+        editor.changeConvertTypes(n.id, PinType.INT, PinType.FLOAT)
+        val updated = editor.nodeFlow(n.id)!!.value
+        assertEquals("", updated.config.getString("mode"))
+    }
+
+    @Test
+    fun changeConvertModeUpdatesConfigWithoutRebuildingPins() {
+        val graph = NodeGraph()
+        val n = StockNodeTypes.CONVERT.newInstance(CanvasPos.Zero).also {
+            it.config.putString("sourceType","REDSTONE"); it.config.putString("targetType","BOOL")
+            it.config.putString("mode","any")
+        }
+        graph.add(n)
+        val editor = EditorState(graph, BlockPos.ZERO)
+        val originalInPinType = n.inputs.first().type
+        editor.changeConvertMode(n.id, "threshold")
+        val updated = editor.nodeFlow(n.id)!!.value
+        assertEquals("threshold", updated.config.getString("mode"))
+        assertEquals(originalInPinType, updated.inputs.first().type) // unchanged
+    }
 }
