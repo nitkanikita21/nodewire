@@ -1,7 +1,6 @@
 package dev.nitka.nodewire.client.wire
 
 import com.mojang.blaze3d.vertex.DefaultVertexFormat
-import com.mojang.blaze3d.vertex.PoseStack
 import com.mojang.blaze3d.vertex.VertexConsumer
 import com.mojang.blaze3d.vertex.VertexFormat
 import dev.nitka.nodewire.block.ChannelBinding
@@ -11,20 +10,17 @@ import net.minecraft.client.Minecraft
 import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.client.renderer.RenderStateShard
 import net.minecraft.client.renderer.RenderType
-import net.minecraft.network.chat.Component
 import net.minecraft.world.phys.Vec3
 import net.minecraftforge.client.event.RenderLevelStageEvent
 import org.joml.Matrix4f
-import kotlin.math.atan2
 import kotlin.math.sqrt
 
 /**
  * Always-on world rendering of channel bindings between logic blocks.
+ * Only renders while the local player holds a ChannelLinkToolItem.
  *
  * Per binding we draw:
  *   1. A straight, camera-facing colored quad — source-center to target-center.
- *   2. Two text labels at each end (source channel name near the source,
- *      target channel name near the target), oriented along the wire.
  *
  * Multiple bindings that share an endpoint are *fanned out* radially around
  * the block center so each line is visible on its own — without it three
@@ -37,8 +33,8 @@ object WireWorldRenderer {
         val NO_LIGHTMAP = RenderStateShard.NO_LIGHTMAP
         val TRANSLUCENT = TRANSLUCENT_TRANSPARENCY
         val NO_CULL_S = NO_CULL
-        val LEQUAL_DEPTH = LEQUAL_DEPTH_TEST
         val COLOR_DEPTH = COLOR_DEPTH_WRITE
+        val NO_DEPTH = NO_DEPTH_TEST
     }
 
     private val WIRE_TYPE: RenderType = RenderType.create(
@@ -53,15 +49,22 @@ object WireWorldRenderer {
             .setLightmapState(Shards.NO_LIGHTMAP)
             .setTransparencyState(Shards.TRANSLUCENT)
             .setCullState(Shards.NO_CULL_S)
-            .setDepthTestState(Shards.LEQUAL_DEPTH)
+            .setDepthTestState(Shards.NO_DEPTH)
             .setWriteMaskState(Shards.COLOR_DEPTH)
             .createCompositeState(false),
     )
+
+    private fun holdingLinkTool(player: net.minecraft.client.player.LocalPlayer): Boolean {
+        val link = dev.nitka.nodewire.Registry.CHANNEL_LINK_TOOL.get()
+        return player.mainHandItem.`is`(link) || player.offhandItem.`is`(link)
+    }
 
     fun render(event: RenderLevelStageEvent) {
         if (event.stage != RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) return
         val mc = Minecraft.getInstance()
         val level = mc.level ?: return
+        val player = mc.player ?: return
+        if (!holdingLinkTool(player)) return
         val tracked = ClientLogicBlockTracker.all()
         if (tracked.isEmpty()) return
 
@@ -123,9 +126,6 @@ object WireWorldRenderer {
         pose.translate(-cameraPos.x, -cameraPos.y, -cameraPos.z)
         val matrix = pose.last().pose()
 
-        // First pass: quads.
-        val endpoints = ArrayList<EndpointInfo>(bindList.size)
-        val sideEndpoints = ArrayList<SideEndpointInfo>(sideList.size)
         for (rb in bindList) {
             val srcKey = rb.source.blockPos.asLong()
             val dstKey = rb.binding.targetPos.asLong()
@@ -133,7 +133,6 @@ object WireWorldRenderer {
             val dst = fanOffset(rb.binding.targetPos.center, rb.dstIdx, inTotal[dstKey]!!)
             val color = colorForBinding(rb.source, rb.binding.sourceChannelName)
             drawStraightWire(builder, matrix, src, dst, cameraPos, color)
-            endpoints.add(EndpointInfo(rb, src, dst, color))
         }
         for (sb in sideList) {
             val srcKey = sb.source.blockPos.asLong()
@@ -151,13 +150,9 @@ object WireWorldRenderer {
             val color = colorForBinding(sb.source, sb.binding.sourceChannelName)
             drawStraightWire(builder, matrix, src, dst, cameraPos, color)
             drawFaceFrame(builder, matrix, sb.binding.targetPos, sb.binding.targetSide, color)
-            sideEndpoints.add(SideEndpointInfo(sb, src, dst, color))
         }
         pose.popPose()
         bufferSource.endBatch(WIRE_TYPE)
-
-        // Second pass: text labels.
-        renderLabels(event, bufferSource, cameraPos, endpoints, sideEndpoints)
     }
 
     /**
@@ -265,140 +260,6 @@ object WireWorldRenderer {
         val vx: Double, val vy: Double, val vz: Double,
     )
 
-    private fun renderLabels(
-        event: RenderLevelStageEvent,
-        bufferSource: MultiBufferSource.BufferSource,
-        cameraPos: Vec3,
-        endpoints: List<EndpointInfo>,
-        sideEndpoints: List<SideEndpointInfo>,
-    ) {
-        val mc = Minecraft.getInstance()
-        val font = mc.font
-        val pose = event.poseStack
-        for (ep in endpoints) {
-            drawLabel(
-                pose, bufferSource, font, cameraPos,
-                worldPos = ep.src,
-                otherEnd = ep.dst,
-                text = ep.rb.binding.sourceChannelName,
-                color = ep.color,
-            )
-            drawLabel(
-                pose, bufferSource, font, cameraPos,
-                worldPos = ep.dst,
-                otherEnd = ep.src,
-                text = ep.rb.binding.targetChannelName,
-                color = ep.color,
-            )
-        }
-        for (sep in sideEndpoints) {
-            drawLabel(
-                pose, bufferSource, font, cameraPos,
-                worldPos = sep.src,
-                otherEnd = sep.dst,
-                text = sep.sb.binding.sourceChannelName,
-                color = sep.color,
-            )
-            drawLabel(
-                pose, bufferSource, font, cameraPos,
-                worldPos = sep.dst,
-                otherEnd = sep.src,
-                text = sep.sb.binding.targetSide.name.lowercase(),
-                color = sep.color,
-            )
-        }
-        bufferSource.endBatch()
-    }
-
-    /**
-     * Draws [text] near [worldPos], oriented along the line toward
-     * [otherEnd]. Text scales with distance so it's still readable from
-     * a few blocks out without ballooning when far away.
-     */
-    private fun drawLabel(
-        pose: PoseStack,
-        bufferSource: MultiBufferSource.BufferSource,
-        font: net.minecraft.client.gui.Font,
-        cameraPos: Vec3,
-        worldPos: Vec3,
-        otherEnd: Vec3,
-        text: String,
-        color: Int,
-    ) {
-        if (text.isEmpty()) return
-        val dx = otherEnd.x - worldPos.x
-        val dy = otherEnd.y - worldPos.y
-        val dz = otherEnd.z - worldPos.z
-        // Yaw: along the line projected onto XZ. Pitch: separately computed
-        // from camera position (NOT from line) so the text always tilts to
-        // face the player vertically, while staying aligned with the wire
-        // horizontally — no roll around X from the line's slope.
-        val yawRad = atan2(-dx, dz).toFloat()
-
-        // Quarter-block offset along the line from this end. The label sits
-        // close to its endpoint so source-name and target-name don't run
-        // together visually.
-        val len = sqrt(dx * dx + dy * dy + dz * dz)
-        if (len < 1e-4) return
-        val ux = dx / len; val uy = dy / len; val uz = dz / len
-        val along = 0.25
-        val px = worldPos.x + ux * along
-        val py = worldPos.y + uy * along + 0.05
-        val pz = worldPos.z + uz * along
-
-        // Pitch toward camera: tilt around the (already-yawed) local X axis
-        // so the text's normal points at the camera in the vertical plane.
-        val camDx = cameraPos.x - px
-        val camDy = cameraPos.y - py
-        val camDz = cameraPos.z - pz
-        val camPlanar = sqrt(camDx * camDx + camDz * camDz)
-        val pitchRad = (-atan2(camDy, camPlanar)).toFloat()
-
-        // Scale text with distance for constant pixel size. Same formula
-        // as vanilla entity nameplates (`0.025f * dist`) but a hair smaller
-        // since we often render multiple labels close together. Hard cap
-        // at far distance so text doesn't explode.
-        val distance = sqrt(
-            (px - cameraPos.x) * (px - cameraPos.x)
-                + (py - cameraPos.y) * (py - cameraPos.y)
-                + (pz - cameraPos.z) * (pz - cameraPos.z),
-        )
-        val scale = (distance * 0.020).coerceIn(0.04, 0.5).toFloat()
-
-        pose.pushPose()
-        pose.translate(px - cameraPos.x, py - cameraPos.y, pz - cameraPos.z)
-        pose.mulPose(com.mojang.math.Axis.YP.rotation(yawRad))
-        pose.mulPose(com.mojang.math.Axis.XP.rotation(pitchRad))
-        // Negative Y flips the font's screen-down convention to up. Negative
-        // X mirrors so glyphs face the camera after the YP rotation.
-        pose.scale(-scale, -scale, scale)
-        val matrix = pose.last().pose()
-
-        val width = font.width(text)
-        val tx = -width / 2f
-        val ty = -font.lineHeight / 2f
-        // Solid-ish dark plate (75% alpha) for high contrast against any
-        // terrain texture. Font.drawInBatch's `backgroundColor` overload
-        // emits the plate as a single quad in the text RenderType, so we
-        // don't need a separate POSITION_COLOR batch.
-        val bgColor = 0xC0_00_00_00.toInt()
-        // White text (rather than channel colour) reads cleanly on the
-        // dark plate; the channel colour is already on the wire. Drop
-        // shadow on for that extra crispness MC text relies on.
-        font.drawInBatch(
-            Component.literal(text),
-            tx, ty,
-            0xFFFFFFFF.toInt(),
-            true,
-            matrix,
-            bufferSource,
-            net.minecraft.client.gui.Font.DisplayMode.NORMAL,
-            bgColor,
-            0xF0_00_F0,
-        )
-        pose.popPose()
-    }
-
     /**
      * If [total] is 1, returns [center] unchanged. Otherwise spreads N
      * endpoints around a small horizontal circle so each wire's endpoint
@@ -501,24 +362,10 @@ object WireWorldRenderer {
         val srcIdx: Int,
     )
 
-    private data class SideEndpointInfo(
-        val sb: RenderSideBinding,
-        val src: Vec3,
-        val dst: Vec3,
-        val color: Int,
-    )
-
     private data class RenderBinding(
         val source: LogicBlockEntity,
         val binding: ChannelBinding,
         val srcIdx: Int,
         val dstIdx: Int,
-    )
-
-    private data class EndpointInfo(
-        val rb: RenderBinding,
-        val src: Vec3,
-        val dst: Vec3,
-        val color: Int,
     )
 }
