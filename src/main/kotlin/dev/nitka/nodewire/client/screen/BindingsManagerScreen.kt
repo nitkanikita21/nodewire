@@ -134,6 +134,7 @@ class BindingsManagerScreen(
                                         TargetRow(
                                             description = "(${b.targetPos.toShortString()}) ${b.targetChannelName}",
                                             kindChip = "ch",
+                                            targetPos = b.targetPos,
                                         ) {
                                             NodewireNetwork.CHANNEL.sendToServer(
                                                 RemoveBindingPacket(
@@ -151,6 +152,7 @@ class BindingsManagerScreen(
                                         TargetRow(
                                             description = "(${sb.targetPos.toShortString()}) ${sideGlyph(sb.targetSide)}",
                                             kindChip = "side",
+                                            targetPos = sb.targetPos,
                                         ) {
                                             NodewireNetwork.CHANNEL.sendToServer(
                                                 RemoveBindingPacket(
@@ -200,7 +202,12 @@ class BindingsManagerScreen(
  * rest of the UI.
  */
 @Composable
-private fun TargetRow(description: String, kindChip: String, onRemove: () -> Unit) {
+private fun TargetRow(
+    description: String,
+    kindChip: String,
+    targetPos: net.minecraft.core.BlockPos,
+    onRemove: () -> Unit,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -228,6 +235,17 @@ private fun TargetRow(description: String, kindChip: String, onRemove: () -> Uni
                 kindChip,
                 style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceMuted),
             )
+        }
+        Button(
+            onClick = {
+                dev.nitka.nodewire.client.highlight.BlockHighlightRenderer.highlight(targetPos)
+                postHighlightChatMessage(targetPos)
+            },
+            style = ButtonDefaults.outlined().copy(
+                padding = PaddingValues(horizontal = NwTheme.dimens.space6, vertical = NwTheme.dimens.space2),
+            ),
+        ) {
+            Text("◎", style = NwTheme.typography.caption)
         }
         Button(
             onClick = onRemove,
@@ -313,6 +331,30 @@ private fun GroupHeader(
  * letters because horizontal arrows on a 2D screen are ambiguous without a
  * world-axis legend.
  */
+private fun postHighlightChatMessage(pos: net.minecraft.core.BlockPos) {
+    val command = "/nodewire highlight ${pos.x} ${pos.y} ${pos.z}"
+    val component = net.minecraft.network.chat.Component
+        .literal("Highlight (${pos.x}, ${pos.y}, ${pos.z}) again")
+        .withStyle { style ->
+            style
+                .withColor(net.minecraft.ChatFormatting.YELLOW)
+                .withUnderlined(true)
+                .withClickEvent(
+                    net.minecraft.network.chat.ClickEvent(
+                        net.minecraft.network.chat.ClickEvent.Action.RUN_COMMAND,
+                        command,
+                    ),
+                )
+                .withHoverEvent(
+                    net.minecraft.network.chat.HoverEvent(
+                        net.minecraft.network.chat.HoverEvent.Action.SHOW_TEXT,
+                        net.minecraft.network.chat.Component.literal("Click to re-highlight"),
+                    ),
+                )
+        }
+    net.minecraft.client.Minecraft.getInstance().player?.displayClientMessage(component, false)
+}
+
 internal fun sideGlyph(face: net.minecraft.core.Direction): String = when (face) {
     net.minecraft.core.Direction.UP    -> "↑"
     net.minecraft.core.Direction.DOWN  -> "↓"
