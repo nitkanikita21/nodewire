@@ -1,13 +1,17 @@
 package dev.nitka.nodewire.client.command
 
 import com.mojang.brigadier.arguments.IntegerArgumentType
+import com.mojang.logging.LogUtils
 import dev.nitka.nodewire.client.highlight.BlockHighlightRenderer
 import net.minecraft.commands.Commands
 import net.minecraft.commands.arguments.coordinates.BlockPosArgument
 import net.minecraftforge.client.event.RegisterClientCommandsEvent
 
 object HighlightCommand {
+    private val LOG = LogUtils.getLogger()
+
     fun register(event: RegisterClientCommandsEvent) {
+        LOG.info("Registering /nodewire highlight client command")
         event.dispatcher.register(
             Commands.literal("nodewire").then(
                 Commands.literal("highlight").then(
