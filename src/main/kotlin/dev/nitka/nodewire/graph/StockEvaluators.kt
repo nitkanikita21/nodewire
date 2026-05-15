@@ -170,11 +170,76 @@ object StockEvaluators {
     val Convert: NodeEvaluator = { config, inputs ->
         val src = config.getString("sourceType").ifEmpty { "INT" }
         val tgt = config.getString("targetType").ifEmpty { "FLOAT" }
+        val mode = config.getString("mode")
         val out: PinValue = when (src to tgt) {
             "INT" to "FLOAT" -> PinValue.Float(intIn(inputs, "in").toFloat())
             "FLOAT" to "INT" -> PinValue.Int(floatIn(inputs, "in").toInt())
             "BOOL" to "INT" -> PinValue.Int(if (boolIn(inputs, "in")) 1 else 0)
             "INT" to "BOOL" -> PinValue.Bool(intIn(inputs, "in") != 0)
+
+            "INT" to "REDSTONE" -> {
+                val x = intIn(inputs, "in")
+                val v = when (mode) {
+                    "modulo" -> ((x % 16) + 16) % 16
+                    "threshold" -> if (x >= config.getInt("threshold")) 15 else 0
+                    "scaled" -> {
+                        val lo = config.getInt("min"); val hi = config.getInt("max")
+                        if (hi == lo) 0 else (((x - lo).toFloat() / (hi - lo)) * 15f).toInt().coerceIn(0, 15)
+                    }
+                    else -> x.coerceIn(0, 15) // "clamp"
+                }
+                PinValue.Redstone(v)
+            }
+            "FLOAT" to "REDSTONE" -> {
+                val x = floatIn(inputs, "in")
+                val v = when (mode) {
+                    "threshold" -> if (x >= config.getFloat("thresholdF")) 15 else 0
+                    else -> { // "scaled"
+                        val lo = config.getFloat("minF"); val hi = config.getFloat("maxF")
+                        if (hi == lo) 0 else (((x - lo) / (hi - lo)) * 15f).toInt().coerceIn(0, 15)
+                    }
+                }
+                PinValue.Redstone(v)
+            }
+            "BOOL" to "REDSTONE" -> {
+                val x = boolIn(inputs, "in")
+                val v = when (mode) {
+                    "level" -> if (x) config.getInt("level").coerceIn(0, 15) else 0
+                    else -> if (x) 15 else 0 // "hi"
+                }
+                PinValue.Redstone(v)
+            }
+            "REDSTONE" to "INT" -> {
+                val signal = ((inputs["in"] as? PinValue.Redstone)?.value ?: 0).coerceIn(0, 15)
+                val v = when (mode) {
+                    "scaled" -> {
+                        val lo = config.getInt("min"); val hi = config.getInt("max")
+                        if (hi == lo) lo else lo + ((signal.toFloat() / 15f) * (hi - lo)).toInt()
+                    }
+                    else -> signal // "raw"
+                }
+                PinValue.Int(v)
+            }
+            "REDSTONE" to "FLOAT" -> {
+                val signal = ((inputs["in"] as? PinValue.Redstone)?.value ?: 0).coerceIn(0, 15)
+                val v = when (mode) {
+                    "raw" -> signal.toFloat()
+                    "scaled" -> {
+                        val lo = config.getFloat("minF"); val hi = config.getFloat("maxF")
+                        if (hi == lo) lo else lo + (signal / 15f) * (hi - lo)
+                    }
+                    else -> signal / 15f // "normalized"
+                }
+                PinValue.Float(v)
+            }
+            "REDSTONE" to "BOOL" -> {
+                val signal = ((inputs["in"] as? PinValue.Redstone)?.value ?: 0).coerceIn(0, 15)
+                val v = when (mode) {
+                    "threshold" -> signal >= config.getInt("threshold")
+                    else -> signal > 0 // "any"
+                }
+                PinValue.Bool(v)
+            }
             else -> PinValue.default(PinType.fromName(tgt))
         }
         mapOf("out" to out)
