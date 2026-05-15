@@ -1,12 +1,15 @@
 package dev.nitka.nodewire
 
 import com.mojang.logging.LogUtils
+import dev.nitka.nodewire.command.HighlightServerCommand
 import dev.nitka.nodewire.graph.StockNodeTypes
 import dev.nitka.nodewire.net.NodewireNetwork
 import net.minecraftforge.api.distmarker.Dist
+import net.minecraftforge.event.RegisterCommandsEvent
 import net.minecraftforge.fml.common.Mod
 import net.minecraftforge.fml.loading.FMLEnvironment
 import org.slf4j.Logger
+import thedarkcolour.kotlinforforge.forge.FORGE_BUS
 import thedarkcolour.kotlinforforge.forge.MOD_BUS
 
 @Mod(Nodewire.ID)
@@ -18,6 +21,7 @@ object Nodewire {
         Registry.register(MOD_BUS)
         StockNodeTypes.registerAll()
         NodewireNetwork.register()
+        FORGE_BUS.addListener<RegisterCommandsEvent>(HighlightServerCommand::register)
         if (FMLEnvironment.dist == Dist.CLIENT) {
             dev.nitka.nodewire.client.NodewireClient.registerOnModBus(MOD_BUS)
         }

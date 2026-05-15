@@ -55,5 +55,10 @@ object NodewireNetwork {
             .decoder(SetSideBindingNamePacket::decode)
             .consumerMainThread(SetSideBindingNamePacket::handle)
             .add()
+        CHANNEL.messageBuilder(HighlightPacket::class.java, id++)
+            .encoder(HighlightPacket::encode)
+            .decoder(HighlightPacket::decode)
+            .consumerMainThread(HighlightPacket::handle)
+            .add()
     }
 }
