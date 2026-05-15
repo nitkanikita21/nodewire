@@ -713,10 +713,10 @@ object NodeConfigContent {
     }
 
     /**
-     * Convert: source type selector + target type selector.
-     * Valid pairs: INT↔FLOAT, INT↔BOOL (BOOL↔FLOAT excluded).
-     * Switching source resets target to the first valid option if the
-     * current target is no longer valid for the new source.
+     * Convert: source type + target type + (for REDSTONE pairs) mode selectors.
+     * Valid pairs: INT↔FLOAT, INT↔BOOL, INT/FLOAT/BOOL→REDSTONE, REDSTONE→INT/FLOAT/BOOL.
+     * Switching source resets target to the first valid option if the current target is
+     * no longer valid for the new source. Mode row appears only for REDSTONE pairs.
      */
     val Convert: @Composable (Node) -> Unit = { node ->
         val editor = LocalEditorState.current
@@ -726,6 +726,9 @@ object NodeConfigContent {
         var target by remember(node.id) {
             mutableStateOf(PinType.fromName(node.config.getString("targetType").ifEmpty { PinType.FLOAT.name }))
         }
+        var mode by remember(node.id) {
+            mutableStateOf(node.config.getString("mode"))
+        }
         Column(verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2)) {
             LabeledRow("From") {
                 Select(
@@ -733,10 +736,12 @@ object NodeConfigContent {
                     selected = source,
                     onSelect = { next ->
                         source = next
-                        val newTarget = validTargetsFor(next).firstOrNull { it == target }
-                            ?: validTargetsFor(next).first()
+                        val validTargets = validTargetsFor(next)
+                        val newTarget = if (target in validTargets) target else validTargets.first()
                         target = newTarget
                         editor?.changeConvertTypes(node.id, next, newTarget)
+                        // Sync local mode after mutator default-applies it.
+                        mode = node.config.getString("mode") // will be empty or default
                     },
                     label = { it.name.lowercase() },
                 )
@@ -748,19 +753,74 @@ object NodeConfigContent {
                     onSelect = { next ->
                         target = next
                         editor?.changeConvertTypes(node.id, source, next)
+                        mode = node.config.getString("mode")
                     },
                     label = { it.name.lowercase() },
                 )
             }
+            val modes = convertModesFor(source, target)
+            if (modes.isNotEmpty()) {
+                LabeledRow("Mode") {
+                    Select(
+                        options = modes,
+                        selected = mode.ifEmpty { modes.first() },
+                        onSelect = { next ->
+                            mode = next
+                            editor?.changeConvertMode(node.id, next)
+                        },
+                        label = { it },
+                    )
+                }
+                ConvertModeParams(node, source, target, mode.ifEmpty { modes.first() }, editor)
+            }
         }
     }
 
-    private val CONVERT_SOURCES = listOf(PinType.INT, PinType.FLOAT, PinType.BOOL)
+    @Composable
+    private fun ConvertModeParams(node: Node, source: PinType, target: PinType, mode: String, editor: EditorState?) {
+        when {
+            // *-to-REDSTONE
+            source == PinType.INT   && target == PinType.REDSTONE && mode == "threshold" ->
+                IntField(node, "threshold", "Threshold", editor)
+            source == PinType.INT   && target == PinType.REDSTONE && mode == "scaled" -> {
+                IntField(node, "min", "Min", editor); IntField(node, "max", "Max", editor)
+            }
+            source == PinType.FLOAT && target == PinType.REDSTONE && mode == "threshold" ->
+                FloatField(node, "thresholdF", "Threshold", editor)
+            source == PinType.FLOAT && target == PinType.REDSTONE && mode == "scaled" -> {
+                FloatField(node, "minF", "Min", editor); FloatField(node, "maxF", "Max", editor)
+            }
+            source == PinType.BOOL  && target == PinType.REDSTONE && mode == "level" ->
+                IntField(node, "level", "Level", editor)
+            // REDSTONE-to-*
+            source == PinType.REDSTONE && target == PinType.INT   && mode == "scaled" -> {
+                IntField(node, "min", "Min", editor); IntField(node, "max", "Max", editor)
+            }
+            source == PinType.REDSTONE && target == PinType.FLOAT && mode == "scaled" -> {
+                FloatField(node, "minF", "Min", editor); FloatField(node, "maxF", "Max", editor)
+            }
+            source == PinType.REDSTONE && target == PinType.BOOL  && mode == "threshold" ->
+                IntField(node, "threshold", "Threshold", editor)
+        }
+    }
 
-    private fun validTargetsFor(src: PinType) = when (src) {
-        PinType.INT -> listOf(PinType.FLOAT, PinType.BOOL)
-        PinType.FLOAT -> listOf(PinType.INT)
-        PinType.BOOL -> listOf(PinType.INT)
+    private val CONVERT_SOURCES = listOf(PinType.INT, PinType.FLOAT, PinType.BOOL, PinType.REDSTONE)
+
+    private fun validTargetsFor(src: PinType): List<PinType> = when (src) {
+        PinType.INT      -> listOf(PinType.FLOAT, PinType.BOOL, PinType.REDSTONE)
+        PinType.FLOAT    -> listOf(PinType.INT, PinType.REDSTONE)
+        PinType.BOOL     -> listOf(PinType.INT, PinType.REDSTONE)
+        PinType.REDSTONE -> listOf(PinType.INT, PinType.FLOAT, PinType.BOOL)
+        else -> emptyList()
+    }
+
+    private fun convertModesFor(src: PinType, tgt: PinType): List<String> = when (src to tgt) {
+        PinType.INT      to PinType.REDSTONE -> listOf("clamp", "modulo", "threshold", "scaled")
+        PinType.FLOAT    to PinType.REDSTONE -> listOf("threshold", "scaled")
+        PinType.BOOL     to PinType.REDSTONE -> listOf("hi", "level")
+        PinType.REDSTONE to PinType.INT      -> listOf("raw", "scaled")
+        PinType.REDSTONE to PinType.FLOAT    -> listOf("normalized", "raw", "scaled")
+        PinType.REDSTONE to PinType.BOOL     -> listOf("any", "threshold")
         else -> emptyList()
     }
 }
