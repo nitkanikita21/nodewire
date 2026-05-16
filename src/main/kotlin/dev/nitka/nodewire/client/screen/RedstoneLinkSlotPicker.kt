@@ -104,16 +104,10 @@ private fun FrequencySlot(node: Node, editor: EditorState?, slotKey: String) {
     }
 }
 
-/**
- * Placeholder for the item icon. Task 6 will replace with a real
- * GuiGraphics.renderItem call via a new NwCanvas.drawItem extension.
- * For now: empty stack → nothing, non-empty → coloured square so the slot
- * shows it has content.
- */
 @Composable
 private fun ItemSlotIcon(stack: ItemStack) {
     if (stack.isEmpty) return
-    Box(modifier = Modifier.size(16).background(NwTheme.colors.accent))
+    dev.nitka.nodewire.ui.components.ItemIcon(stack)
 }
 
 private fun setSlot(node: Node, editor: EditorState?, slotKey: String, stack: ItemStack) {

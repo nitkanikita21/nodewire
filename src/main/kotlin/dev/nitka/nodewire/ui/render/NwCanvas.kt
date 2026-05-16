@@ -132,4 +132,14 @@ class NwCanvas(val gfx: GuiGraphics, val font: Font) {
     fun flush() {
         gfx.flush()
     }
+
+    /**
+     * Render a vanilla item icon at node-local (x, y), 16×16 vanilla style,
+     * with the count/durability decorations on top. Honors the offset stack.
+     */
+    fun drawItem(stack: net.minecraft.world.item.ItemStack, x: Int, y: Int) {
+        if (stack.isEmpty) return
+        gfx.renderItem(stack, ox + x, oy + y)
+        gfx.renderItemDecorations(font, stack, ox + x, oy + y)
+    }
 }
