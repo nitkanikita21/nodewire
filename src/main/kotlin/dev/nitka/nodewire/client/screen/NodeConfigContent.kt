@@ -13,14 +13,11 @@ import dev.nitka.nodewire.ui.components.Select
 import dev.nitka.nodewire.ui.components.Text
 import dev.nitka.nodewire.ui.components.TextInput
 import dev.nitka.nodewire.ui.core.Modifier
-import dev.nitka.nodewire.ui.input.PointerEvent
 import dev.nitka.nodewire.ui.layout.Alignment
 import dev.nitka.nodewire.ui.layout.Arrangement
 import dev.nitka.nodewire.ui.layout.Column
 import dev.nitka.nodewire.ui.layout.Box
 import dev.nitka.nodewire.ui.layout.Row
-import dev.nitka.nodewire.ui.modifier.input.onHover
-import dev.nitka.nodewire.ui.modifier.input.pointerInput
 import dev.nitka.nodewire.ui.modifier.layout.fillMaxWidth
 import dev.nitka.nodewire.ui.modifier.layout.padding
 import dev.nitka.nodewire.ui.modifier.layout.weight
@@ -284,28 +281,10 @@ object NodeConfigContent {
         }
     }
 
-    /**
-     * Stub: two empty 18×18 boxes for the redstone-link frequency pair.
-     * Real picker (slots + popover + JEI/EMI drag) lands in a later task.
-     */
-    val RedstoneLinkFrequency: @Composable (Node) -> Unit = { _ ->
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(NwTheme.dimens.space4),
-            verticalAlignment = Alignment.Center,
-            modifier = Modifier.fillMaxWidth().padding(top = 4),
-        ) {
-            Text("Frequency")
-            Box(modifier = Modifier
-                .background(NwTheme.colors.surface)
-                .border(BorderStroke(1, NwTheme.colors.border))
-                .padding(all = 9),
-            ) {}
-            Box(modifier = Modifier
-                .background(NwTheme.colors.surface)
-                .border(BorderStroke(1, NwTheme.colors.border))
-                .padding(all = 9),
-            ) {}
-        }
+    /** Redstone-link frequency: two ghost slots + inline inventory popover. */
+    val RedstoneLinkFrequency: @Composable (Node) -> Unit = { node ->
+        val editor = LocalEditorState.current
+        RedstoneLinkFrequencySlots(node, editor)
     }
 
     private val CHANNEL_TYPES = listOf(
