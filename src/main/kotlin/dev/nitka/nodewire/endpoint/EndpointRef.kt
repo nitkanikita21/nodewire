@@ -59,26 +59,28 @@ data class EndpointRef(val backendId: ResourceLocation, val payload: EndpointPay
         private fun wrapTag(tag: net.minecraft.nbt.Tag): CompoundTag =
             CompoundTag().also { it.put("v", tag) }
 
-        @Suppress("UNCHECKED_CAST")
         val CODEC: Codec<EndpointRef> = RecordCodecBuilder.create { i ->
             i.group(
                 ResourceLocation.CODEC.fieldOf("backend").forGetter(EndpointRef::backendId),
                 CompoundTag.CODEC.fieldOf("payload").forGetter { ref ->
                     val backend = EndpointBackends.get(ref.backendId)
-                    if (backend == null || ref.payload is UnknownPayload) {
-                        (ref.payload as? UnknownPayload)?.wrapper ?: CompoundTag()
-                    } else {
-                        val rawTag = (backend.payloadCodec as Codec<EndpointPayload>)
-                            .encodeStart(net.minecraft.nbt.NbtOps.INSTANCE, ref.payload)
-                            .result().orElse(CompoundTag())
-                        wrapTag(rawTag)
+                    when {
+                        ref.payload is UnknownPayload -> ref.payload.wrapper
+                        backend == null -> CompoundTag()
+                        else -> {
+                            val rawTag = @Suppress("UNCHECKED_CAST") (backend.payloadCodec as Codec<EndpointPayload>)
+                                .encodeStart(net.minecraft.nbt.NbtOps.INSTANCE, ref.payload)
+                                .result().orElse(CompoundTag())
+                            wrapTag(rawTag)
+                        }
                     }
                 },
             ).apply(i) { id, payloadWrapper ->
                 val backend = EndpointBackends.get(id)
                 val innerTag = payloadWrapper.get("v") ?: payloadWrapper
                 val payload: EndpointPayload = if (backend != null) {
-                    (backend.payloadCodec as Codec<EndpointPayload>)
+                    @Suppress("UNCHECKED_CAST") val codec = backend.payloadCodec as Codec<EndpointPayload>
+                    codec
                         .parse(net.minecraft.nbt.NbtOps.INSTANCE, innerTag)
                         .result().orElse(UnknownPayload(payloadWrapper))
                 } else {

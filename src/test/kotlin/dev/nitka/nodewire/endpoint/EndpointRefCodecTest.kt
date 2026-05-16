@@ -42,5 +42,10 @@ class EndpointRefCodecTest {
         val ref = EndpointRef.CODEC.parse(JsonOps.INSTANCE, json).result().orElseThrow()
         assertEquals(ResourceLocation("test", "missing"), ref.backendId)
         assertTrue(ref.payload is UnknownPayload)
+
+        // Verify wrapper bytes survive a round-trip when backend isn't registered
+        val reencoded = EndpointRef.CODEC.encodeStart(JsonOps.INSTANCE, ref).result().orElseThrow()
+        val expected = com.google.gson.JsonParser.parseString(raw)
+        assertEquals(expected, reencoded)
     }
 }
