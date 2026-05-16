@@ -147,7 +147,7 @@ class BindingsManagerScreen(
                                                     RemoveBindingPacket(
                                                         sourcePos = sourceBe.blockPos,
                                                         sourceChannelName = b.sourceChannelName,
-                                                        targetPos = b.target.payload.blockPos,
+                                                        target = b.target,
                                                         kind = RemoveBindingPacket.Kind.CHANNEL,
                                                         extra = b.targetChannelName,
                                                     ),
@@ -180,7 +180,7 @@ class BindingsManagerScreen(
                                                     RemoveBindingPacket(
                                                         sourcePos = sourceBe.blockPos,
                                                         sourceChannelName = sb.sourceChannelName,
-                                                        targetPos = sb.target.payload.blockPos,
+                                                        target = sb.target,
                                                         kind = RemoveBindingPacket.Kind.SIDE,
                                                         extra = sb.targetSide.name,
                                                     ),

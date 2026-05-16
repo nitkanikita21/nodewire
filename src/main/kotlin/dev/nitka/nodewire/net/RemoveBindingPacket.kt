@@ -2,6 +2,7 @@ package dev.nitka.nodewire.net
 
 import com.mojang.logging.LogUtils
 import dev.nitka.nodewire.block.LogicBlockEntity
+import dev.nitka.nodewire.endpoint.EndpointRef
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.network.FriendlyByteBuf
@@ -23,7 +24,7 @@ import java.util.function.Supplier
 class RemoveBindingPacket(
     val sourcePos: BlockPos,
     val sourceChannelName: String,
-    val targetPos: BlockPos,
+    val target: EndpointRef,
     val kind: Kind,
     val extra: String,
 ) {
@@ -44,11 +45,11 @@ class RemoveBindingPacket(
                 return@enqueueWork
             }
             val srcBe = level.getBlockEntity(sourcePos) as? LogicBlockEntity ?: return@enqueueWork
+            val targetPos = target.payload.blockPos
             val ok = when (kind) {
                 Kind.CHANNEL -> srcBe.removeBinding(sourceChannelName, targetPos, extra)
                 Kind.SIDE -> {
-                    val side = runCatching { Direction.valueOf(extra) }.getOrNull()
-                        ?: return@enqueueWork
+                    val side = Direction.byName(extra) ?: return@enqueueWork
                     srcBe.removeSideBinding(sourceChannelName, targetPos, side)
                 }
             }
@@ -74,7 +75,7 @@ class RemoveBindingPacket(
                 i.group(
                     net.minecraft.core.BlockPos.CODEC.fieldOf("src_pos").forGetter(RemoveBindingPacket::sourcePos),
                     com.mojang.serialization.Codec.STRING.fieldOf("src_ch").forGetter(RemoveBindingPacket::sourceChannelName),
-                    net.minecraft.core.BlockPos.CODEC.fieldOf("tgt_pos").forGetter(RemoveBindingPacket::targetPos),
+                    EndpointRef.CODEC.fieldOf("target").forGetter(RemoveBindingPacket::target),
                     KIND_CODEC.fieldOf("kind").forGetter(RemoveBindingPacket::kind),
                     com.mojang.serialization.Codec.STRING.fieldOf("extra").forGetter(RemoveBindingPacket::extra),
                 ).apply(i, ::RemoveBindingPacket)
