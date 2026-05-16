@@ -1,0 +1,41 @@
+// src/test/kotlin/dev/nitka/nodewire/endpoint/EndpointBackendsTest.kt
+package dev.nitka.nodewire.endpoint
+
+import com.mojang.serialization.Codec
+import net.minecraft.core.BlockPos
+import net.minecraft.resources.ResourceLocation
+import net.minecraft.world.phys.Vec3
+import org.junit.jupiter.api.Assertions.*
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Test
+
+class EndpointBackendsTest {
+    private object FakePayload : EndpointPayload { override val blockPos: BlockPos = BlockPos.ZERO }
+
+    private class FakeBackend(override val id: ResourceLocation) : EndpointBackend {
+        override val payloadCodec: Codec<out EndpointPayload> = Codec.unit(FakePayload)
+        override fun resolveBlockEntity(level: net.minecraft.world.level.Level, payload: EndpointPayload) = null
+        override fun worldCenter(level: net.minecraft.world.level.Level, payload: EndpointPayload): Vec3? = null
+        override fun claims(level: net.minecraft.world.level.Level, worldPos: BlockPos): EndpointPayload? = null
+    }
+
+    @BeforeEach fun reset() { EndpointBackends.clearForTests() }
+
+    @Test fun `register and get round-trip`() {
+        val a = FakeBackend(ResourceLocation("test", "a"))
+        EndpointBackends.register(a)
+        assertSame(a, EndpointBackends.get(ResourceLocation("test", "a")))
+    }
+
+    @Test fun `unknown id returns null`() {
+        assertNull(EndpointBackends.get(ResourceLocation("test", "x")))
+    }
+
+    @Test fun `all preserves insertion order`() {
+        val a = FakeBackend(ResourceLocation("test", "a"))
+        val b = FakeBackend(ResourceLocation("test", "b"))
+        EndpointBackends.register(a)
+        EndpointBackends.register(b)
+        assertEquals(listOf(a, b), EndpointBackends.all().toList())
+    }
+}
