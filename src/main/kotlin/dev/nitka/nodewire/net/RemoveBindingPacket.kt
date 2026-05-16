@@ -7,6 +7,7 @@ import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.world.level.block.Block
+import net.minecraft.world.phys.Vec3
 import net.minecraftforge.network.NetworkEvent
 import org.slf4j.Logger
 import java.util.function.Supplier
@@ -39,8 +40,11 @@ class RemoveBindingPacket(
         c.enqueueWork {
             val player = c.sender ?: return@enqueueWork
             val level = player.level()
-            val center = sourcePos.center
-            if (player.distanceToSqr(center.x, center.y, center.z) > MAX_REACH_SQ) {
+            // For ship-mounted sources, sourcePos is ship-local (shipyard coords);
+            // compare distance in world space via the backend's transform.
+            val srcRef = EndpointRef.from(level, sourcePos)
+            val srcCenter = srcRef.worldCenter(level) ?: Vec3.atCenterOf(sourcePos)
+            if (player.distanceToSqr(srcCenter) > MAX_REACH_SQ) {
                 LOG.warn("Remove rejected: source too far from {}", player.gameProfile.name)
                 return@enqueueWork
             }
