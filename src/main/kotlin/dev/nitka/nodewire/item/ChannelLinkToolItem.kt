@@ -109,8 +109,9 @@ class ChannelLinkToolItem(props: Properties) : Item(props) {
         val targetSide = ctx.clickedFace
         // No adjacency requirement — virtual signals travel via VirtualSignalMap
         // surfaced through a Level mixin, so the source can be anywhere.
+        val targetRef = dev.nitka.nodewire.endpoint.EndpointRef.from(mc.level!!, targetPos)
         NodewireNetwork.CHANNEL.sendToServer(
-            BindSideChannelPacket(sourcePos, sourceName, targetPos, targetSide),
+            BindSideChannelPacket(sourcePos, sourceName, targetRef, targetSide),
         )
         actionBar(
             "Bound ${sourcePos.toShortString()}/$sourceName → ${targetPos.toShortString()} ${targetSide.name.lowercase()}",

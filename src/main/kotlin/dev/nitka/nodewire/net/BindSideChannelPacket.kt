@@ -2,6 +2,7 @@ package dev.nitka.nodewire.net
 
 import com.mojang.logging.LogUtils
 import dev.nitka.nodewire.block.LogicBlockEntity
+import dev.nitka.nodewire.endpoint.EndpointRef
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.network.FriendlyByteBuf
@@ -13,13 +14,13 @@ import java.util.function.Supplier
 /**
  * Client → server: commit a drive-by-wire side-binding. The source is a
  * LogicBlockEntity at [sourcePos] with channel [sourceChannelName]; the
- * target is the block at [targetPos] driven on face [targetSide]. Server
- * validates: adjacency, channel exists, type is redstone-coercible.
+ * target is the block referenced by [target] driven on face [targetSide].
+ * Server validates: reach, channel exists, type is redstone-coercible.
  */
 class BindSideChannelPacket(
     val sourcePos: BlockPos,
     val sourceChannelName: String,
-    val targetPos: BlockPos,
+    val target: EndpointRef,
     val targetSide: Direction,
 ) {
     fun encode(buf: FriendlyByteBuf) {
@@ -31,13 +32,14 @@ class BindSideChannelPacket(
         c.enqueueWork {
             val player = c.sender ?: return@enqueueWork
             val level = player.level()
-            val center = sourcePos.center
-            if (player.distanceToSqr(center.x, center.y, center.z) > MAX_REACH_SQ) {
+            val srcRef = EndpointRef.from(level, sourcePos)
+            val srcCenter = srcRef.worldCenter(level) ?: net.minecraft.world.phys.Vec3.atCenterOf(sourcePos)
+            if (player.distanceToSqr(srcCenter.x, srcCenter.y, srcCenter.z) > MAX_REACH_SQ) {
                 LOG.warn("SideBind rejected: source too far from {}", player.gameProfile.name)
                 return@enqueueWork
             }
             val srcBe = level.getBlockEntity(sourcePos) as? LogicBlockEntity ?: return@enqueueWork
-            val ok = srcBe.addSideBinding(sourceChannelName, targetPos, targetSide)
+            val ok = srcBe.addSideBinding(sourceChannelName, target.payload.blockPos, targetSide)
             if (ok) {
                 level.sendBlockUpdated(
                     sourcePos, srcBe.blockState, srcBe.blockState, Block.UPDATE_CLIENTS,
@@ -61,7 +63,7 @@ class BindSideChannelPacket(
                 i.group(
                     net.minecraft.core.BlockPos.CODEC.fieldOf("src_pos").forGetter(BindSideChannelPacket::sourcePos),
                     com.mojang.serialization.Codec.STRING.fieldOf("src_ch").forGetter(BindSideChannelPacket::sourceChannelName),
-                    net.minecraft.core.BlockPos.CODEC.fieldOf("tgt_pos").forGetter(BindSideChannelPacket::targetPos),
+                    EndpointRef.CODEC.fieldOf("target").forGetter(BindSideChannelPacket::target),
                     net.minecraft.core.Direction.CODEC.fieldOf("tgt_side").forGetter(BindSideChannelPacket::targetSide),
                 ).apply(i, ::BindSideChannelPacket)
             }
