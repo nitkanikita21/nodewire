@@ -274,7 +274,7 @@ class CodecRoundTripTest {
         dev.nitka.nodewire.block.SideBinding.CODEC,
         dev.nitka.nodewire.block.SideBinding(
             sourceChannelName = "latch",
-            targetPos = net.minecraft.core.BlockPos(10, 20, 30),
+            target = EndpointRef(WorldBackend.id, WorldPayload(BlockPos(10, 20, 30))),
             targetSide = net.minecraft.core.Direction.UP,
         ),
     )
@@ -283,7 +283,7 @@ class CodecRoundTripTest {
         dev.nitka.nodewire.block.SideBinding.CODEC,
         dev.nitka.nodewire.block.SideBinding(
             sourceChannelName = "fire",
-            targetPos = net.minecraft.core.BlockPos.ZERO,
+            target = EndpointRef(WorldBackend.id, WorldPayload(BlockPos.ZERO)),
             targetSide = net.minecraft.core.Direction.NORTH,
         ),
     )

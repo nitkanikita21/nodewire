@@ -179,7 +179,7 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
     ): Boolean {
         val removed = sideBindings.removeAll {
             it.sourceChannelName == sourceChannelName
-                && it.targetPos == targetPos
+                && it.target.payload.blockPos == targetPos
                 && it.targetSide == targetSide
         }
         if (removed) {
@@ -226,12 +226,14 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
         // VirtualSignalMap + a mixin into Level.getBestNeighborSignal, so
         // the target can be arbitrarily far from the source.
 
+        if (level == null) return false
         sideBindings.removeAll {
             it.sourceChannelName == sourceChannelName
-                && it.targetPos == targetPos
+                && it.target.payload.blockPos == targetPos
                 && it.targetSide == targetSide
         }
-        sideBindings.add(SideBinding(sourceChannelName, targetPos, targetSide))
+        val ref = dev.nitka.nodewire.endpoint.EndpointRef.from(level!!, targetPos)
+        sideBindings.add(SideBinding(sourceChannelName, ref, targetSide))
         setChanged()
         return true
     }
@@ -244,7 +246,7 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
     ) {
         val idx = sideBindings.indexOfFirst {
             it.sourceChannelName == sourceChannelName
-                && it.targetPos == targetPos
+                && it.target.payload.blockPos == targetPos
                 && it.targetSide == targetSide
         }
         if (idx < 0) return
@@ -342,18 +344,18 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
             for (sb in sideBindings) {
                 val value = perChannelValueCache[sb.sourceChannelName] ?: continue
                 val r = redstoneOf(value)
-                map.put(pos, sb.targetPos, sb.targetSide, r)
+                map.put(pos, sb.target.payload.blockPos, sb.targetSide, r)
             }
             // Schedule a neighbour update on each affected target so it
             // re-polls its power state; without this most blocks won't
             // notice until something else perturbs them.
             for (sb in sideBindings) {
-                val targetState = level.getBlockState(sb.targetPos)
+                val targetState = level.getBlockState(sb.target.payload.blockPos)
                 if (!targetState.isAir) {
-                    level.neighborChanged(sb.targetPos, targetState.block, sb.targetPos)
+                    level.neighborChanged(sb.target.payload.blockPos, targetState.block, sb.target.payload.blockPos)
                     // Also poke updateNeighborsAt so block entities that
                     // chain (e.g. piston extensions) see the change.
-                    level.updateNeighborsAt(sb.targetPos, targetState.block)
+                    level.updateNeighborsAt(sb.target.payload.blockPos, targetState.block)
                 }
             }
         }
@@ -399,10 +401,10 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
                 // would stay high indefinitely (vanilla only re-reads on
                 // neighbour-change events, not on a passive value drop).
                 for (sb in sideBindings) {
-                    val tgt = lvl.getBlockState(sb.targetPos)
+                    val tgt = lvl.getBlockState(sb.target.payload.blockPos)
                     if (!tgt.isAir) {
-                        lvl.neighborChanged(sb.targetPos, tgt.block, sb.targetPos)
-                        lvl.updateNeighborsAt(sb.targetPos, tgt.block)
+                        lvl.neighborChanged(sb.target.payload.blockPos, tgt.block, sb.target.payload.blockPos)
+                        lvl.updateNeighborsAt(sb.target.payload.blockPos, tgt.block)
                     }
                 }
             }
@@ -489,7 +491,7 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
         // signal travels via VirtualSignalMap, not via vanilla neighbour
         // chain. Unloaded chunks are tolerated: we just stop emitting until
         // they reload (don't prune, would surprise the user).
-        val state = level.getBlockState(sb.targetPos)
+        val state = level.getBlockState(sb.target.payload.blockPos)
         if (state.isAir) return true
         return false
     }

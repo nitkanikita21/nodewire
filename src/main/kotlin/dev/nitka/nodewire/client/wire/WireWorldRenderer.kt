@@ -138,9 +138,9 @@ object WireWorldRenderer {
             val srcKey = sb.source.blockPos.asLong()
             val src = fanOffset(sb.source.blockPos.center, sb.srcIdx, outTotal[srcKey]!!)
             // Target end of the wire = the centre of the bound face on
-            // the target block. That's targetPos.center pushed half a
+            // the target block. That's target.payload.blockPos.center pushed half a
             // block in the targetSide direction.
-            val tCenter = sb.binding.targetPos.center
+            val tCenter = sb.binding.target.payload.blockPos.center
             val n = sb.binding.targetSide.normal
             val dst = Vec3(
                 tCenter.x + n.x * 0.5,
@@ -149,7 +149,7 @@ object WireWorldRenderer {
             )
             val color = colorForBinding(sb.source, sb.binding.sourceChannelName)
             drawStraightWire(builder, matrix, src, dst, cameraPos, color)
-            drawFaceFrame(builder, matrix, sb.binding.targetPos, sb.binding.targetSide, color)
+            drawFaceFrame(builder, matrix, sb.binding.target.payload.blockPos, sb.binding.targetSide, color)
         }
         pose.popPose()
         bufferSource.endBatch(WIRE_TYPE)

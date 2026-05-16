@@ -158,9 +158,9 @@ class BindingsManagerScreen(
                                     }
                                     for (sb in mySideBindings) {
                                         TargetRow(
-                                            description = "(${sb.targetPos.toShortString()}) ${sideGlyph(sb.targetSide)}",
+                                            description = "(${sb.target.payload.blockPos.toShortString()}) ${sideGlyph(sb.targetSide)}",
                                             kindChip = "side",
-                                            targetPos = sb.targetPos,
+                                            targetPos = sb.target.payload.blockPos,
                                             bindingName = sb.name,
                                             onRename = { newName ->
                                                 NodewireNetwork.CHANNEL.send(
@@ -168,7 +168,7 @@ class BindingsManagerScreen(
                                                     SetSideBindingNamePacket(
                                                         sourcePos = sourceBe.blockPos,
                                                         sourceChannelName = sb.sourceChannelName,
-                                                        targetPos = sb.targetPos,
+                                                        targetPos = sb.target.payload.blockPos,
                                                         targetSide = sb.targetSide,
                                                         name = newName,
                                                     ),
@@ -180,7 +180,7 @@ class BindingsManagerScreen(
                                                     RemoveBindingPacket(
                                                         sourcePos = sourceBe.blockPos,
                                                         sourceChannelName = sb.sourceChannelName,
-                                                        targetPos = sb.targetPos,
+                                                        targetPos = sb.target.payload.blockPos,
                                                         kind = RemoveBindingPacket.Kind.SIDE,
                                                         extra = sb.targetSide.name,
                                                     ),
