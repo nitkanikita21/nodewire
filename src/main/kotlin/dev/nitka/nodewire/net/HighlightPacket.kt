@@ -1,6 +1,6 @@
 package dev.nitka.nodewire.net
 
-import net.minecraft.core.BlockPos
+import dev.nitka.nodewire.endpoint.EndpointRef
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraftforge.api.distmarker.Dist
 import net.minecraftforge.fml.DistExecutor
@@ -13,10 +13,10 @@ import java.util.function.Supplier
  * `RUN_COMMAND` click events (which always go to the server) can still
  * trigger client-side highlight rendering.
  */
-class HighlightPacket(val pos: BlockPos, val durationMs: Long) {
+class HighlightPacket(val endpoint: EndpointRef, val durationMs: Long) {
 
     fun encode(buf: FriendlyByteBuf) {
-        buf.writeBlockPos(pos)
+        buf.writeCodec(EndpointRef.CODEC, endpoint)
         buf.writeVarLong(durationMs)
     }
 
@@ -26,7 +26,7 @@ class HighlightPacket(val pos: BlockPos, val durationMs: Long) {
             DistExecutor.unsafeRunWhenOn(Dist.CLIENT) {
                 Runnable {
                     dev.nitka.nodewire.client.highlight.BlockHighlightRenderer
-                        .highlight(pos, durationMs)
+                        .highlight(endpoint, durationMs)
                 }
             }
         }
@@ -35,7 +35,7 @@ class HighlightPacket(val pos: BlockPos, val durationMs: Long) {
 
     companion object {
         fun decode(buf: FriendlyByteBuf) = HighlightPacket(
-            buf.readBlockPos(),
+            buf.readCodec(EndpointRef.CODEC),
             buf.readVarLong(),
         )
     }

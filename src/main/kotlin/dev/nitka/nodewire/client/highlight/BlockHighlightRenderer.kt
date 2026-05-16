@@ -3,6 +3,7 @@ package dev.nitka.nodewire.client.highlight
 import com.mojang.blaze3d.vertex.DefaultVertexFormat
 import com.mojang.blaze3d.vertex.VertexConsumer
 import com.mojang.blaze3d.vertex.VertexFormat
+import dev.nitka.nodewire.endpoint.EndpointRef
 import net.minecraft.client.Minecraft
 import net.minecraft.client.renderer.RenderStateShard
 import net.minecraft.client.renderer.RenderType
@@ -15,7 +16,7 @@ import kotlin.math.sin
 
 object BlockHighlightRenderer {
 
-    private val active = ConcurrentHashMap<BlockPos, Long>()
+    private val active = ConcurrentHashMap<EndpointRef, Long>()
 
     private object Shards : RenderStateShard("", Runnable {}, Runnable {}) {
         val POSITION_COLOR = POSITION_COLOR_SHADER
@@ -43,8 +44,15 @@ object BlockHighlightRenderer {
             .createCompositeState(false),
     )
 
+    fun highlight(endpoint: EndpointRef, durationMs: Long = DEFAULT_DURATION_MS) {
+        active[endpoint] = System.currentTimeMillis() + durationMs
+    }
+
+    /** Backward-compat overload for callers that only have a [BlockPos]. */
     fun highlight(pos: BlockPos, durationMs: Long = DEFAULT_DURATION_MS) {
-        active[pos] = System.currentTimeMillis() + durationMs
+        val mc = Minecraft.getInstance()
+        val level = mc.level ?: return
+        highlight(EndpointRef.from(level, pos), durationMs)
     }
 
     fun onRender(event: RenderLevelStageEvent) {
@@ -58,6 +66,7 @@ object BlockHighlightRenderer {
         if (active.isEmpty()) return
 
         val mc = Minecraft.getInstance()
+        val level = mc.level ?: return
         val cameraPos = event.camera.position
         val pose = event.poseStack
         val bufferSource = mc.renderBuffers().bufferSource()
@@ -76,8 +85,9 @@ object BlockHighlightRenderer {
         pose.translate(-cameraPos.x, -cameraPos.y, -cameraPos.z)
         val matrix = pose.last().pose()
 
-        for (pos in active.keys) {
-            drawCubeSolid(builder, matrix, pos, r, g, b, a)
+        for (endpoint in active.keys) {
+            val center = endpoint.worldCenter(level) ?: continue
+            drawCubeSolid(builder, matrix, center.x, center.y, center.z, r, g, b, a)
         }
 
         pose.popPose()
@@ -85,50 +95,56 @@ object BlockHighlightRenderer {
     }
 
     /**
-     * Draws the six faces of a cube around [pos] as translucent quads, very
-     * slightly outset to avoid z-fight with the block's own surfaces. NO_CULL
-     * means faces render from both sides, so we don't worry about winding.
+     * Draws the six faces of a cube centred on (cx, cy, cz) as translucent
+     * quads, very slightly outset to avoid z-fight with the block's own
+     * surfaces. NO_CULL means faces render from both sides, so we don't worry
+     * about winding.
+     *
+     * For world endpoints [EndpointRef.worldCenter] returns
+     * `Vec3.atCenterOf(pos)` = `(pos.x+0.5, pos.y+0.5, pos.z+0.5)`, so the
+     * rendered cube is identical to the old `pos.x..pos.x+1` form.
+     * For ship endpoints the centre is the rotated/translated world position,
+     * so the highlight follows the ship.
      */
     private fun drawCubeSolid(
         builder: VertexConsumer,
         matrix: Matrix4f,
-        pos: BlockPos,
+        cx: Double, cy: Double, cz: Double,
         r: Int, g: Int, b: Int, a: Int,
     ) {
-        val lo = -OUTSET
-        val hi = 1.0 + OUTSET
-        val x = pos.x.toDouble(); val y = pos.y.toDouble(); val z = pos.z.toDouble()
+        val lo = -(0.5 + OUTSET)
+        val hi = 0.5 + OUTSET
 
         // -Y (bottom)
-        emit(builder, matrix, x + lo, y + lo, z + lo, r, g, b, a)
-        emit(builder, matrix, x + lo, y + lo, z + hi, r, g, b, a)
-        emit(builder, matrix, x + hi, y + lo, z + hi, r, g, b, a)
-        emit(builder, matrix, x + hi, y + lo, z + lo, r, g, b, a)
+        emit(builder, matrix, cx + lo, cy + lo, cz + lo, r, g, b, a)
+        emit(builder, matrix, cx + lo, cy + lo, cz + hi, r, g, b, a)
+        emit(builder, matrix, cx + hi, cy + lo, cz + hi, r, g, b, a)
+        emit(builder, matrix, cx + hi, cy + lo, cz + lo, r, g, b, a)
         // +Y (top)
-        emit(builder, matrix, x + lo, y + hi, z + lo, r, g, b, a)
-        emit(builder, matrix, x + hi, y + hi, z + lo, r, g, b, a)
-        emit(builder, matrix, x + hi, y + hi, z + hi, r, g, b, a)
-        emit(builder, matrix, x + lo, y + hi, z + hi, r, g, b, a)
+        emit(builder, matrix, cx + lo, cy + hi, cz + lo, r, g, b, a)
+        emit(builder, matrix, cx + hi, cy + hi, cz + lo, r, g, b, a)
+        emit(builder, matrix, cx + hi, cy + hi, cz + hi, r, g, b, a)
+        emit(builder, matrix, cx + lo, cy + hi, cz + hi, r, g, b, a)
         // -Z (north)
-        emit(builder, matrix, x + lo, y + lo, z + lo, r, g, b, a)
-        emit(builder, matrix, x + hi, y + lo, z + lo, r, g, b, a)
-        emit(builder, matrix, x + hi, y + hi, z + lo, r, g, b, a)
-        emit(builder, matrix, x + lo, y + hi, z + lo, r, g, b, a)
+        emit(builder, matrix, cx + lo, cy + lo, cz + lo, r, g, b, a)
+        emit(builder, matrix, cx + hi, cy + lo, cz + lo, r, g, b, a)
+        emit(builder, matrix, cx + hi, cy + hi, cz + lo, r, g, b, a)
+        emit(builder, matrix, cx + lo, cy + hi, cz + lo, r, g, b, a)
         // +Z (south)
-        emit(builder, matrix, x + lo, y + lo, z + hi, r, g, b, a)
-        emit(builder, matrix, x + lo, y + hi, z + hi, r, g, b, a)
-        emit(builder, matrix, x + hi, y + hi, z + hi, r, g, b, a)
-        emit(builder, matrix, x + hi, y + lo, z + hi, r, g, b, a)
+        emit(builder, matrix, cx + lo, cy + lo, cz + hi, r, g, b, a)
+        emit(builder, matrix, cx + lo, cy + hi, cz + hi, r, g, b, a)
+        emit(builder, matrix, cx + hi, cy + hi, cz + hi, r, g, b, a)
+        emit(builder, matrix, cx + hi, cy + lo, cz + hi, r, g, b, a)
         // -X (west)
-        emit(builder, matrix, x + lo, y + lo, z + lo, r, g, b, a)
-        emit(builder, matrix, x + lo, y + hi, z + lo, r, g, b, a)
-        emit(builder, matrix, x + lo, y + hi, z + hi, r, g, b, a)
-        emit(builder, matrix, x + lo, y + lo, z + hi, r, g, b, a)
+        emit(builder, matrix, cx + lo, cy + lo, cz + lo, r, g, b, a)
+        emit(builder, matrix, cx + lo, cy + hi, cz + lo, r, g, b, a)
+        emit(builder, matrix, cx + lo, cy + hi, cz + hi, r, g, b, a)
+        emit(builder, matrix, cx + lo, cy + lo, cz + hi, r, g, b, a)
         // +X (east)
-        emit(builder, matrix, x + hi, y + lo, z + lo, r, g, b, a)
-        emit(builder, matrix, x + hi, y + lo, z + hi, r, g, b, a)
-        emit(builder, matrix, x + hi, y + hi, z + hi, r, g, b, a)
-        emit(builder, matrix, x + hi, y + hi, z + lo, r, g, b, a)
+        emit(builder, matrix, cx + hi, cy + lo, cz + lo, r, g, b, a)
+        emit(builder, matrix, cx + hi, cy + lo, cz + hi, r, g, b, a)
+        emit(builder, matrix, cx + hi, cy + hi, cz + hi, r, g, b, a)
+        emit(builder, matrix, cx + hi, cy + hi, cz + lo, r, g, b, a)
     }
 
     private fun emit(

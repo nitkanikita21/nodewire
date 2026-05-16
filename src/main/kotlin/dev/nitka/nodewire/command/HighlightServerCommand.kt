@@ -2,6 +2,7 @@ package dev.nitka.nodewire.command
 
 import com.mojang.brigadier.arguments.IntegerArgumentType
 import com.mojang.logging.LogUtils
+import dev.nitka.nodewire.endpoint.EndpointRef
 import dev.nitka.nodewire.net.HighlightPacket
 import dev.nitka.nodewire.net.NodewireNetwork
 import net.minecraft.commands.Commands
@@ -33,10 +34,12 @@ object HighlightServerCommand {
                     Commands.argument("pos", BlockPosArgument.blockPos())
                         .executes { ctx ->
                             val pos = BlockPosArgument.getBlockPos(ctx, "pos")
+                            val level = ctx.source.level
                             val player = ctx.source.playerOrException
+                            val ref = EndpointRef.from(level, pos)
                             NodewireNetwork.CHANNEL.send(
                                 PacketDistributor.PLAYER.with { player },
-                                HighlightPacket(pos, DEFAULT_DURATION_MS),
+                                HighlightPacket(ref, DEFAULT_DURATION_MS),
                             )
                             1
                         }
@@ -45,10 +48,12 @@ object HighlightServerCommand {
                                 .executes { ctx ->
                                     val pos = BlockPosArgument.getBlockPos(ctx, "pos")
                                     val secs = IntegerArgumentType.getInteger(ctx, "seconds")
+                                    val level = ctx.source.level
                                     val player = ctx.source.playerOrException
+                                    val ref = EndpointRef.from(level, pos)
                                     NodewireNetwork.CHANNEL.send(
                                         PacketDistributor.PLAYER.with { player },
-                                        HighlightPacket(pos, secs * 1000L),
+                                        HighlightPacket(ref, secs * 1000L),
                                     )
                                     1
                                 },

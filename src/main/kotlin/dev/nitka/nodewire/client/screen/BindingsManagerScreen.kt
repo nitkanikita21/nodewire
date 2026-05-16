@@ -7,6 +7,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import dev.nitka.nodewire.block.LogicBlockEntity
+import dev.nitka.nodewire.endpoint.EndpointRef
 import dev.nitka.nodewire.graph.PinType
 import dev.nitka.nodewire.net.NodewireNetwork
 import dev.nitka.nodewire.net.RemoveBindingPacket
@@ -141,7 +142,7 @@ class BindingsManagerScreen(
                                         TargetRow(
                                             description = "(${b.target.payload.blockPos.toShortString()}) ${b.targetChannelName}",
                                             kindChip = "ch",
-                                            targetPos = b.target.payload.blockPos,
+                                            target = b.target,
                                             onRemove = {
                                                 NodewireNetwork.CHANNEL.sendToServer(
                                                     RemoveBindingPacket(
@@ -160,7 +161,7 @@ class BindingsManagerScreen(
                                         TargetRow(
                                             description = "(${sb.target.payload.blockPos.toShortString()}) ${sideGlyph(sb.targetSide)}",
                                             kindChip = "side",
-                                            targetPos = sb.target.payload.blockPos,
+                                            target = sb.target,
                                             bindingName = sb.name,
                                             onRename = { newName ->
                                                 NodewireNetwork.CHANNEL.send(
@@ -229,7 +230,7 @@ class BindingsManagerScreen(
 private fun TargetRow(
     description: String,
     kindChip: String,
-    targetPos: net.minecraft.core.BlockPos,
+    target: EndpointRef,
     bindingName: String = "",
     onRename: ((String) -> Unit)? = null,
     onRemove: () -> Unit,
@@ -280,8 +281,8 @@ private fun TargetRow(
         }
         Button(
             onClick = {
-                dev.nitka.nodewire.client.highlight.BlockHighlightRenderer.highlight(targetPos)
-                postHighlightChatMessage(targetPos)
+                dev.nitka.nodewire.client.highlight.BlockHighlightRenderer.highlight(target)
+                postHighlightChatMessage(target.payload.blockPos)
             },
             style = ButtonDefaults.outlined().copy(
                 padding = PaddingValues(horizontal = NwTheme.dimens.space6, vertical = NwTheme.dimens.space2),
