@@ -2,6 +2,8 @@ package dev.nitka.nodewire
 
 import com.mojang.logging.LogUtils
 import dev.nitka.nodewire.command.HighlightServerCommand
+import dev.nitka.nodewire.endpoint.EndpointBackends
+import dev.nitka.nodewire.endpoint.WorldBackend
 import dev.nitka.nodewire.graph.StockNodeTypes
 import dev.nitka.nodewire.net.NodewireNetwork
 import net.minecraftforge.api.distmarker.Dist
@@ -21,6 +23,7 @@ object Nodewire {
         Registry.register(MOD_BUS)
         StockNodeTypes.registerAll()
         NodewireNetwork.register()
+        EndpointBackends.register(WorldBackend)
         FORGE_BUS.addListener<RegisterCommandsEvent>(HighlightServerCommand::register)
         if (FMLEnvironment.dist == Dist.CLIENT) {
             dev.nitka.nodewire.client.NodewireClient.registerOnModBus(MOD_BUS)

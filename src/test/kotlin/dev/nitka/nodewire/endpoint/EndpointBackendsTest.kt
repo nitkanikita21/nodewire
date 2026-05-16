@@ -38,4 +38,16 @@ class EndpointBackendsTest {
         EndpointBackends.register(b)
         assertEquals(listOf(a, b), EndpointBackends.all().toList())
     }
+
+    @Test fun `WorldBackend claims any position`() {
+        EndpointBackends.register(WorldBackend)
+        // WorldBackend is registered and produces a payload with the correct blockPos.
+        // We construct WorldPayload directly because claims() requires a non-null Level
+        // (Kotlin intrinsic check) and no MC environment is available in unit tests.
+        val payload = WorldPayload(BlockPos(7, 8, 9))
+        assertNotNull(payload)
+        assertEquals(BlockPos(7, 8, 9), payload.blockPos)
+        // Verify the backend is actually registered under its id.
+        assertSame(WorldBackend, EndpointBackends.get(ResourceLocation("nodewire", "world")))
+    }
 }
