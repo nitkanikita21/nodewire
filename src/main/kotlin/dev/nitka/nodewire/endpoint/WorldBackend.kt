@@ -25,5 +25,7 @@ object WorldBackend : EndpointBackend {
     override fun worldCenter(level: Level, payload: EndpointPayload): Vec3? =
         Vec3.atCenterOf(payload.blockPos)
 
+    override fun worldDirection(level: Level, payload: EndpointPayload, localDir: Vec3): Vec3 = localDir
+
     override fun claims(level: Level, worldPos: BlockPos): EndpointPayload = WorldPayload(worldPos)
 }

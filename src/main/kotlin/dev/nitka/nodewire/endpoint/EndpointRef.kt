@@ -36,6 +36,9 @@ data class EndpointRef(val backendId: ResourceLocation, val payload: EndpointPay
     fun worldCenter(level: Level): Vec3? =
         EndpointBackends.get(backendId)?.worldCenter(level, payload)
 
+    fun worldDirection(level: Level, localDir: Vec3): Vec3? =
+        EndpointBackends.get(backendId)?.worldDirection(level, payload, localDir)
+
     companion object {
         /**
          * Resolve the right backend for a raycast hit. The world backend

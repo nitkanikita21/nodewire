@@ -16,6 +16,7 @@ class EndpointBackendsTest {
         override val payloadCodec: Codec<out EndpointPayload> = Codec.unit(FakePayload)
         override fun resolveBlockEntity(level: net.minecraft.world.level.Level, payload: EndpointPayload) = null
         override fun worldCenter(level: net.minecraft.world.level.Level, payload: EndpointPayload): Vec3? = null
+        override fun worldDirection(level: net.minecraft.world.level.Level, payload: EndpointPayload, localDir: Vec3): Vec3? = null
         override fun claims(level: net.minecraft.world.level.Level, worldPos: BlockPos): EndpointPayload? = null
     }
 

@@ -24,6 +24,14 @@ interface EndpointBackend {
     fun worldCenter(level: Level, payload: EndpointPayload): Vec3?
 
     /**
+     * Transform a direction vector (no translation) from the payload's local
+     * frame to world space. Used by the wire renderer to orient face frames
+     * on rotated ships / contraptions so they stick to the block face as the
+     * frame moves. World backend returns [localDir] unchanged.
+     */
+    fun worldDirection(level: Level, payload: EndpointPayload, localDir: Vec3): Vec3?
+
+    /**
      * If [worldPos] (or, for VS, a ship-local pos returned by a ship-aware
      * raycast) belongs to this backend's container, return a payload for it.
      * Otherwise null. The world backend always claims as a fallback.

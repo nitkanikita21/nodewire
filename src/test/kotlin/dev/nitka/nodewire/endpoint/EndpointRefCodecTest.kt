@@ -20,6 +20,7 @@ class EndpointRefCodecTest {
             BlockPos.CODEC.xmap(::FakePayload) { it.blockPos }
         override fun resolveBlockEntity(level: Level, payload: EndpointPayload) = null
         override fun worldCenter(level: Level, payload: EndpointPayload): Vec3? = null
+        override fun worldDirection(level: Level, payload: EndpointPayload, localDir: Vec3): Vec3? = null
         override fun claims(level: Level, worldPos: BlockPos): EndpointPayload? = FakePayload(worldPos)
     }
 

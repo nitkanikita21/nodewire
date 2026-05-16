@@ -55,6 +55,16 @@ object VsShipBackend : EndpointBackend {
         return Vec3(v.x, v.y, v.z)
     }
 
+    override fun worldDirection(level: Level, payload: EndpointPayload, localDir: Vec3): Vec3? {
+        val p = payload as? VsShipPayload ?: return null
+        val ship = level.allShips.getById(p.shipId) ?: return null
+        val matrix = if (ship is ClientShip) ship.renderTransform.toWorld else ship.transform.toWorld
+        // transformDirection ignores translation, applies only rotation + scale.
+        val v = Vector3d(localDir.x, localDir.y, localDir.z)
+        matrix.transformDirection(v, v)
+        return Vec3(v.x, v.y, v.z)
+    }
+
     override fun claims(level: Level, worldPos: BlockPos): EndpointPayload? {
         val ship = level.getLoadedShipManagingPos(worldPos) ?: return null
         return VsShipPayload(ship.id, worldPos)

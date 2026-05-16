@@ -141,18 +141,23 @@ object WireWorldRenderer {
             val srcCenter = sourceWorldCenter(sb.source, level) ?: continue
             val tCenter = sb.binding.target.worldCenter(level) ?: continue
             val src = fanOffset(srcCenter, sb.srcIdx, outTotal[srcKey]!!)
-            // Target end of the wire = the centre of the bound face on
-            // the target block. That's tCenter pushed half a block in the
-            // targetSide direction.
-            val n = sb.binding.targetSide.normal
+            // Local-frame face normal and tangent basis on that face plane.
+            // Transform each through the target backend so wire endpoint AND
+            // face-frame orientation rotate with the ship/contraption.
+            val localFace = sb.binding.targetSide
+            val ln = localFace.normal
+            val lBasis = faceBasis(localFace)
+            val wn = sb.binding.target.worldDirection(level, Vec3(ln.x.toDouble(), ln.y.toDouble(), ln.z.toDouble())) ?: continue
+            val wu = sb.binding.target.worldDirection(level, Vec3(lBasis.ux, lBasis.uy, lBasis.uz)) ?: continue
+            val wv = sb.binding.target.worldDirection(level, Vec3(lBasis.vx, lBasis.vy, lBasis.vz)) ?: continue
             val dst = Vec3(
-                tCenter.x + n.x * 0.5,
-                tCenter.y + n.y * 0.5,
-                tCenter.z + n.z * 0.5,
+                tCenter.x + wn.x * 0.5,
+                tCenter.y + wn.y * 0.5,
+                tCenter.z + wn.z * 0.5,
             )
             val color = colorForBinding(sb.source, sb.binding.sourceChannelName)
             drawStraightWire(builder, matrix, src, dst, cameraPos, color)
-            drawFaceFrame(builder, matrix, dst, sb.binding.targetSide, color)
+            drawFaceFrame(builder, matrix, dst, wn, wu, wv, color)
         }
         pose.popPose()
         bufferSource.endBatch(WIRE_TYPE)
@@ -179,31 +184,30 @@ object WireWorldRenderer {
 
     /**
      * [faceCenter] is the pre-resolved world-space centre of the block face
-     * (i.e. block world centre + normal * 0.5). The outset is applied here
-     * so the frame sits just above the block surface regardless of whether
-     * the block lives on a ship or in the world.
+     * (i.e. block world centre + worldFaceNormal * 0.5). [worldN], [worldU],
+     * [worldV] are the face normal and tangent basis vectors already
+     * transformed into world space — so on a rotated ship/contraption the
+     * frame stays aligned with the actual face rather than world axes.
      */
     private fun drawFaceFrame(
         builder: com.mojang.blaze3d.vertex.VertexConsumer,
         matrix: Matrix4f,
         faceCenter: net.minecraft.world.phys.Vec3,
-        face: net.minecraft.core.Direction,
+        worldN: net.minecraft.world.phys.Vec3,
+        worldU: net.minecraft.world.phys.Vec3,
+        worldV: net.minecraft.world.phys.Vec3,
         color: Int,
     ) {
         // Outset the frame slightly past the block face so we don't z-fight
         // with the block texture.
         val outset = 0.005
         val thick = FRAME_THICKNESS
-        val n = face.normal
-        // Centre of the face plane, outset slightly.
-        val fx = faceCenter.x + n.x * outset
-        val fy = faceCenter.y + n.y * outset
-        val fz = faceCenter.z + n.z * outset
-        // Tangent basis on the face plane: pick u/v as two world axes that
-        // aren't the face normal.
-        val basis = faceBasis(face)
-        val ux = basis.ux; val uy = basis.uy; val uz = basis.uz
-        val vx = basis.vx; val vy = basis.vy; val vz = basis.vz
+        // Centre of the face plane, outset slightly along the world normal.
+        val fx = faceCenter.x + worldN.x * outset
+        val fy = faceCenter.y + worldN.y * outset
+        val fz = faceCenter.z + worldN.z * outset
+        val ux = worldU.x; val uy = worldU.y; val uz = worldU.z
+        val vx = worldV.x; val vy = worldV.y; val vz = worldV.z
         // Half-extents along u and v.
         val half = 0.5
         val a = (color ushr 24) and 0xFF
