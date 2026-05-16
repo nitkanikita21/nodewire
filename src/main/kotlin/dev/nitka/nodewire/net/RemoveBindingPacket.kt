@@ -53,7 +53,10 @@ class RemoveBindingPacket(
             val ok = when (kind) {
                 Kind.CHANNEL -> srcBe.removeBinding(sourceChannelName, targetPos, extra)
                 Kind.SIDE -> {
-                    val side = Direction.byName(extra) ?: return@enqueueWork
+                    // extra carries Direction.name (uppercase enum name); use
+                    // valueOf, not byName (which expects lowercase getName()).
+                    val side = runCatching { Direction.valueOf(extra) }.getOrNull()
+                        ?: return@enqueueWork
                     srcBe.removeSideBinding(sourceChannelName, targetPos, side)
                 }
             }
