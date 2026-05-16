@@ -174,8 +174,9 @@ class ChannelLinkToolItem(props: Properties) : Item(props) {
         }
         val targetPos = be.blockPos
         mc.setScreen(ChannelPickerScreen("Target channel (${sourceType.name.lowercase()})", options) { picked ->
+            val targetRef = dev.nitka.nodewire.endpoint.EndpointRef.from(mc.level!!, targetPos)
             NodewireNetwork.CHANNEL.sendToServer(
-                BindChannelPacket(sourcePos, sourceName, targetPos, picked),
+                BindChannelPacket(sourcePos, sourceName, targetRef, picked),
             )
             actionBar(
                 "Bound ${sourcePos.toShortString()}/$sourceName → ${targetPos.toShortString()}/$picked",

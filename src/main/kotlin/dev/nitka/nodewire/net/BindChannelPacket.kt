@@ -2,9 +2,11 @@ package dev.nitka.nodewire.net
 
 import com.mojang.logging.LogUtils
 import dev.nitka.nodewire.block.LogicBlockEntity
+import dev.nitka.nodewire.endpoint.EndpointRef
 import net.minecraft.core.BlockPos
 import net.minecraft.network.FriendlyByteBuf
 import net.minecraft.world.level.block.Block
+import net.minecraft.world.phys.Vec3
 import net.minecraftforge.network.NetworkEvent
 import org.slf4j.Logger
 import java.util.function.Supplier
@@ -20,7 +22,7 @@ import java.util.function.Supplier
 class BindChannelPacket(
     val sourcePos: BlockPos,
     val sourceChannelName: String,
-    val targetPos: BlockPos,
+    val target: EndpointRef,
     val targetChannelName: String,
 ) {
     fun encode(buf: FriendlyByteBuf) {
@@ -32,8 +34,9 @@ class BindChannelPacket(
         c.enqueueWork {
             val player = c.sender ?: return@enqueueWork
             val level = player.level()
-            val center = sourcePos.center
-            if (player.distanceToSqr(center.x, center.y, center.z) > MAX_REACH_SQ) {
+            val srcRef = EndpointRef.from(level, sourcePos)
+            val srcCenter = srcRef.worldCenter(level) ?: Vec3.atCenterOf(sourcePos)
+            if (player.distanceToSqr(srcCenter.x, srcCenter.y, srcCenter.z) > MAX_REACH_SQ) {
                 LOG.warn("Bind rejected: source too far from {}", player.gameProfile.name)
                 notify(player, "Source block is too far away")
                 return@enqueueWork
@@ -44,10 +47,10 @@ class BindChannelPacket(
                 notify(player, "Source block missing at ${sourcePos.toShortString()}")
                 return@enqueueWork
             }
-            val tgtBe = level.getBlockEntity(targetPos) as? LogicBlockEntity
+            val tgtBe = target.resolve(level) as? LogicBlockEntity
             if (tgtBe == null) {
-                LOG.warn("Bind rejected: target BE missing at {}", targetPos)
-                notify(player, "Target block missing at ${targetPos.toShortString()}")
+                LOG.warn("Bind rejected: target BE missing at {}", target)
+                notify(player, "Target block missing at ${target.payload.blockPos.toShortString()}")
                 return@enqueueWork
             }
             when (val res = srcBe.tryAddBinding(sourceChannelName, tgtBe, targetChannelName)) {
@@ -65,7 +68,7 @@ class BindChannelPacket(
                     notify(player, "Source block has no Channel Output named '$sourceChannelName' (close the editor to save first)")
                 }
                 LogicBlockEntity.BindResult.TargetMissing -> {
-                    LOG.warn("Bind rejected: tgt '{}' has no Channel Input named '{}'", targetPos, targetChannelName)
+                    LOG.warn("Bind rejected: tgt '{}' has no Channel Input named '{}'", target, targetChannelName)
                     notify(player, "Target block has no Channel Input named '$targetChannelName' (close the editor to save first)")
                 }
                 is LogicBlockEntity.BindResult.TypeMismatch -> {
@@ -99,7 +102,7 @@ class BindChannelPacket(
                 i.group(
                     net.minecraft.core.BlockPos.CODEC.fieldOf("src_pos").forGetter(BindChannelPacket::sourcePos),
                     com.mojang.serialization.Codec.STRING.fieldOf("src_ch").forGetter(BindChannelPacket::sourceChannelName),
-                    net.minecraft.core.BlockPos.CODEC.fieldOf("tgt_pos").forGetter(BindChannelPacket::targetPos),
+                    EndpointRef.CODEC.fieldOf("target").forGetter(BindChannelPacket::target),
                     com.mojang.serialization.Codec.STRING.fieldOf("tgt_ch").forGetter(BindChannelPacket::targetChannelName),
                 ).apply(i, ::BindChannelPacket)
             }
