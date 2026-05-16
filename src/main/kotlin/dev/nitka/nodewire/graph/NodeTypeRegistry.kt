@@ -26,4 +26,6 @@ object NodeTypeRegistry {
 
     fun byCategory(): Map<NodeCategory, List<NodeType>> =
         byId.values.groupBy { it.category }
+
+    internal fun clearForTests() { byId.clear() }
 }

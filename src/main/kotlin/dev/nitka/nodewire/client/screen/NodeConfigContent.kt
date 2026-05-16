@@ -284,6 +284,30 @@ object NodeConfigContent {
         }
     }
 
+    /**
+     * Stub: two empty 18×18 boxes for the redstone-link frequency pair.
+     * Real picker (slots + popover + JEI/EMI drag) lands in a later task.
+     */
+    val RedstoneLinkFrequency: @Composable (Node) -> Unit = { _ ->
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(NwTheme.dimens.space4),
+            verticalAlignment = Alignment.Center,
+            modifier = Modifier.fillMaxWidth().padding(top = 4),
+        ) {
+            Text("Frequency")
+            Box(modifier = Modifier
+                .background(NwTheme.colors.surface)
+                .border(BorderStroke(1, NwTheme.colors.border))
+                .padding(all = 9),
+            ) {}
+            Box(modifier = Modifier
+                .background(NwTheme.colors.surface)
+                .border(BorderStroke(1, NwTheme.colors.border))
+                .padding(all = 9),
+            ) {}
+        }
+    }
+
     private val CHANNEL_TYPES = listOf(
         PinType.BOOL, PinType.INT, PinType.FLOAT, PinType.REDSTONE,
         PinType.STRING, PinType.VEC2, PinType.VEC3, PinType.QUAT,

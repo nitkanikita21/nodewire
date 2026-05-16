@@ -39,7 +39,8 @@ class StockNodeTypesTest {
         //          (-4 +1 = -3 → 26).
         // CV2: CONVERT_TO_REDSTONE and FROM_REDSTONE removed (-2 → 24).
         // CV2.7: ADD_VEC3, NEG_FLOAT, ABS_FLOAT, MIN_FLOAT, MAX_FLOAT, CLAMP_FLOAT removed (-6 → 18).
-        assertEquals(18, NodeTypeRegistry.all().size)
+        // Redstone-link: REDSTONE_LINK_INPUT, REDSTONE_LINK_OUTPUT added (+2 → 20).
+        assertEquals(20, NodeTypeRegistry.all().size)
     }
 
     @Test

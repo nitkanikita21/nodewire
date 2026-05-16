@@ -254,6 +254,22 @@ object StockEvaluators {
         mapOf("out" to PinValue.default(type))
     }
 
+    /**
+     * RedstoneLinkInput: server tick will override via external inputs map
+     * (reads from Create's network). Evaluator just exposes a typed default
+     * so downstream graph nodes get a value before the first tick.
+     */
+    val RedstoneLinkInput: NodeEvaluator = { _, _ ->
+        mapOf("out" to PinValue.Redstone(0))
+    }
+
+    /**
+     * RedstoneLinkOutput: no-op evaluator. Server tick reads the incoming
+     * edge value and pushes it onto the Create network via a NodeLinkable
+     * adapter — the evaluator itself has nothing to produce.
+     */
+    val RedstoneLinkOutput: NodeEvaluator = { _, _ -> emptyMap() }
+
     // --- Flow ----------------------------------------------------------
 
     /**

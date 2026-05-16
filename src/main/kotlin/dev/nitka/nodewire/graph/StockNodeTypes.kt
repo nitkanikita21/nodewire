@@ -83,6 +83,38 @@ object StockNodeTypes {
         evaluate = StockEvaluators.ChannelOutput,
     )
 
+    val REDSTONE_LINK_INPUT = nodeType(
+        id = "redstone_link_input",
+        displayName = "Redstone Link Input",
+        category = NodeCategory.IO,
+        outputs = listOf(Pin("out", "Signal", PinType.REDSTONE)),
+        defaultConfig = {
+            // freq1/freq2 are ItemStack NBT compounds; empty compound → ItemStack.EMPTY on read.
+            CompoundTag().apply {
+                put("freq1", CompoundTag())
+                put("freq2", CompoundTag())
+            }
+        },
+        configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.RedstoneLinkFrequency,
+        evaluate = StockEvaluators.RedstoneLinkInput,
+    )
+
+    val REDSTONE_LINK_OUTPUT = nodeType(
+        id = "redstone_link_output",
+        displayName = "Redstone Link Output",
+        category = NodeCategory.IO,
+        inputs = listOf(Pin("in", "Signal", PinType.REDSTONE)),
+        defaultConfig = {
+            // freq1/freq2 are ItemStack NBT compounds; empty compound → ItemStack.EMPTY on read.
+            CompoundTag().apply {
+                put("freq1", CompoundTag())
+                put("freq2", CompoundTag())
+            }
+        },
+        configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.RedstoneLinkFrequency,
+        evaluate = StockEvaluators.RedstoneLinkOutput,
+    )
+
     val LOGIC_GATE = nodeType(
         id = "logic_gate",
         displayName = "Logic Gate",
@@ -267,6 +299,7 @@ object StockNodeTypes {
         listOf(
             // IO
             SIDE_INPUT, SIDE_OUTPUT, CHANNEL_INPUT, CHANNEL_OUTPUT,
+            REDSTONE_LINK_INPUT, REDSTONE_LINK_OUTPUT,
             // Logic
             LOGIC_GATE,
             // Constants
