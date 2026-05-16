@@ -48,6 +48,11 @@ repositories {
     // Google maven — Compose runtime transitively needs androidx.annotation
     google()
     mavenCentral()
+    // Modrinth maven — for mods only published there (e.g. Create: Interactive).
+    exclusiveContent {
+        forRepository { maven { url = uri("https://api.modrinth.com/maven") } }
+        filter { includeGroup("maven.modrinth") }
+    }
 }
 
 legacyForge {
@@ -132,6 +137,11 @@ dependencies {
     // Valkyrien Skies 2 — physics & ship API.
     // `modImplementation` auto-remaps SRG → Mojang names via ModDevGradle.
     modImplementation("org.valkyrienskies:valkyrienskies-120-forge:2.4.10+a7a0898ae1")
+    // Create: Interactive — rewrites Create contraptions as VS ships so our
+    // VsShipBackend transparently covers contraption blocks. Runtime-only
+    // (we never call CI's API directly). Version id EScBvcOc = 1.2.1 forge
+    // variant on Modrinth (the plain "1.2.1" maven coord resolves to fabric).
+    modRuntimeOnly("maven.modrinth:interactive:EScBvcOc")
     // VS API classes (org.valkyrienskies.core.api.*) live in these split modules.
     // The forge jar marks them runtime-only; pulled in as compileOnly so direct
     // VS API imports resolve at compile time. Version must match the forge jar's
