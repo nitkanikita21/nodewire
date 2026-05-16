@@ -7,6 +7,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import dev.nitka.nodewire.graph.Node
 import dev.nitka.nodewire.graph.NodeId
+import dev.nitka.nodewire.ui.canvas.CanvasState
+import dev.nitka.nodewire.ui.canvas.LocalCanvasState
+import dev.nitka.nodewire.ui.components.Button
+import dev.nitka.nodewire.ui.components.ButtonDefaults
 import dev.nitka.nodewire.ui.components.Text
 import dev.nitka.nodewire.ui.components.TextInput
 import dev.nitka.nodewire.ui.core.Modifier
@@ -23,14 +27,15 @@ import dev.nitka.nodewire.ui.modifier.input.pointerInput
 import dev.nitka.nodewire.ui.modifier.layout.fillMaxWidth
 import dev.nitka.nodewire.ui.modifier.layout.padding
 import dev.nitka.nodewire.ui.modifier.layout.size
+import dev.nitka.nodewire.ui.modifier.layout.weight
 import dev.nitka.nodewire.ui.modifier.style.background
 import dev.nitka.nodewire.ui.modifier.style.border
 import dev.nitka.nodewire.ui.overlay.Popup
-import dev.nitka.nodewire.ui.overlay.PopupPlacement
 import dev.nitka.nodewire.ui.overlay.PopupPosition
 import dev.nitka.nodewire.ui.render.BorderStroke
 import dev.nitka.nodewire.ui.theme.NwTheme
 import net.minecraft.client.Minecraft
+import net.minecraft.core.registries.BuiltInRegistries
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.world.item.ItemStack
 
@@ -61,6 +66,7 @@ fun RedstoneLinkFrequencySlots(node: Node, editor: EditorState?) {
 private fun FrequencySlot(node: Node, editor: EditorState?, slotKey: String) {
     var pickerOpen by remember { mutableStateOf(false) }
     var anchor by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    val canvas = LocalCanvasState.current
     val currentStack = ItemStack.of(node.config.getCompound(slotKey))
 
     Box(
@@ -88,8 +94,9 @@ private fun FrequencySlot(node: Node, editor: EditorState?, slotKey: String) {
     if (pickerOpen) {
         val a = anchor
         if (a != null) {
+            val (px, py) = popoverScreenAnchor(a, canvas)
             Popup(
-                position = PopupPosition.Anchored(a, PopupPlacement.Below, gap = 2),
+                position = PopupPosition.AtScreen(px, py),
                 dismissOnClickOutside = true,
                 onDismissRequest = { pickerOpen = false },
             ) {
@@ -102,6 +109,26 @@ private fun FrequencySlot(node: Node, editor: EditorState?, slotKey: String) {
             }
         }
     }
+}
+
+/**
+ * Compute the true screen-pixel position to anchor the picker popover below
+ * the slot. `onPositioned` reports coords accumulated through the layout
+ * walk WITHOUT applying the surrounding NodeCanvas pose (pan + zoom); for
+ * canvas-nested widgets we have to invert that ourselves so the popover
+ * lands directly under the slot regardless of how the user has panned or
+ * zoomed the editor.
+ */
+private fun popoverScreenAnchor(anchor: LayoutCoordinates, canvas: CanvasState?): Pair<Int, Int> {
+    if (canvas == null) {
+        return anchor.screenX to (anchor.screenY + anchor.height + 2)
+    }
+    val z = canvas.zoom
+    val localX = anchor.screenX - canvas.originX
+    val localY = anchor.screenY - canvas.originY
+    val realX = canvas.originX + ((localX + canvas.panX) * z).toInt()
+    val realY = canvas.originY + ((localY + canvas.panY) * z).toInt()
+    return realX to (realY + (anchor.height * z).toInt() + 2)
 }
 
 @Composable
@@ -118,19 +145,17 @@ private fun setSlot(node: Node, editor: EditorState?, slotKey: String, stack: It
     }
 }
 
+private enum class PickerSource { Inventory, All }
+
 @Composable
 private fun InventoryPickerPopover(onPick: (ItemStack) -> Unit) {
-    val inventory = remember {
-        Minecraft.getInstance().player?.inventory?.items?.toList().orEmpty()
-    }
+    var source by remember { mutableStateOf(PickerSource.Inventory) }
     var query by remember { mutableStateOf("") }
-    val unique = remember(query) {
-        val seen = HashSet<String>()
-        inventory.filter {
-            if (it.isEmpty) return@filter false
-            val key = it.item.descriptionId
-            if (!seen.add(key)) return@filter false
-            query.isEmpty() || it.hoverName.string.contains(query, ignoreCase = true)
+
+    val candidates = remember(source, query) {
+        when (source) {
+            PickerSource.Inventory -> uniqueFromInventory(query)
+            PickerSource.All -> uniqueFromRegistry(query)
         }
     }
 
@@ -141,13 +166,27 @@ private fun InventoryPickerPopover(onPick: (ItemStack) -> Unit) {
             .padding(all = 6),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(4)) {
-            TextInput(
-                value = query,
-                placeholder = "Search...",
-                onValueChange = { query = it },
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4),
+                verticalAlignment = Alignment.Center,
                 modifier = Modifier.fillMaxWidth(),
-            )
-            val rows = unique.chunked(9)
+            ) {
+                TextInput(
+                    value = query,
+                    placeholder = "Search...",
+                    onValueChange = { query = it },
+                    modifier = Modifier.weight(1f),
+                )
+                Button(
+                    onClick = {
+                        source = if (source == PickerSource.Inventory) PickerSource.All else PickerSource.Inventory
+                    },
+                    style = ButtonDefaults.outlined(),
+                ) {
+                    Text(if (source == PickerSource.Inventory) "Inv" else "All")
+                }
+            }
+            val rows = candidates.chunked(9)
             for (row in rows.take(4)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(2)) {
                     for (stack in row) {
@@ -166,6 +205,36 @@ private fun InventoryPickerPopover(onPick: (ItemStack) -> Unit) {
             }
         }
     }
+}
+
+/** Player inventory, deduped by item id, filtered by query. */
+private fun uniqueFromInventory(query: String): List<ItemStack> {
+    val items = Minecraft.getInstance().player?.inventory?.items.orEmpty()
+    val seen = HashSet<String>()
+    return items.filter {
+        if (it.isEmpty) return@filter false
+        if (!seen.add(it.item.descriptionId)) return@filter false
+        query.isEmpty() || it.hoverName.string.contains(query, ignoreCase = true)
+    }
+}
+
+/**
+ * Every registered item in the game, lazily iterated and capped at 36 hits
+ * so we don't materialise tens of thousands of stacks just to render a 9×4
+ * grid. Empty `query` returns the first 36 items in registration order;
+ * non-empty filters by display-name substring.
+ */
+private fun uniqueFromRegistry(query: String): List<ItemStack> {
+    val result = ArrayList<ItemStack>(36)
+    for (item in BuiltInRegistries.ITEM) {
+        if (item == net.minecraft.world.item.Items.AIR) continue
+        val stack = ItemStack(item)
+        if (query.isEmpty() || stack.hoverName.string.contains(query, ignoreCase = true)) {
+            result.add(stack)
+            if (result.size >= 36) break
+        }
+    }
+    return result
 }
 
 /**
