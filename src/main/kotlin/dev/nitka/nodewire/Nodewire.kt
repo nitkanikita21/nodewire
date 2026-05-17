@@ -29,6 +29,9 @@ object Nodewire {
         }
         EndpointBackends.register(WorldBackend)
         FORGE_BUS.addListener<RegisterCommandsEvent>(HighlightServerCommand::register)
+        net.minecraftforge.common.MinecraftForge.EVENT_BUS.register(
+            dev.nitka.nodewire.integration.tweakedcontroller.ControllerBindHandler,
+        )
         if (FMLEnvironment.dist == Dist.CLIENT) {
             dev.nitka.nodewire.client.NodewireClient.registerOnModBus(MOD_BUS)
         }
