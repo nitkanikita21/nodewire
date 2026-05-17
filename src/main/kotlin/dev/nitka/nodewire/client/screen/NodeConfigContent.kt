@@ -651,4 +651,10 @@ object NodeConfigContent {
         PinType.REDSTONE to PinType.BOOL     -> listOf("any", "threshold")
         else -> emptyList()
     }
+
+    /**
+     * VecMake: dim selector. Stub for Phase 6 — currently no-op UI so
+     * the NodeType registration compiles.
+     */
+    val VecMake: @Composable (Node) -> Unit = { _ -> }
 }

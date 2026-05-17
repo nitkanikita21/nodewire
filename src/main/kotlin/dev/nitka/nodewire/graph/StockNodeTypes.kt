@@ -313,6 +313,7 @@ object StockNodeTypes {
             // Test / Generators
             RANDOM_BOOL, RANDOM_INT, PULSE,
         ).forEach(NodeTypeRegistry::register)
+        VectorNodeTypes.all().forEach(NodeTypeRegistry::register)
     }
 
     private fun nodeType(
