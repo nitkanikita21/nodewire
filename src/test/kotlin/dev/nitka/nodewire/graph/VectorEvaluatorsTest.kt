@@ -73,4 +73,64 @@ class VectorEvaluatorsTest {
         assertEquals(PinValue.Float(0f), out["y"])
         assertEquals(PinValue.Float(0f), out["z"])
     }
+
+    private fun opCfg(op: String, dim: String): CompoundTag = cfg {
+        putString("op", op); putString("dim", dim)
+    }
+
+    // VecOp.ADD ------------------------------------------------------
+
+    @Test fun vecOpAddVec2() {
+        val out = VectorEvaluators.VecOp(
+            opCfg("ADD", "VEC2"),
+            mapOf(
+                "a" to PinValue.Vec2(1f, 2f),
+                "b" to PinValue.Vec2(3f, 4f),
+            ),
+        )
+        assertEquals(PinValue.Vec2(4f, 6f), out["out"])
+    }
+
+    @Test fun vecOpAddVec3() {
+        val out = VectorEvaluators.VecOp(
+            opCfg("ADD", "VEC3"),
+            mapOf(
+                "a" to PinValue.Vec3(1f, 2f, 3f),
+                "b" to PinValue.Vec3(10f, 20f, 30f),
+            ),
+        )
+        assertEquals(PinValue.Vec3(11f, 22f, 33f), out["out"])
+    }
+
+    // VecOp.SUB ------------------------------------------------------
+
+    @Test fun vecOpSubVec2() {
+        val out = VectorEvaluators.VecOp(
+            opCfg("SUB", "VEC2"),
+            mapOf(
+                "a" to PinValue.Vec2(5f, 7f),
+                "b" to PinValue.Vec2(2f, 3f),
+            ),
+        )
+        assertEquals(PinValue.Vec2(3f, 4f), out["out"])
+    }
+
+    @Test fun vecOpSubVec3() {
+        val out = VectorEvaluators.VecOp(
+            opCfg("SUB", "VEC3"),
+            mapOf(
+                "a" to PinValue.Vec3(10f, 20f, 30f),
+                "b" to PinValue.Vec3(1f, 2f, 3f),
+            ),
+        )
+        assertEquals(PinValue.Vec3(9f, 18f, 27f), out["out"])
+    }
+
+    @Test fun vecOpUnknownOpReturnsZero() {
+        val out = VectorEvaluators.VecOp(
+            opCfg("BOGUS", "VEC2"),
+            mapOf("a" to PinValue.Vec2(1f, 1f), "b" to PinValue.Vec2(1f, 1f)),
+        )
+        assertEquals(PinValue.Vec2(0f, 0f), out["out"])
+    }
 }
