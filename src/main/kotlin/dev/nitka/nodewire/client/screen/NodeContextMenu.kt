@@ -24,6 +24,7 @@ fun NodeContextMenu(target: ContextMenuTarget, editor: EditorState) {
     val items = when (target) {
         is ContextMenuTarget.Create -> buildCreateItems(editor, target, toast)
         is ContextMenuTarget.Node -> buildNodeItems(editor, target, toast)
+        is ContextMenuTarget.Group -> buildGroupItems(editor, target, toast)
     }
     ContextMenu(
         items = items,
@@ -50,9 +51,24 @@ private fun buildCreateItems(
             },
         )
     }
+    val files = dev.nitka.nodewire.client.screen.GroupFiles.list()
+    val insertSubmenu: ContextMenuItem = if (files.isEmpty()) {
+        ContextMenuItem.Action("Insert group: (none saved)") {}
+    } else {
+        ContextMenuItem.Submenu(
+            label = "Insert group",
+            items = files.map { f ->
+                ContextMenuItem.Action(f) {
+                    val id = editor.insertTemplate(f, target.world)
+                    if (id != null) toast?.success("Inserted $f") else toast?.warning("Insert refused (missing or cycle)")
+                }
+            },
+        )
+    }
     return listOf(
         ContextMenuItem.Submenu(label = "Add Node", items = categorySubmenus),
         ContextMenuItem.Separator,
+        insertSubmenu,
         ContextMenuItem.Action(label = "Export graph to file") {
             val path = GraphExporter.exportToFile(editor.graph, editor.pos)
             if (path != null) toast?.success("Exported to $path")
@@ -80,3 +96,29 @@ private fun buildNodeItems(
         toast?.info("Deleted")
     },
 )
+
+private fun buildGroupItems(
+    editor: EditorState,
+    target: ContextMenuTarget.Group,
+    toast: dev.nitka.nodewire.ui.feedback.ToastManager?,
+): List<ContextMenuItem> {
+    val g = editor.graph.groups.firstOrNull { it.id == target.groupId } ?: return emptyList()
+    val collapseLabel = if (g.collapsed) "Expand" else "Collapse"
+    val items = mutableListOf<ContextMenuItem>(
+        ContextMenuItem.Action(collapseLabel) { editor.toggleCollapsed(target.groupId) },
+    )
+    if (g.templateFile == null) {
+        items.add(ContextMenuItem.Action("Save as template…") {
+            editor.pendingSaveTemplateForGroup = target.groupId
+        })
+    } else {
+        items.add(ContextMenuItem.Action("Unlink (template: ${g.templateFile})") {
+            editor.unlinkGroup(target.groupId); toast?.info("Unlinked")
+        })
+    }
+    items.add(ContextMenuItem.Separator)
+    items.add(ContextMenuItem.Action("Ungroup") {
+        editor.ungroup(target.groupId); toast?.info("Ungrouped")
+    })
+    return items
+}

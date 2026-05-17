@@ -1,6 +1,7 @@
 package dev.nitka.nodewire.client.screen
 
 import dev.nitka.nodewire.graph.CanvasPos
+import dev.nitka.nodewire.graph.GroupId
 import dev.nitka.nodewire.graph.NodeId
 
 /**
@@ -29,5 +30,11 @@ sealed interface ContextMenuTarget {
         override val screenX: Int,
         override val screenY: Int,
         val nodeId: NodeId,
+    ) : ContextMenuTarget
+
+    data class Group(
+        override val screenX: Int,
+        override val screenY: Int,
+        val groupId: dev.nitka.nodewire.graph.GroupId,
     ) : ContextMenuTarget
 }

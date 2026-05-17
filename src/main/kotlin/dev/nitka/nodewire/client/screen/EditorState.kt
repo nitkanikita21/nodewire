@@ -202,6 +202,13 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         contextMenu = ContextMenuTarget.Node(screenX, screenY, nodeId)
     }
 
+    fun openGroupMenu(screenX: Int, screenY: Int, groupId: GroupId) {
+        contextMenu = ContextMenuTarget.Group(screenX, screenY, groupId)
+    }
+
+    /** Tracks a group whose Save-as-template dialog should be shown. */
+    var pendingSaveTemplateForGroup: GroupId? by mutableStateOf(null)
+
     fun closeContextMenu() {
         contextMenu = null
     }
