@@ -242,7 +242,11 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
                         // Wires render BEFORE cards so they pass under the
                         // node bodies instead of clipping over them.
                         WireLayer()
+                        GroupLayer()
+                        val groupsValue by editor.groups.collectAsState()
+                        val hidden = remember(nodeIds, groupsValue) { hiddenNodesFor(editor) }
                         for (id in nodeIds) {
+                            if (id in hidden) continue
                             NodeCard(nodeId = id)
                         }
                         // Rubber-band rect on top of everything inside the
