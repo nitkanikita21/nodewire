@@ -44,7 +44,10 @@ fun NodeCanvas(
     Layout(
         modifier = modifier
             .nodeCanvas(state)
-            .onPositioned { c -> state.setOrigin(c.screenX, c.screenY) },
+            .onPositioned { coords ->
+                state.setOrigin(coords.screenX, coords.screenY)
+                state.setSize(coords.width, coords.height)
+            },
         renderer = SurfaceRenderer,
     ) {
         CompositionLocalProvider(LocalCanvasState provides state) {
