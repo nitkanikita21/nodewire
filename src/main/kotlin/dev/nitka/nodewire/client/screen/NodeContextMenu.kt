@@ -25,7 +25,12 @@ fun NodeContextMenu(target: ContextMenuTarget, editor: EditorState) {
         is ContextMenuTarget.Create -> buildCreateItems(editor, target, toast)
         is ContextMenuTarget.Node -> buildNodeItems(editor, target, toast)
         is ContextMenuTarget.Group -> buildGroupItems(editor, target, toast)
-        is ContextMenuTarget.Comment -> emptyList()
+        is ContextMenuTarget.Comment -> listOf(
+            ContextMenuItem.Action("Delete comment") {
+                editor.removeComment(target.commentId)
+                toast?.info("Comment deleted")
+            }
+        )
     }
     ContextMenu(
         items = items,
@@ -68,6 +73,11 @@ private fun buildCreateItems(
     }
     return listOf(
         ContextMenuItem.Submenu(label = "Add Node", items = categorySubmenus),
+        ContextMenuItem.Separator,
+        ContextMenuItem.Action("Add Comment") {
+            editor.addComment(target.world)
+            toast?.info("Comment added")
+        },
         ContextMenuItem.Separator,
         insertSubmenu,
         ContextMenuItem.Action(label = "Export graph to file") {

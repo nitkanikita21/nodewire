@@ -258,10 +258,11 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
                         },
                 ) {
                     NodeCanvas(state = canvas, modifier = Modifier.fillMaxSize()) {
-                        // Group frames render FIRST (lowest layer) so their
-                        // semi-transparent backdrop sits behind wires and
-                        // nodes. Collapsed tiles render LATER, above wires,
-                        // because they behave like nodes for wire endpoints.
+                        // Comments render FIRST (deepest layer) as background
+                        // annotations. Group frames render above comments but
+                        // below wires. Collapsed tiles render LATER, above
+                        // wires, because they behave like nodes for wire endpoints.
+                        CommentLayer()
                         GroupFramesLayer()
                         WireLayer()
                         WireLabelOverlay()
