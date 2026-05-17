@@ -17,4 +17,26 @@ object VectorEvaluators {
 
     internal fun floatIn(inputs: Map<String, PinValue>, pin: String): Float =
         (inputs[pin] as? PinValue.Float)?.value ?: 0f
+
+    // --- compose -----------------------------------------------------
+
+    /**
+     * VecMake: outputs Vec2 or Vec3 driven by `config.dim`. Missing
+     * scalar inputs default to 0f. Unknown dim falls back to VEC2.
+     */
+    val VecMake: NodeEvaluator = { config, inputs ->
+        val dim = config.getString("dim").ifEmpty { "VEC2" }
+        val out: PinValue = when (dim) {
+            "VEC3" -> PinValue.Vec3(
+                floatIn(inputs, "x"),
+                floatIn(inputs, "y"),
+                floatIn(inputs, "z"),
+            )
+            else -> PinValue.Vec2(
+                floatIn(inputs, "x"),
+                floatIn(inputs, "y"),
+            )
+        }
+        mapOf("out" to out)
+    }
 }
