@@ -8,6 +8,7 @@ import dev.nitka.nodewire.graph.PinType
 import dev.nitka.nodewire.ui.core.Modifier
 import dev.nitka.nodewire.ui.core.UiNode
 import dev.nitka.nodewire.ui.layout.Layout
+import dev.nitka.nodewire.ui.modifier.input.pointerInput
 import dev.nitka.nodewire.ui.modifier.layout.absolutePosition
 import dev.nitka.nodewire.ui.modifier.layout.fillMaxSize
 import com.mojang.math.Axis
@@ -68,6 +69,41 @@ fun WireLayer() {
         modifier = Modifier.absolutePosition(0, 0).fillMaxSize(),
         renderer = renderer,
     )
+    // Transparent hit overlay. Pressing within HIT_RADIUS world units of
+    // any edge's midpoint sets `renamingEdge` — the overlay UI then
+    // shows an inline TextInput.
+    val edgesState = edges  // already captured via collectAsState above
+    Layout(
+        modifier = Modifier
+            .absolutePosition(0, 0)
+            .fillMaxSize()
+            .pointerInput { ev, x, y ->
+                if (ev !is dev.nitka.nodewire.ui.input.PointerEvent.Press) return@pointerInput false
+                if (ev.button != 0) return@pointerInput false  // LMB only
+                val positions = editor.pinPositions
+                for (e in edgesState) {
+                    val from = positions.get(PinKey(e.from.node, e.from.pin, PinSide.Output)) ?: continue
+                    val to = positions.get(PinKey(e.to.node, e.to.pin, PinSide.Input)) ?: continue
+                    val midX = (from.first + to.first) * 0.5f
+                    val midY = (from.second + to.second) * 0.5f
+                    val dx = x.toFloat() - midX
+                    val dy = y.toFloat() - midY
+                    if (dx * dx + dy * dy < HIT_RADIUS_SQ) {
+                        editor.renamingEdge = e
+                        return@pointerInput true
+                    }
+                }
+                false
+            },
+        renderer = NoopRenderer,
+    )
+}
+
+private const val HIT_RADIUS = 8f
+private const val HIT_RADIUS_SQ = HIT_RADIUS * HIT_RADIUS
+
+private object NoopRenderer : dev.nitka.nodewire.ui.render.Renderer {
+    override fun dev.nitka.nodewire.ui.render.NwCanvas.render(node: dev.nitka.nodewire.ui.core.UiNode) { /* invisible */ }
 }
 
 private class WireRenderer(
