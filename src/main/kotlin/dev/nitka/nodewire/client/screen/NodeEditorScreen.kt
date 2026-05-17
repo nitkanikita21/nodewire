@@ -258,10 +258,13 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
                         },
                 ) {
                     NodeCanvas(state = canvas, modifier = Modifier.fillMaxSize()) {
-                        // Wires render BEFORE cards so they pass under the
-                        // node bodies instead of clipping over them.
+                        // Group frames render FIRST (lowest layer) so their
+                        // semi-transparent backdrop sits behind wires and
+                        // nodes. Collapsed tiles render LATER, above wires,
+                        // because they behave like nodes for wire endpoints.
+                        GroupFramesLayer()
                         WireLayer()
-                        GroupLayer()
+                        GroupCollapsedLayer()
                         val groupsValue by editor.groups.collectAsState()
                         val hidden = remember(nodeIds, groupsValue) { hiddenNodesFor(editor) }
                         for (id in nodeIds) {

@@ -5,18 +5,26 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 
 /**
- * Iterates over `editor.groups` and renders each as either a [GroupFrame]
- * (expanded) or a [GroupCollapsedTile] (collapsed). Member-node hiding
- * for the collapsed case is enforced by [NodeEditorScreen] via the
- * [hiddenNodesFor] helper.
+ * Expanded-group frames only — drawn UNDER wires so the semi-transparent
+ * frame backdrop doesn't cover dots/curves. Mount before [WireLayer].
  */
 @Composable
-fun GroupLayer() {
+fun GroupFramesLayer() {
     val editor = LocalEditorState.current ?: return
     val groups by editor.groups.collectAsState()
-    for (g in groups) {
-        if (g.collapsed) GroupCollapsedTile(g) else GroupFrame(g)
-    }
+    for (g in groups) if (!g.collapsed) GroupFrame(g)
+}
+
+/**
+ * Collapsed-group tiles only — drawn ABOVE wires, like nodes, so wire
+ * endpoints visually terminate against the tile's proxy pin handles.
+ * Mount after [WireLayer] and alongside [NodeCard]s.
+ */
+@Composable
+fun GroupCollapsedLayer() {
+    val editor = LocalEditorState.current ?: return
+    val groups by editor.groups.collectAsState()
+    for (g in groups) if (g.collapsed) GroupCollapsedTile(g)
 }
 
 /** Set of node ids that the screen should NOT render as standalone cards. */
