@@ -372,7 +372,13 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
             }
         }
 
-        val result = eval.tick(external)
+        val prevControllerId = dev.nitka.nodewire.integration.tweakedcontroller.ControllerInputNode.currentControllerId.get()
+        dev.nitka.nodewire.integration.tweakedcontroller.ControllerInputNode.currentControllerId.set(controllerId)
+        val result = try {
+            eval.tick(external)
+        } finally {
+            dev.nitka.nodewire.integration.tweakedcontroller.ControllerInputNode.currentControllerId.set(prevControllerId)
+        }
 
         if (ModList.get().isLoaded("create")) {
             syncRedstoneLinkables(level, result)
