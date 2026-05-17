@@ -5,11 +5,8 @@ import dev.nitka.nodewire.graph.NodeCategory
 import dev.nitka.nodewire.graph.NodeEvaluator
 import dev.nitka.nodewire.graph.NodeType
 import dev.nitka.nodewire.graph.PinValue
-import net.minecraft.core.BlockPos
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.resources.ResourceLocation
-import net.minecraft.world.level.Level
-import java.util.UUID
 
 /**
  * `controller_input` NodeType — reads gamepad state from the Tweaked
@@ -27,18 +24,13 @@ import java.util.UUID
 object ControllerInputNode {
 
     /**
-     * Per-tick evaluator context: level + Logic Block origin + bound
-     * controllerId. Set by [dev.nitka.nodewire.block.LogicBlockEntity.serverTick]
-     * before [dev.nitka.nodewire.graph.StatefulGraphEvaluator.tick],
-     * restored in `finally`. Null outside an active tick.
-     *
-     * The evaluator needs more than just the UUID because TC state is read
-     * from a *lectern* near the Logic Block, not from a global UUID map —
-     * see [TweakedController.getControllerState].
+     * Per-tick state published by [dev.nitka.nodewire.block.LogicBlockEntity.serverTick].
+     * Carries the latest [ControllerState] pushed into the block by
+     * the TC packet mixins, or `null` if no controller is pointed at
+     * this block. Set before calling the graph evaluator, restored in
+     * `finally`.
      */
-    data class EvalContext(val level: Level, val origin: BlockPos, val controllerId: UUID?)
-
-    val currentContext: ThreadLocal<EvalContext?> = ThreadLocal.withInitial { null }
+    val currentState: ThreadLocal<ControllerState?> = ThreadLocal.withInitial { null }
 
     val Evaluator: NodeEvaluator = { config, _ ->
         val channel = ControllerChannel.fromName(config.getString("channel"))
@@ -48,10 +40,7 @@ object ControllerInputNode {
         val deadzone = config.getFloat("deadzone")
         val invert = config.getBoolean("invert")
 
-        val ctx = currentContext.get()
-        val state = ctx?.controllerId?.let {
-            TweakedController.getControllerState(ctx.level, ctx.origin, it)
-        }
+        val state = currentState.get()
 
         if (state == null) {
             // TC absent, controller offline, or no id bound — emit zero values

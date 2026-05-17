@@ -5,7 +5,9 @@
   "compatibilityLevel": "JAVA_17",
   "refmap": "nodewire.refmap.json",
   "mixins": [
-    "SignalGetterMixin"
+    "SignalGetterMixin",
+    "tc.MixinTweakedControllerButtonPacket",
+    "tc.MixinTweakedControllerAxisPacket"
   ],
   "client": [],
   "server": [],

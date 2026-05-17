@@ -120,7 +120,6 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
                     val be = net.minecraft.client.Minecraft.getInstance().level
                         ?.getBlockEntity(pos) as? dev.nitka.nodewire.block.LogicBlockEntity
                     e.setBlockName(be?.getBlockName() ?: "")
-                    e.setControllerId(be?.getControllerId())
                 }
             }
             editor.canvasState = canvas

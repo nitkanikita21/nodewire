@@ -1,22 +1,13 @@
 package dev.nitka.nodewire.integration.tweakedcontroller
 
-import net.minecraft.core.BlockPos
 import net.minecraft.world.item.ItemStack
-import net.minecraft.world.level.Level
 import net.minecraftforge.fml.ModList
-import java.lang.reflect.Method
-import java.util.UUID
 
 /**
  * Soft-dependency wrapper for the Create: Tweaked Controllers mod
- * (`create_tweaked_controllers` on Forge). All TC access goes through
- * reflection so Nodewire builds and runs with TC absent. Every public
- * method degrades gracefully — returns false / null / a zero state —
- * when TC isn't loaded or the cached class lookup fails.
- *
- * Class names confirmed from a jar spike against TC 1.20.1-1.2.6:
- *   * Controller item: TweakedLinkedControllerItem
- *   * Server state holders: TweakedLinkedControllerServerHandler.receivedInputs / .receivedAxes
+ * (`create_tweaked_controllers` on Forge). Mostly a check-for-presence
+ * facade — actual state flows via Mixin into TC's packet handlers
+ * (see `dev.nitka.nodewire.mixin.tc`), pushed to [ControllerStatePipeline].
  */
 object TweakedController {
 
@@ -30,154 +21,18 @@ object TweakedController {
         }
     }
 
-    /**
-     * TC's Lectern Controller BlockEntity. The lectern holds a controller
-     * item and exposes [lecternGetButton] / [lecternGetAxis] for reading
-     * gamepad state of whoever currently sits on it. We locate it by
-     * scanning loaded chunks around a Logic Block at evaluation time.
-     */
-    private val lecternBeClass: Class<*>? by lazy {
-        try {
-            Class.forName("com.getitemfromblock.create_tweaked_controllers.block.TweakedLecternControllerBlockEntity")
-        } catch (_: Throwable) {
-            null
-        }
-    }
-
-    private val lecternGetController: Method? by lazy {
-        lecternBeClass?.let { runCatching { it.getMethod("getController") }.getOrNull() }
-    }
-
-    private val lecternGetButton: Method? by lazy {
-        lecternBeClass?.let { runCatching { it.getMethod("GetButton", Int::class.javaPrimitiveType) }.getOrNull() }
-    }
-
-    private val lecternGetAxis: Method? by lazy {
-        lecternBeClass?.let { runCatching { it.getMethod("GetAxis", Int::class.javaPrimitiveType) }.getOrNull() }
-    }
-
-    /** Half-side length of the chunk scan box, in blocks. */
-    private const val LECTERN_SEARCH_RADIUS_BLOCKS = 64
-
     /** True iff TC mod is loaded into the current runtime. */
     fun isLoaded(): Boolean = ModList.get()?.isLoaded(MOD_ID) ?: false
 
-    /**
-     * Nodewire's own NBT key for a per-item-instance UUID. TC's controller
-     * item has no inherent UUID — it identifies channels by configurable
-     * frequencies (Create redstone-link style), not per-instance ids.
-     * We mint our own UUID on first lookup and persist it on the stack so
-     * the binding model ("this specific controller" ↔ "this logic block")
-     * has something stable to point at. The UUID is opaque to TC and only
-     * meaningful inside Nodewire.
-     */
-    private const val NW_BIND_ID_KEY = "nw:bindId"
 
     /**
-     * Returns a stable identifier for the controller represented by [stack],
-     * or `null` if the stack isn't a TC controller item. Allocates and
-     * persists a UUID into the stack's NBT on first call — subsequent
-     * calls return the same id. Caller must hold the stack on the server
-     * side (item-NBT mutations sync to the client via vanilla item slot
-     * sync). The reflection class check guards against accidentally tagging
-     * non-controller stacks.
+     * True iff [stack] is a Tweaked Controller item. Uses reflection
+     * (TC may be absent at runtime).
      */
-    fun controllerItemId(stack: ItemStack): UUID? {
-        if (!isLoaded() || stack.isEmpty) return null
-        val klass = controllerItemClass ?: return null
-        if (!klass.isInstance(stack.item)) return null
-        val tag = stack.orCreateTag
-        if (tag.hasUUID(NW_BIND_ID_KEY)) return tag.getUUID(NW_BIND_ID_KEY)
-        val minted = UUID.randomUUID()
-        tag.putUUID(NW_BIND_ID_KEY, minted)
-        return minted
-    }
-
-    /**
-     * Fetch the current input state for the controller [id], or `null`
-     * when TC isn't loaded, no matching lectern is in range, or no player
-     * is sitting on the lectern.
-     *
-     * Strategy: scan loaded chunks within [LECTERN_SEARCH_RADIUS_BLOCKS]
-     * of [origin] for a TweakedLecternControllerBlockEntity whose held
-     * controller stack carries our `nw:bindId` matching [id]. Reads
-     * button/axis state directly off that BE via reflection — the BE
-     * receives state from the seated player's gamepad packets.
-     *
-     * Performance: per-tick chunk scan. With one Logic Block and a few
-     * lecterns it's fine; if it becomes a hotspot, add a level-scoped
-     * UUID → BlockPos cache invalidated on lectern load/unload.
-     */
-    fun getControllerState(level: Level, origin: BlockPos, id: UUID): ControllerState? {
-        if (!isLoaded()) return null
-        val lecternClass = lecternBeClass ?: return null
-        val getController = lecternGetController ?: return null
-        val getButton = lecternGetButton ?: return null
-        val getAxis = lecternGetAxis ?: return null
-
-        val r = LECTERN_SEARCH_RADIUS_BLOCKS
-        val minChunkX = (origin.x - r) shr 4
-        val maxChunkX = (origin.x + r) shr 4
-        val minChunkZ = (origin.z - r) shr 4
-        val maxChunkZ = (origin.z + r) shr 4
-
-        for (cx in minChunkX..maxChunkX) {
-            for (cz in minChunkZ..maxChunkZ) {
-                val chunk = level.chunkSource.getChunkNow(cx, cz) ?: continue
-                for ((_, be) in chunk.blockEntities) {
-                    if (!lecternClass.isInstance(be)) continue
-                    val stack = (getController.invoke(be) as? ItemStack) ?: continue
-                    if (stack.isEmpty) continue
-                    val tag = stack.tag ?: continue
-                    if (!tag.hasUUID(NW_BIND_ID_KEY)) continue
-                    if (tag.getUUID(NW_BIND_ID_KEY) != id) continue
-                    return readLecternState(be, getButton, getAxis)
-                }
-            }
-        }
-        return null
-    }
-
-    /**
-     * GLFW gamepad index map. Verified against TC 1.20.1-1.2.6's
-     * `TweakedLecternControllerBlockEntity.GetButton(int)` /
-     * `.GetAxis(int)` (which consume the same indices).
-     *
-     * Buttons: 0=A, 1=B, 2=X, 3=Y, 4=LB, 5=RB, 6=Back, 7=Start,
-     *          9=LStickClick, 10=RStickClick, 11=DPadUp, 12=DPadRight,
-     *          13=DPadDown, 14=DPadLeft.  (8 = Guide, unused by Nodewire.)
-     *
-     * Axes: 0=LStickX, 1=LStickY, 2=RStickX, 3=RStickY, 4=LT, 5=RT.
-     */
-    private fun readLecternState(be: Any, getButton: Method, getAxis: Method): ControllerState {
-        fun btn(i: Int): Boolean = runCatching { getButton.invoke(be, i) as Boolean }.getOrElse { false }
-        fun axis(i: Int): Float = runCatching { getAxis.invoke(be, i) as Float }.getOrElse { 0f }
-        // GLFW reports trigger axes as −1..1 (−1 released, 1 fully pressed),
-        // not 0..1. Normalize so deadzone semantics match user intuition:
-        // deadzone=0 fires on any press; deadzone=0.5 fires past halfway.
-        fun trigger(i: Int): Float = ((axis(i) + 1f) * 0.5f).coerceIn(0f, 1f)
-        return ControllerState(
-            leftStickX = axis(0),
-            leftStickY = axis(1),
-            rightStickX = axis(2),
-            rightStickY = axis(3),
-            leftTrigger = trigger(4),
-            rightTrigger = trigger(5),
-            buttonA = btn(0),
-            buttonB = btn(1),
-            buttonX = btn(2),
-            buttonY = btn(3),
-            leftBumper = btn(4),
-            rightBumper = btn(5),
-            back = btn(6),
-            start = btn(7),
-            leftStickClick = btn(9),
-            rightStickClick = btn(10),
-            dpadUp = btn(11),
-            dpadRight = btn(12),
-            dpadDown = btn(13),
-            dpadLeft = btn(14),
-        )
+    fun isControllerItem(stack: ItemStack): Boolean {
+        if (!isLoaded() || stack.isEmpty) return false
+        val klass = controllerItemClass ?: return false
+        return klass.isInstance(stack.item)
     }
 }
 
@@ -187,6 +42,26 @@ object TweakedController {
  * [0f, 1f], buttons boolean. Defaults are all-zero / all-false so the
  * evaluator never reads NaN.
  */
+/**
+ * GLFW gamepad button indices used by Tweaked Controller's wire format
+ * (verified by inspecting TC's `TweakedLecternControllerBlockEntity.GetButton`).
+ */
+private const val BUTTON_A = 0
+private const val BUTTON_B = 1
+private const val BUTTON_X = 2
+private const val BUTTON_Y = 3
+private const val BUTTON_LB = 4
+private const val BUTTON_RB = 5
+private const val BUTTON_BACK = 6
+private const val BUTTON_START = 7
+// 8 = guide (unused by Nodewire)
+private const val BUTTON_L_STICK_CLICK = 9
+private const val BUTTON_R_STICK_CLICK = 10
+private const val BUTTON_DPAD_UP = 11
+private const val BUTTON_DPAD_RIGHT = 12
+private const val BUTTON_DPAD_DOWN = 13
+private const val BUTTON_DPAD_LEFT = 14
+
 data class ControllerState(
     val leftStickX: Float = 0f,
     val leftStickY: Float = 0f,
@@ -209,6 +84,76 @@ data class ControllerState(
     val dpadLeft: Boolean = false,
     val dpadRight: Boolean = false,
 ) {
+
+    /**
+     * Apply a button-bitmask update from TC's wire format. Each of the
+     * 15 used bits is one button; layout matches GLFW gamepad indices.
+     * Axes are preserved (only button fields are rewritten).
+     */
+    fun withButtons(buttonStates: Short): ControllerState {
+        val bits = buttonStates.toInt() and 0xFFFF
+        fun bit(i: Int) = (bits shr i) and 1 != 0
+        return copy(
+            buttonA = bit(BUTTON_A),
+            buttonB = bit(BUTTON_B),
+            buttonX = bit(BUTTON_X),
+            buttonY = bit(BUTTON_Y),
+            leftBumper = bit(BUTTON_LB),
+            rightBumper = bit(BUTTON_RB),
+            back = bit(BUTTON_BACK),
+            start = bit(BUTTON_START),
+            leftStickClick = bit(BUTTON_L_STICK_CLICK),
+            rightStickClick = bit(BUTTON_R_STICK_CLICK),
+            dpadUp = bit(BUTTON_DPAD_UP),
+            dpadRight = bit(BUTTON_DPAD_RIGHT),
+            dpadDown = bit(BUTTON_DPAD_DOWN),
+            dpadLeft = bit(BUTTON_DPAD_LEFT),
+        )
+    }
+
+    /**
+     * Apply an axis update from TC's wire format. Prefer [fullAxis] if
+     * present (6-element float array, sticks in −1..1, triggers in 0..1).
+     * Otherwise unpack [axisPacked]: 6 bytes, each holding 5 bits
+     * (sign in bit 4, magnitude 0..15 in bits 0..3). Sticks reconstruct
+     * as `(sign ? −1 : +1) * (mag / 15)`. Trigger bytes are direct 0..15
+     * normalized to 0..1.
+     *
+     * Triggers stay in 0..1 (matches user-intuitive deadzone semantics
+     * in [applyOutputMode]). Sticks stay in −1..1.
+     */
+    fun withAxes(axisPacked: Int, fullAxis: FloatArray?): ControllerState {
+        if (fullAxis != null && fullAxis.size >= 6) {
+            return copy(
+                leftStickX = fullAxis[0],
+                leftStickY = fullAxis[1],
+                rightStickX = fullAxis[2],
+                rightStickY = fullAxis[3],
+                leftTrigger = fullAxis[4].coerceIn(0f, 1f),
+                rightTrigger = fullAxis[5].coerceIn(0f, 1f),
+            )
+        }
+        // Unpack 6 bytes from int: byte 0..5 each 5 bits used.
+        // Per TC's ControllerRedstoneOutput.EncodeAxis bit layout (verified
+        // by DBW's mixin code path): each axis byte sits at byte position
+        // i, with bit 4 = sign, bits 0..3 = magnitude (0..15).
+        fun byteAt(i: Int): Int = (axisPacked shr (i * 5)) and 0x1F
+        fun stick(i: Int): Float {
+            val b = byteAt(i)
+            val mag = (b and 0x0F) / 15f
+            return if (b and 0x10 != 0) -mag else mag
+        }
+        fun trigger(i: Int): Float = (byteAt(i) and 0x0F) / 15f
+        return copy(
+            leftStickX = stick(0),
+            leftStickY = stick(1),
+            rightStickX = stick(2),
+            rightStickY = stick(3),
+            leftTrigger = trigger(4),
+            rightTrigger = trigger(5),
+        )
+    }
+
     companion object {
         val ZERO = ControllerState()
     }

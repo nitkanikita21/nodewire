@@ -50,35 +50,20 @@ fun EditorToolbar(pos: BlockPos, onOpenBindings: () -> Unit) {
                 debouncer.schedule(pos, next)
             },
         )
-        val controllerId by editor.controllerId.collectAsState()
         val tcLoaded = dev.nitka.nodewire.integration.tweakedcontroller.TweakedController.isLoaded()
-        when {
-            !tcLoaded -> Text(
+        if (!tcLoaded) {
+            Text(
                 "Controller: (TC not loaded)",
                 style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceMuted),
             )
-            controllerId == null -> Text(
-                "Controller: (unbound)",
+        } else {
+            // The binding lives on the controller ITEM (Drive-By-Wire model)
+            // not on the block — so the block has no "bound id" to display.
+            // Hint the player: hold a controller and RMB to link.
+            Text(
+                "Controller: hold a TC controller and RMB the block",
                 style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceMuted),
             )
-            else -> Row(
-                horizontalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2),
-                verticalAlignment = Alignment.Center,
-            ) {
-                Text(
-                    "Controller: ${controllerId.toString().take(8)}…",
-                    style = NwTheme.typography.caption,
-                )
-                Button(
-                    onClick = {
-                        editor.setControllerId(null)
-                        dev.nitka.nodewire.net.NodewireNetwork.CHANNEL.send(
-                            net.minecraftforge.network.PacketDistributor.SERVER.noArg(),
-                            dev.nitka.nodewire.net.SetControllerIdPacket(pos, null),
-                        )
-                    },
-                ) { Text("Unbind") }
-            }
         }
         Box(modifier = Modifier.weight(1f))
         Button(onClick = onOpenBindings) { Text("Bindings…") }

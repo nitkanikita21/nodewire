@@ -110,10 +110,6 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
     val blockName: StateFlow<String> = _blockName.asStateFlow()
     fun setBlockName(name: String) { _blockName.value = name }
 
-    private val _controllerId = MutableStateFlow<java.util.UUID?>(null)
-    val controllerId: StateFlow<java.util.UUID?> = _controllerId.asStateFlow()
-    fun setControllerId(id: java.util.UUID?) { _controllerId.value = id }
-
     /** Per-node flow, or null if [id] is unknown. */
     fun nodeFlow(id: NodeId): StateFlow<Node>? = nodeFlows[id]?.asStateFlow()
 
