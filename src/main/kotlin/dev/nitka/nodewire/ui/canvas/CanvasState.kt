@@ -44,6 +44,9 @@ class CanvasState(
     private var _visibleWidthPx by mutableStateOf(0)
     private var _visibleHeightPx by mutableStateOf(0)
 
+    private var _cursorWorldX by mutableStateOf(0f)
+    private var _cursorWorldY by mutableStateOf(0f)
+
     val panX: Float get() = _panX
     val panY: Float get() = _panY
     val zoom: Float get() = _zoom
@@ -51,6 +54,14 @@ class CanvasState(
     val originY: Int get() = _originY
     val visibleWidthPx: Int get() = _visibleWidthPx
     val visibleHeightPx: Int get() = _visibleHeightPx
+    val cursorWorldX: Float get() = _cursorWorldX
+    val cursorWorldY: Float get() = _cursorWorldY
+
+    /** Updated from [NodeEditorScreen] on every PointerEvent.Move; used by paste-at-cursor. */
+    fun setCursorWorld(x: Float, y: Float) {
+        _cursorWorldX = x
+        _cursorWorldY = y
+    }
 
     fun setOrigin(x: Int, y: Int) {
         _originX = x

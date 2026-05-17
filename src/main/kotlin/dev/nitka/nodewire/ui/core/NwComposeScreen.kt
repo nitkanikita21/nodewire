@@ -29,6 +29,13 @@ abstract class NwComposeScreen(title: Component) : Screen(title) {
     private val owner = NwUiOwner()
 
     /**
+     * True if any [KeyHandler] (e.g. a focused TextInput) currently holds
+     * keyboard focus inside this screen's composition. Subclasses use this
+     * to skip editor-level shortcuts that would hijack typing.
+     */
+    protected val ownerHasKeyFocus: Boolean get() = owner.hasKeyFocus
+
+    /**
      * Blur the game world behind the screen via MC's post-effect chain.
      * Activated in [init], deactivated in [removed]. The post-chain runs
      * before the screen renders, so our semi-transparent backgrounds and

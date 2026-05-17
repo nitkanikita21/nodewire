@@ -107,6 +107,13 @@ class NwUiOwner {
      */
     private var keyFocus: KeyHandler? by mutableStateOf(null)
 
+    /**
+     * Public read-only check whether any [KeyHandler] currently holds key focus.
+     * NodeEditorScreen uses this to decide whether to dispatch editor-level
+     * shortcuts (don't hijack typing in a focused TextInput).
+     */
+    val hasKeyFocus: Boolean get() = keyFocus != null
+
     val keyFocusController: KeyFocusController = object : KeyFocusController {
         override fun request(handler: KeyHandler) { keyFocus = handler }
         override fun release(handler: KeyHandler) {

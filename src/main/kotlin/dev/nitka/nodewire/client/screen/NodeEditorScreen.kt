@@ -58,19 +58,36 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
     private var editorRef: EditorState? = null
 
     /**
-     * ESC clears selection (if any) before falling through to the default
-     * which closes the screen. Lets the user de-select without leaving the
-     * editor.
+     * Dispatches editor-level shortcuts via [EditorKeyBindings].
+     *
+     * Dispatch order:
+     *  1. `super` first — lets any focused TextInput (or other KeyHandler)
+     *     consume the key through [NwUiOwner.dispatchKey].
+     *  2. If a TextInput is still focused but didn't consume this specific
+     *     key (e.g. F while typing in a name field), bail — don't hijack.
+     *  3. Otherwise match against [EditorKeyBindings.DEFAULT] and invoke
+     *     the bound action if found.
+     *
+     * Paste reads cursor world coords from [CanvasState] so nodes appear
+     * under the mouse rather than at the origin.
      */
     override fun keyPressed(keyCode: Int, scanCode: Int, modifiers: Int): Boolean {
-        if (keyCode == 256 /* GLFW_KEY_ESCAPE */) {
-            val e = editorRef
-            if (e != null && e.selectedNodes.isNotEmpty()) {
-                e.clearSelection()
-                return true
-            }
-        }
-        return super.keyPressed(keyCode, scanCode, modifiers)
+        // Let any focused TextInput (or other key handler) consume first.
+        if (super.keyPressed(keyCode, scanCode, modifiers)) return true
+
+        // If a TextInput is still focused but didn't consume this specific
+        // key (e.g. F while typing), don't hijack — pass through.
+        if (ownerHasKeyFocus) return false
+
+        val editor = editorRef ?: return false
+        val event = dev.nitka.nodewire.ui.input.KeyEvent.Press(keyCode, scanCode, modifiers)
+        val binding = EditorKeyBindings.match(EditorKeyBindings.DEFAULT, event) ?: return false
+
+        val canvas = editor.canvasState
+        val cursorWorldX = canvas?.cursorWorldX ?: 0f
+        val cursorWorldY = canvas?.cursorWorldY ?: 0f
+
+        return binding.action(editor, cursorWorldX, cursorWorldY)
     }
 
     /**
@@ -153,6 +170,15 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
                             // the canvas is offset by the top toolbar, so we
                             // use local for world-coord math and pass
                             // screen-absolute only to popup placement.
+
+                            // Always track cursor world position on Move so
+                            // paste-at-cursor (Ctrl+V) knows where to land.
+                            if (ev is PointerEvent.Move) {
+                                val worldX = localX.toFloat() / canvas.zoom - canvas.panX
+                                val worldY = localY.toFloat() / canvas.zoom - canvas.panY
+                                canvas.setCursorWorld(worldX, worldY)
+                            }
+
                             when {
                                 // Right-click on empty area → open the
                                 // "Add Node" context menu.
