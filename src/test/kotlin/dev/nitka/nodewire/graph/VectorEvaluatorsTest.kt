@@ -133,4 +133,42 @@ class VectorEvaluatorsTest {
         )
         assertEquals(PinValue.Vec2(0f, 0f), out["out"])
     }
+
+    @Test fun vecOpMulComponentVec2() {
+        val out = VectorEvaluators.VecOp(
+            opCfg("MUL_COMPONENT", "VEC2"),
+            mapOf("a" to PinValue.Vec2(2f, 3f), "b" to PinValue.Vec2(4f, 5f)),
+        )
+        assertEquals(PinValue.Vec2(8f, 15f), out["out"])
+    }
+
+    @Test fun vecOpMulComponentVec3() {
+        val out = VectorEvaluators.VecOp(
+            opCfg("MUL_COMPONENT", "VEC3"),
+            mapOf(
+                "a" to PinValue.Vec3(1f, 2f, 3f),
+                "b" to PinValue.Vec3(4f, 5f, 6f),
+            ),
+        )
+        assertEquals(PinValue.Vec3(4f, 10f, 18f), out["out"])
+    }
+
+    @Test fun vecOpMinVec2() {
+        val out = VectorEvaluators.VecOp(
+            opCfg("MIN", "VEC2"),
+            mapOf("a" to PinValue.Vec2(5f, 1f), "b" to PinValue.Vec2(2f, 7f)),
+        )
+        assertEquals(PinValue.Vec2(2f, 1f), out["out"])
+    }
+
+    @Test fun vecOpMaxVec3() {
+        val out = VectorEvaluators.VecOp(
+            opCfg("MAX", "VEC3"),
+            mapOf(
+                "a" to PinValue.Vec3(1f, 5f, 3f),
+                "b" to PinValue.Vec3(4f, 2f, 9f),
+            ),
+        )
+        assertEquals(PinValue.Vec3(4f, 5f, 9f), out["out"])
+    }
 }

@@ -117,6 +117,27 @@ object VectorEvaluators {
                 val a = vec3In(inputs, "a"); val b = vec3In(inputs, "b")
                 PinValue.Vec3(a.x - b.x, a.y - b.y, a.z - b.z)
             }
+            VecOpType.MUL_COMPONENT -> if (v2) {
+                val a = vec2In(inputs, "a"); val b = vec2In(inputs, "b")
+                PinValue.Vec2(a.x * b.x, a.y * b.y)
+            } else {
+                val a = vec3In(inputs, "a"); val b = vec3In(inputs, "b")
+                PinValue.Vec3(a.x * b.x, a.y * b.y, a.z * b.z)
+            }
+            VecOpType.MIN -> if (v2) {
+                val a = vec2In(inputs, "a"); val b = vec2In(inputs, "b")
+                PinValue.Vec2(minOf(a.x, b.x), minOf(a.y, b.y))
+            } else {
+                val a = vec3In(inputs, "a"); val b = vec3In(inputs, "b")
+                PinValue.Vec3(minOf(a.x, b.x), minOf(a.y, b.y), minOf(a.z, b.z))
+            }
+            VecOpType.MAX -> if (v2) {
+                val a = vec2In(inputs, "a"); val b = vec2In(inputs, "b")
+                PinValue.Vec2(maxOf(a.x, b.x), maxOf(a.y, b.y))
+            } else {
+                val a = vec3In(inputs, "a"); val b = vec3In(inputs, "b")
+                PinValue.Vec3(maxOf(a.x, b.x), maxOf(a.y, b.y), maxOf(a.z, b.z))
+            }
             null -> if (v2) PinValue.Vec2(0f, 0f) else PinValue.Vec3(0f, 0f, 0f)
             else -> if (v2) PinValue.Vec2(0f, 0f) else PinValue.Vec3(0f, 0f, 0f)
         }
