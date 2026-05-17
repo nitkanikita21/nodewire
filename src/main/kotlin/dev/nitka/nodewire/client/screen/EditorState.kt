@@ -1046,6 +1046,7 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
             g.add(n)
         }
         for (e in _edges.value) g.addEdge(e)
+        for (group in _groups.value) g.groups.add(group)
         return g
     }
 
