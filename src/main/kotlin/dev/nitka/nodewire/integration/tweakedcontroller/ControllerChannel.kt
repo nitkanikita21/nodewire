@@ -11,20 +11,7 @@ import dev.nitka.nodewire.graph.PinType
  *   * Trigger — produce a 0..1 float
  *   * Button / DPadSingle — produce a bool
  */
-enum class ControllerChannelCategory {
-    STICK,
-    /**
-     * Single signed stick axis (slot 0..3). Useful when TC's
-     * user-configured mapping writes a specific physical input
-     * into one of the stick axis slots — pick the matching slot
-     * via [ControllerChannel] and the value lands here directly.
-     */
-    STICK_AXIS,
-    TRIGGER,
-    BUTTON,
-    DPAD_SINGLE,
-    DPAD_COMPOSITE,
-}
+enum class ControllerChannelCategory { STICK, TRIGGER, BUTTON, DPAD_SINGLE, DPAD_COMPOSITE }
 
 /**
  * Every input source on the gamepad. Names are stable (serialized to
@@ -38,12 +25,6 @@ enum class ControllerChannel(
 ) {
     LEFT_STICK("Left Stick", ControllerChannelCategory.STICK),
     RIGHT_STICK("Right Stick", ControllerChannelCategory.STICK),
-    // Per-axis channels — pick if your TC config writes a physical
-    // input directly into one TC axis slot (e.g. LT key → axisLeftX).
-    AXIS_LSTICK_X("Axis L-Stick X", ControllerChannelCategory.STICK_AXIS),
-    AXIS_LSTICK_Y("Axis L-Stick Y", ControllerChannelCategory.STICK_AXIS),
-    AXIS_RSTICK_X("Axis R-Stick X", ControllerChannelCategory.STICK_AXIS),
-    AXIS_RSTICK_Y("Axis R-Stick Y", ControllerChannelCategory.STICK_AXIS),
     LEFT_TRIGGER("Left Trigger", ControllerChannelCategory.TRIGGER),
     RIGHT_TRIGGER("Right Trigger", ControllerChannelCategory.TRIGGER),
     BUTTON_A("Button A", ControllerChannelCategory.BUTTON),
@@ -86,11 +67,6 @@ fun allowedOutputModes(cat: ControllerChannelCategory): List<ControllerOutputMod
         ControllerOutputMode.XY_REDSTONE,
         ControllerOutputMode.MAGNITUDE_BOOL,
     )
-    ControllerChannelCategory.STICK_AXIS -> listOf(
-        ControllerOutputMode.RAW,        // FLOAT in −1..1
-        ControllerOutputMode.REDSTONE,   // 0..15 centered at 7 (axisToRedstone)
-        ControllerOutputMode.BOOL,       // |value| > deadzone
-    )
     ControllerChannelCategory.TRIGGER -> listOf(
         ControllerOutputMode.RAW,
         ControllerOutputMode.REDSTONE,
@@ -113,10 +89,6 @@ internal fun rawChannelValue(state: ControllerState, ch: ControllerChannel): Tri
     return when (ch) {
         ControllerChannel.LEFT_STICK -> Triple(state.leftStickX, state.leftStickY, false)
         ControllerChannel.RIGHT_STICK -> Triple(state.rightStickX, state.rightStickY, false)
-        ControllerChannel.AXIS_LSTICK_X -> Triple(state.leftStickX, 0f, false)
-        ControllerChannel.AXIS_LSTICK_Y -> Triple(state.leftStickY, 0f, false)
-        ControllerChannel.AXIS_RSTICK_X -> Triple(state.rightStickX, 0f, false)
-        ControllerChannel.AXIS_RSTICK_Y -> Triple(state.rightStickY, 0f, false)
         ControllerChannel.LEFT_TRIGGER -> Triple(state.leftTrigger, 0f, false)
         ControllerChannel.RIGHT_TRIGGER -> Triple(state.rightTrigger, 0f, false)
         ControllerChannel.BUTTON_A -> Triple(0f, 0f, state.buttonA)
@@ -188,20 +160,16 @@ fun applyOutputMode(
 
         ControllerOutputMode.REDSTONE ->
             mapOf("value" to PinValue.Redstone(
-                when (channel.category) {
-                    ControllerChannelCategory.TRIGGER -> unitToRedstone(raw.first * sign)
-                    ControllerChannelCategory.STICK_AXIS -> axisToRedstone(raw.first * sign)
-                    else -> if (raw.third) 15 else 0
-                }
+                if (channel.category == ControllerChannelCategory.TRIGGER)
+                    unitToRedstone(raw.first * sign)
+                else if (raw.third) 15 else 0
             ))
 
         ControllerOutputMode.BOOL ->
             mapOf("pressed" to PinValue.Bool(
-                when (channel.category) {
-                    ControllerChannelCategory.TRIGGER -> (raw.first * sign) > deadzone
-                    ControllerChannelCategory.STICK_AXIS -> kotlin.math.abs(raw.first * sign) > deadzone
-                    else -> raw.third
-                }
+                if (channel.category == ControllerChannelCategory.TRIGGER)
+                    (raw.first * sign) > deadzone
+                else raw.third,
             ))
     }
 }
