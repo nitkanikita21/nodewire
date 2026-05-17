@@ -114,6 +114,14 @@ class TextFieldStateHolder(
         insertString(Character.toChars(codePoint).concatToString())
     }
 
+    /** Called when Enter is pressed; composable owns the actual callback. */
+    var onSubmit: () -> Unit = {}
+    fun submit() = onSubmit()
+
+    /** Called when Esc is pressed; composable owns the actual focus controller. */
+    var onReleaseFocus: () -> Unit = {}
+    fun releaseFocus() = onReleaseFocus()
+
     // Set each frame by the composable so we can convert localX → char index.
     var fontWidthOf: (String) -> Int = { 0 }
     var paddingLeftPx: Int = 0
