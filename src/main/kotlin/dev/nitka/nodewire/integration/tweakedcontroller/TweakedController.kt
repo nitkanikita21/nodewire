@@ -152,13 +152,17 @@ object TweakedController {
     private fun readLecternState(be: Any, getButton: Method, getAxis: Method): ControllerState {
         fun btn(i: Int): Boolean = runCatching { getButton.invoke(be, i) as Boolean }.getOrElse { false }
         fun axis(i: Int): Float = runCatching { getAxis.invoke(be, i) as Float }.getOrElse { 0f }
+        // GLFW reports trigger axes as −1..1 (−1 released, 1 fully pressed),
+        // not 0..1. Normalize so deadzone semantics match user intuition:
+        // deadzone=0 fires on any press; deadzone=0.5 fires past halfway.
+        fun trigger(i: Int): Float = ((axis(i) + 1f) * 0.5f).coerceIn(0f, 1f)
         return ControllerState(
             leftStickX = axis(0),
             leftStickY = axis(1),
             rightStickX = axis(2),
             rightStickY = axis(3),
-            leftTrigger = axis(4),
-            rightTrigger = axis(5),
+            leftTrigger = trigger(4),
+            rightTrigger = trigger(5),
             buttonA = btn(0),
             buttonB = btn(1),
             buttonX = btn(2),
