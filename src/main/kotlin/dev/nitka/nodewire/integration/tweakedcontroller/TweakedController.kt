@@ -31,22 +31,34 @@ object TweakedController {
     fun isLoaded(): Boolean = ModList.get()?.isLoaded(MOD_ID) ?: false
 
     /**
-     * Returns the unique identifier of the controller represented by
-     * [stack], or `null` if the stack isn't a TC controller item. The
-     * id is derived from the item NBT — TC stores a UUID under one of
-     * the conventional keys (controllerId / uuid / id). If your TC
-     * version uses a different key, extend this method.
+     * Nodewire's own NBT key for a per-item-instance UUID. TC's controller
+     * item has no inherent UUID — it identifies channels by configurable
+     * frequencies (Create redstone-link style), not per-instance ids.
+     * We mint our own UUID on first lookup and persist it on the stack so
+     * the binding model ("this specific controller" ↔ "this logic block")
+     * has something stable to point at. The UUID is opaque to TC and only
+     * meaningful inside Nodewire.
+     */
+    private const val NW_BIND_ID_KEY = "nw:bindId"
+
+    /**
+     * Returns a stable identifier for the controller represented by [stack],
+     * or `null` if the stack isn't a TC controller item. Allocates and
+     * persists a UUID into the stack's NBT on first call — subsequent
+     * calls return the same id. Caller must hold the stack on the server
+     * side (item-NBT mutations sync to the client via vanilla item slot
+     * sync). The reflection class check guards against accidentally tagging
+     * non-controller stacks.
      */
     fun controllerItemId(stack: ItemStack): UUID? {
         if (!isLoaded() || stack.isEmpty) return null
         val klass = controllerItemClass ?: return null
         if (!klass.isInstance(stack.item)) return null
-        val tag = stack.tag ?: return null
-        if (tag.hasUUID("Id")) return tag.getUUID("Id")
-        if (tag.hasUUID("controllerId")) return tag.getUUID("controllerId")
-        if (tag.hasUUID("uuid")) return tag.getUUID("uuid")
-        if (tag.hasUUID("id")) return tag.getUUID("id")
-        return null
+        val tag = stack.orCreateTag
+        if (tag.hasUUID(NW_BIND_ID_KEY)) return tag.getUUID(NW_BIND_ID_KEY)
+        val minted = UUID.randomUUID()
+        tag.putUUID(NW_BIND_ID_KEY, minted)
+        return minted
     }
 
     /**
