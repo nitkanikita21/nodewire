@@ -130,4 +130,22 @@ class EditOpsTest {
         val s = TextFieldState("hello", TextRange.caret(2))
         assertEquals(TextRange(0, 5), EditOps.selectAll(s).selection)
     }
+
+    @Test fun `deleteWordBackward removes to previous word boundary`() {
+        val s = TextFieldState("foo bar baz", TextRange.caret(7))
+        val r = EditOps.deleteWordBackward(s)
+        assertEquals("foo  baz", r.text); assertEquals(TextRange.caret(4), r.selection)
+    }
+
+    @Test fun `deleteWordForward removes to next word boundary`() {
+        val s = TextFieldState("foo bar baz", TextRange.caret(0))
+        val r = EditOps.deleteWordForward(s)
+        assertEquals(" bar baz", r.text); assertEquals(TextRange.caret(0), r.selection)
+    }
+
+    @Test fun `deleteWordBackward deletes selection if present`() {
+        val s = TextFieldState("abcdef", TextRange(1, 4))
+        val r = EditOps.deleteWordBackward(s)
+        assertEquals("aef", r.text); assertEquals(TextRange.caret(1), r.selection)
+    }
 }
