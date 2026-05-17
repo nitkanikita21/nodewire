@@ -116,22 +116,36 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
      */
     fun updateNode(id: NodeId, transform: (Node) -> Node) {
         val flow = nodeFlows[id] ?: return
+        mutateGraph(mergeable = true) {
+            val updated = transform(flow.value)
+            flow.value = updated
+            graph.nodes[id] = updated
+        }
+    }
+
+    /** Non-snapshotting inner body of [updateNode] — for use inside a [mutateGraph] block. */
+    private fun _updateNodeInternal(id: NodeId, transform: (Node) -> Node) {
+        val flow = nodeFlows[id] ?: return
         val updated = transform(flow.value)
         flow.value = updated
         graph.nodes[id] = updated
     }
 
     fun addNode(node: Node) {
-        graph.add(node)
-        nodeFlows[node.id] = MutableStateFlow(node)
-        _nodes.value = _nodes.value + node.id
+        mutateGraph(mergeable = false) {
+            graph.add(node)
+            nodeFlows[node.id] = MutableStateFlow(node)
+            _nodes.value = _nodes.value + node.id
+        }
     }
 
     fun removeNode(id: dev.nitka.nodewire.graph.NodeId) {
-        graph.removeNode(id)
-        nodeFlows.remove(id)
-        _nodes.value = _nodes.value - id
-        _edges.value = _edges.value.filter { it.from.node != id && it.to.node != id }
+        mutateGraph(mergeable = false) {
+            graph.removeNode(id)
+            nodeFlows.remove(id)
+            _nodes.value = _nodes.value - id
+            _edges.value = _edges.value.filter { it.from.node != id && it.to.node != id }
+        }
     }
 
     /**
@@ -150,7 +164,11 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
             outputs = src.outputs,
             config = src.config.copy(),
         )
-        graph.add(copy)
+        mutateGraph(mergeable = false) {
+            graph.add(copy)
+            nodeFlows[copy.id] = MutableStateFlow(copy)
+            _nodes.value = _nodes.value + copy.id
+        }
         return copy
     }
 
@@ -236,8 +254,10 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         val (output, input) = orderOutputInput(src, target)
         if (pinType(output) != pinType(input)) return false
         val edge = Edge(PinRef(output.node, output.pin), PinRef(input.node, input.pin))
-        graph.connectReplacing(edge)
-        _edges.value = graph.edges.toList()
+        mutateGraph(mergeable = false) {
+            graph.connectReplacing(edge)
+            _edges.value = graph.edges.toList()
+        }
         return true
     }
 
@@ -276,14 +296,16 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
      * design Q&A).
      */
     fun changeChannelType(id: dev.nitka.nodewire.graph.NodeId, newType: dev.nitka.nodewire.graph.PinType) {
-        updateNode(id) { n ->
-            val pin = (n.inputs + n.outputs).firstOrNull() ?: return@updateNode n
-            val rebuilt = pin.copy(type = newType)
-            val newConfig = n.config.copy().apply { putString("type", newType.name) }
-            if (n.inputs.isNotEmpty()) n.copy(inputs = listOf(rebuilt), config = newConfig)
-            else n.copy(outputs = listOf(rebuilt), config = newConfig)
+        mutateGraph(mergeable = false) {
+            _updateNodeInternal(id) { n ->
+                val pin = (n.inputs + n.outputs).firstOrNull() ?: return@_updateNodeInternal n
+                val rebuilt = pin.copy(type = newType)
+                val newConfig = n.config.copy().apply { putString("type", newType.name) }
+                if (n.inputs.isNotEmpty()) n.copy(inputs = listOf(rebuilt), config = newConfig)
+                else n.copy(outputs = listOf(rebuilt), config = newConfig)
+            }
+            _disconnectAllEdgesInternal(id)
         }
-        disconnectAllEdges(id)
     }
 
     /**
@@ -292,19 +314,21 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
      * the pin IDs may have changed.
      */
     fun changeLogicGateOp(id: NodeId, newOp: String) {
-        updateNode(id) { n ->
-            val inputs = if (newOp == "NOT") {
-                listOf(dev.nitka.nodewire.graph.Pin("in", "In", dev.nitka.nodewire.graph.PinType.BOOL))
-            } else {
-                listOf(
-                    dev.nitka.nodewire.graph.Pin("a", "A", dev.nitka.nodewire.graph.PinType.BOOL),
-                    dev.nitka.nodewire.graph.Pin("b", "B", dev.nitka.nodewire.graph.PinType.BOOL),
-                )
+        mutateGraph(mergeable = false) {
+            _updateNodeInternal(id) { n ->
+                val inputs = if (newOp == "NOT") {
+                    listOf(dev.nitka.nodewire.graph.Pin("in", "In", dev.nitka.nodewire.graph.PinType.BOOL))
+                } else {
+                    listOf(
+                        dev.nitka.nodewire.graph.Pin("a", "A", dev.nitka.nodewire.graph.PinType.BOOL),
+                        dev.nitka.nodewire.graph.Pin("b", "B", dev.nitka.nodewire.graph.PinType.BOOL),
+                    )
+                }
+                val newConfig = n.config.copy().apply { putString("op", newOp) }
+                n.copy(inputs = inputs, config = newConfig)
             }
-            val newConfig = n.config.copy().apply { putString("op", newOp) }
-            n.copy(inputs = inputs, config = newConfig)
+            _disconnectAllEdgesInternal(id)
         }
-        disconnectAllEdges(id)
     }
 
     /**
@@ -317,19 +341,21 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         newOp: String,
         newType: dev.nitka.nodewire.graph.PinType,
     ) {
-        updateNode(id) { n ->
-            val inputs = listOf(
-                dev.nitka.nodewire.graph.Pin("a", "A", newType),
-                dev.nitka.nodewire.graph.Pin("b", "B", newType),
-            )
-            val outputs = listOf(dev.nitka.nodewire.graph.Pin("out", "Out", newType))
-            val newConfig = n.config.copy().apply {
-                putString("op", newOp)
-                putString("type", newType.name)
+        mutateGraph(mergeable = false) {
+            _updateNodeInternal(id) { n ->
+                val inputs = listOf(
+                    dev.nitka.nodewire.graph.Pin("a", "A", newType),
+                    dev.nitka.nodewire.graph.Pin("b", "B", newType),
+                )
+                val outputs = listOf(dev.nitka.nodewire.graph.Pin("out", "Out", newType))
+                val newConfig = n.config.copy().apply {
+                    putString("op", newOp)
+                    putString("type", newType.name)
+                }
+                n.copy(inputs = inputs, outputs = outputs, config = newConfig)
             }
-            n.copy(inputs = inputs, outputs = outputs, config = newConfig)
+            _disconnectAllEdgesInternal(id)
         }
-        disconnectAllEdges(id)
     }
 
     /**
@@ -341,15 +367,17 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         id: NodeId,
         newType: dev.nitka.nodewire.graph.PinType,
     ) {
-        updateNode(id) { n ->
-            val inputs = listOf(
-                dev.nitka.nodewire.graph.Pin("a", "A", newType),
-                dev.nitka.nodewire.graph.Pin("b", "B", newType),
-            )
-            val newConfig = n.config.copy().apply { putString("type", newType.name) }
-            n.copy(inputs = inputs, config = newConfig)
+        mutateGraph(mergeable = false) {
+            _updateNodeInternal(id) { n ->
+                val inputs = listOf(
+                    dev.nitka.nodewire.graph.Pin("a", "A", newType),
+                    dev.nitka.nodewire.graph.Pin("b", "B", newType),
+                )
+                val newConfig = n.config.copy().apply { putString("type", newType.name) }
+                n.copy(inputs = inputs, config = newConfig)
+            }
+            _disconnectAllEdgesInternal(id)
         }
-        disconnectAllEdges(id)
     }
 
     /**
@@ -361,12 +389,14 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         id: dev.nitka.nodewire.graph.NodeId,
         newType: dev.nitka.nodewire.graph.PinType,
     ) {
-        updateNode(id) { n ->
-            val rebuilt = n.outputs.first().copy(type = newType)
-            val newConfig = n.config.copy().apply { putString("type", newType.name) }
-            n.copy(outputs = listOf(rebuilt), config = newConfig)
+        mutateGraph(mergeable = false) {
+            _updateNodeInternal(id) { n ->
+                val rebuilt = n.outputs.first().copy(type = newType)
+                val newConfig = n.config.copy().apply { putString("type", newType.name) }
+                n.copy(outputs = listOf(rebuilt), config = newConfig)
+            }
+            _disconnectAllEdgesInternal(id)
         }
-        disconnectAllEdges(id)
     }
 
     /**
@@ -379,23 +409,27 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         source: dev.nitka.nodewire.graph.PinType,
         target: dev.nitka.nodewire.graph.PinType,
     ) {
-        updateNode(id) { n ->
-            val inputs  = listOf(dev.nitka.nodewire.graph.Pin("in",  "In",  source))
-            val outputs = listOf(dev.nitka.nodewire.graph.Pin("out", "Out", target))
-            val mode = defaultConvertModeFor(source, target)
-            val newConfig = n.config.copy().apply {
-                putString("sourceType", source.name)
-                putString("targetType", target.name)
-                putString("mode", mode)
+        mutateGraph(mergeable = false) {
+            _updateNodeInternal(id) { n ->
+                val inputs  = listOf(dev.nitka.nodewire.graph.Pin("in",  "In",  source))
+                val outputs = listOf(dev.nitka.nodewire.graph.Pin("out", "Out", target))
+                val mode = defaultConvertModeFor(source, target)
+                val newConfig = n.config.copy().apply {
+                    putString("sourceType", source.name)
+                    putString("targetType", target.name)
+                    putString("mode", mode)
+                }
+                n.copy(inputs = inputs, outputs = outputs, config = newConfig)
             }
-            n.copy(inputs = inputs, outputs = outputs, config = newConfig)
+            _disconnectAllEdgesInternal(id)
         }
-        disconnectAllEdges(id)
     }
 
     fun changeConvertMode(id: NodeId, mode: String) {
-        updateNode(id) { n ->
-            n.copy(config = n.config.copy().apply { putString("mode", mode) })
+        mutateGraph(mergeable = false) {
+            _updateNodeInternal(id) { n ->
+                n.copy(config = n.config.copy().apply { putString("mode", mode) })
+            }
         }
     }
 
@@ -412,7 +446,8 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         else -> ""
     }
 
-    private fun disconnectAllEdges(id: dev.nitka.nodewire.graph.NodeId) {
+    /** Non-snapshotting inner body — for use inside a [mutateGraph] block. */
+    private fun _disconnectAllEdgesInternal(id: dev.nitka.nodewire.graph.NodeId) {
         val before = graph.edges.size
         graph.edges.removeAll { it.from.node == id || it.to.node == id }
         if (graph.edges.size != before) {
@@ -420,14 +455,20 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         }
     }
 
+    fun disconnectAllEdges(id: dev.nitka.nodewire.graph.NodeId) {
+        mutateGraph(mergeable = false) { _disconnectAllEdgesInternal(id) }
+    }
+
     fun disconnectPin(key: PinKey) {
-        val before = graph.edges.size
-        graph.edges.removeAll { edge ->
-            (edge.from.node == key.node && edge.from.pin == key.pin && key.side == PinSide.Output) ||
-                (edge.to.node == key.node && edge.to.pin == key.pin && key.side == PinSide.Input)
-        }
-        if (graph.edges.size != before) {
-            _edges.value = graph.edges.toList()
+        mutateGraph(mergeable = false) {
+            val before = graph.edges.size
+            graph.edges.removeAll { edge ->
+                (edge.from.node == key.node && edge.from.pin == key.pin && key.side == PinSide.Output) ||
+                    (edge.to.node == key.node && edge.to.pin == key.pin && key.side == PinSide.Input)
+            }
+            if (graph.edges.size != before) {
+                _edges.value = graph.edges.toList()
+            }
         }
     }
 
@@ -512,8 +553,10 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
      */
     fun moveSelected(dxWorld: Float, dyWorld: Float) {
         if (selectedNodes.isEmpty()) return
-        for (id in selectedNodes) {
-            updateNode(id) { n -> n.copy(pos = CanvasPos(n.pos.x + dxWorld, n.pos.y + dyWorld)) }
+        mutateGraph(mergeable = true) {
+            for (id in selectedNodes) {
+                _updateNodeInternal(id) { n -> n.copy(pos = CanvasPos(n.pos.x + dxWorld, n.pos.y + dyWorld)) }
+            }
         }
     }
 
