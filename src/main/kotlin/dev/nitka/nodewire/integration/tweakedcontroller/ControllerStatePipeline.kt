@@ -3,43 +3,67 @@ package dev.nitka.nodewire.integration.tweakedcontroller
 import dev.nitka.nodewire.block.LogicBlockEntity
 import net.minecraft.core.BlockPos
 import net.minecraft.world.level.Level
+import org.apache.logging.log4j.LogManager
 
 /**
  * Sink for incoming Tweaked-Controller packet state. Mixins inside
- * `dev.nitka.nodewire.mixin` (Java) intercept TC's
+ * `dev.nitka.nodewire.mixin.tc` (Java) intercept TC's
  * `TweakedLinkedControllerButtonPacket.handleItem` / `handleLectern`
  * and `TweakedLinkedControllerAxisPacket.handleItem` / `handleLectern`,
- * extract the raw packed wire values, and forward them here. We resolve
- * the target [LogicBlockEntity] and let it apply the update.
+ * call TC's own `ControllerRedstoneOutput.Decode*()` to unpack the wire
+ * format, and forward the decoded arrays here.
  *
- * Why push (not pull): pulling from TC's state map requires either
- * scanning lecterns each tick or chasing TC's frequency-based redstone
- * network. Drive-By-Wire's solution is push via mixin, so we do the
- * same — it's deterministic, runs at packet rate (~20Hz), no per-tick
- * scans, no UUID indirection.
+ * Per-call DEBUG logs make it easy to verify the data path end-to-end
+ * (`grep nodewire/tc` in the game log) — chase down "binding works,
+ * packets arrive, decode runs, but the node still emits zero" bugs.
  */
 object ControllerStatePipeline {
 
+    private val LOG = LogManager.getLogger("nodewire/tc")
+
     /**
-     * Push raw packed button bitmask to the Logic Block at [pos] in
-     * [level]. Decoding (which physical button is which bit) happens
-     * inside [LogicBlockEntity] when it converts to a [ControllerState].
+     * Push decoded button bitmask (TC's `Boolean[]`, length 15, GLFW
+     * gamepad layout) to the Logic Block at [pos] in [level].
      */
     @JvmStatic
-    fun pushButtons(level: Level, pos: BlockPos, buttonStates: Short) {
-        val be = level.getBlockEntity(pos) as? LogicBlockEntity ?: return
-        be.receiveControllerButtonStates(buttonStates)
+    fun pushButtonStates(level: Level, pos: BlockPos, buttons: Array<Boolean?>) {
+        val be = level.getBlockEntity(pos) as? LogicBlockEntity
+        if (be == null) {
+            LOG.debug("pushButtonStates: no LogicBlockEntity at {}", pos)
+            return
+        }
+        val unboxed = BooleanArray(buttons.size) { buttons[it] == true }
+        be.receiveControllerButtonStates(unboxed)
+        LOG.debug("pushButtonStates: pos={} A={} B={}", pos, unboxed.getOrElse(0) { false }, unboxed.getOrElse(1) { false })
     }
 
     /**
-     * Push packed axis int. If TC's [fullAxis] is non-null and length
-     * 6, it carries higher-precision float axes; otherwise [axisPacked]
-     * (a 32-bit int holding 6 packed bytes per TC's encoding) is the
-     * source of truth.
+     * Push decoded axis bytes (TC's `Byte[]`, length 6: byte 0..3 are
+     * signed sticks with bit-4 = sign, bits 0..3 = magnitude; byte 4..5
+     * are unsigned trigger magnitudes 0..15). If [fullAxis] is non-null
+     * and length ≥ 6, it carries higher-precision floats and the
+     * receiver should prefer it.
      */
     @JvmStatic
-    fun pushAxes(level: Level, pos: BlockPos, axisPacked: Int, fullAxis: FloatArray?) {
-        val be = level.getBlockEntity(pos) as? LogicBlockEntity ?: return
-        be.receiveControllerAxisStates(axisPacked, fullAxis)
+    fun pushAxisStates(
+        level: Level,
+        pos: BlockPos,
+        axisBytes: Array<Byte?>,
+        fullAxis: FloatArray?,
+    ) {
+        val be = level.getBlockEntity(pos) as? LogicBlockEntity
+        if (be == null) {
+            LOG.debug("pushAxisStates: no LogicBlockEntity at {}", pos)
+            return
+        }
+        val unboxed = ByteArray(axisBytes.size) { axisBytes[it] ?: 0 }
+        be.receiveControllerAxisStates(unboxed, fullAxis)
+        LOG.debug(
+            "pushAxisStates: pos={} LT-byte={} RT-byte={} fullAxis={}",
+            pos,
+            unboxed.getOrElse(4) { 0 },
+            unboxed.getOrElse(5) { 0 },
+            fullAxis?.joinToString(",")?.take(80),
+        )
     }
 }

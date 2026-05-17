@@ -86,43 +86,41 @@ data class ControllerState(
 ) {
 
     /**
-     * Apply a button-bitmask update from TC's wire format. Each of the
-     * 15 used bits is one button; layout matches GLFW gamepad indices.
-     * Axes are preserved (only button fields are rewritten).
+     * Apply pre-decoded button array. Position-to-name mapping matches
+     * `TweakedLecternControllerBlockEntity.GetButton(int)`, which itself
+     * reads `ControllerRedstoneOutput.buttons` after `DecodeButtons(short)`.
      */
-    fun withButtons(buttonStates: Short): ControllerState {
-        val bits = buttonStates.toInt() and 0xFFFF
-        fun bit(i: Int) = (bits shr i) and 1 != 0
+    fun withButtonArray(buttons: BooleanArray): ControllerState {
+        fun b(i: Int) = buttons.getOrElse(i) { false }
         return copy(
-            buttonA = bit(BUTTON_A),
-            buttonB = bit(BUTTON_B),
-            buttonX = bit(BUTTON_X),
-            buttonY = bit(BUTTON_Y),
-            leftBumper = bit(BUTTON_LB),
-            rightBumper = bit(BUTTON_RB),
-            back = bit(BUTTON_BACK),
-            start = bit(BUTTON_START),
-            leftStickClick = bit(BUTTON_L_STICK_CLICK),
-            rightStickClick = bit(BUTTON_R_STICK_CLICK),
-            dpadUp = bit(BUTTON_DPAD_UP),
-            dpadRight = bit(BUTTON_DPAD_RIGHT),
-            dpadDown = bit(BUTTON_DPAD_DOWN),
-            dpadLeft = bit(BUTTON_DPAD_LEFT),
+            buttonA = b(BUTTON_A),
+            buttonB = b(BUTTON_B),
+            buttonX = b(BUTTON_X),
+            buttonY = b(BUTTON_Y),
+            leftBumper = b(BUTTON_LB),
+            rightBumper = b(BUTTON_RB),
+            back = b(BUTTON_BACK),
+            start = b(BUTTON_START),
+            leftStickClick = b(BUTTON_L_STICK_CLICK),
+            rightStickClick = b(BUTTON_R_STICK_CLICK),
+            dpadUp = b(BUTTON_DPAD_UP),
+            dpadRight = b(BUTTON_DPAD_RIGHT),
+            dpadDown = b(BUTTON_DPAD_DOWN),
+            dpadLeft = b(BUTTON_DPAD_LEFT),
         )
     }
 
     /**
-     * Apply an axis update from TC's wire format. Prefer [fullAxis] if
-     * present (6-element float array, sticks in −1..1, triggers in 0..1).
-     * Otherwise unpack [axisPacked]: 6 bytes, each holding 5 bits
-     * (sign in bit 4, magnitude 0..15 in bits 0..3). Sticks reconstruct
-     * as `(sign ? −1 : +1) * (mag / 15)`. Trigger bytes are direct 0..15
-     * normalized to 0..1.
+     * Apply pre-decoded axis bytes. `axisBytes` mirrors TC's `Byte[6]`
+     * shape after `ControllerRedstoneOutput.DecodeAxis(int)`:
+     *   * bytes 0..3 — signed stick axes: bit-4 is sign, bits 0..3 are
+     *     magnitude 0..15. Order is L_X, L_Y, R_X, R_Y.
+     *   * bytes 4..5 — unsigned trigger magnitudes 0..15 (LT, RT).
      *
-     * Triggers stay in 0..1 (matches user-intuitive deadzone semantics
-     * in [applyOutputMode]). Sticks stay in −1..1.
+     * Prefer [fullAxis] when present (TC's high-precision float array
+     * of length ≥ 6: sticks in −1..1, triggers in 0..1).
      */
-    fun withAxes(axisPacked: Int, fullAxis: FloatArray?): ControllerState {
+    fun withAxisArray(axisBytes: ByteArray, fullAxis: FloatArray?): ControllerState {
         if (fullAxis != null && fullAxis.size >= 6) {
             return copy(
                 leftStickX = fullAxis[0],
@@ -133,24 +131,19 @@ data class ControllerState(
                 rightTrigger = fullAxis[5].coerceIn(0f, 1f),
             )
         }
-        // Unpack 6 bytes from int: byte 0..5 each 5 bits used.
-        // Per TC's ControllerRedstoneOutput.EncodeAxis bit layout (verified
-        // by DBW's mixin code path): each axis byte sits at byte position
-        // i, with bit 4 = sign, bits 0..3 = magnitude (0..15).
-        fun byteAt(i: Int): Int = (axisPacked shr (i * 5)) and 0x1F
-        fun stick(i: Int): Float {
-            val b = byteAt(i)
-            val mag = (b and 0x0F) / 15f
-            return if (b and 0x10 != 0) -mag else mag
+        fun stickFloat(b: Byte): Float {
+            val raw = b.toInt() and 0xFF
+            val mag = (raw and 0x0F) / 15f
+            return if (raw and 0x10 != 0) -mag else mag
         }
-        fun trigger(i: Int): Float = (byteAt(i) and 0x0F) / 15f
+        fun triggerFloat(b: Byte): Float = ((b.toInt() and 0x0F)) / 15f
         return copy(
-            leftStickX = stick(0),
-            leftStickY = stick(1),
-            rightStickX = stick(2),
-            rightStickY = stick(3),
-            leftTrigger = trigger(4),
-            rightTrigger = trigger(5),
+            leftStickX = stickFloat(axisBytes.getOrElse(0) { 0 }),
+            leftStickY = stickFloat(axisBytes.getOrElse(1) { 0 }),
+            rightStickX = stickFloat(axisBytes.getOrElse(2) { 0 }),
+            rightStickY = stickFloat(axisBytes.getOrElse(3) { 0 }),
+            leftTrigger = triggerFloat(axisBytes.getOrElse(4) { 0 }),
+            rightTrigger = triggerFloat(axisBytes.getOrElse(5) { 0 }),
         )
     }
 

@@ -106,25 +106,25 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
         private set
 
     /**
-     * Apply a button-bitmask update from a TC button packet (16 bits,
-     * GLFW gamepad button layout). Merges with the current state so
-     * axes stay live between button packets.
+     * Apply a decoded button array (TC's [Boolean[15]] unboxed) — bit i
+     * is the GLFW gamepad button at index i. Merges with current state
+     * so axes stay live between button packets.
      */
-    fun receiveControllerButtonStates(buttonStates: Short) {
+    fun receiveControllerButtonStates(buttons: BooleanArray) {
         val prev = receivedControllerState ?: dev.nitka.nodewire.integration.tweakedcontroller.ControllerState.ZERO
-        receivedControllerState = prev.withButtons(buttonStates)
+        receivedControllerState = prev.withButtonArray(buttons)
         lastControllerStateAtMs = net.minecraft.Util.getMillis()
     }
 
     /**
-     * Apply an axis update. [axisPacked] is TC's 32-bit packed format
-     * (6 bytes: stick X/Y for L and R, then LT and RT). When [fullAxis]
-     * is non-null and length 6, it carries higher-precision floats —
-     * preferred over the packed form.
+     * Apply a decoded axis byte array (TC's [Byte[6]] unboxed: sticks
+     * 0..3 with sign-bit and 4-bit magnitude, triggers 4..5 with 4-bit
+     * magnitude only). When [fullAxis] is non-null and length ≥ 6, the
+     * receiver prefers those higher-precision floats.
      */
-    fun receiveControllerAxisStates(axisPacked: Int, fullAxis: FloatArray?) {
+    fun receiveControllerAxisStates(axisBytes: ByteArray, fullAxis: FloatArray?) {
         val prev = receivedControllerState ?: dev.nitka.nodewire.integration.tweakedcontroller.ControllerState.ZERO
-        receivedControllerState = prev.withAxes(axisPacked, fullAxis)
+        receivedControllerState = prev.withAxisArray(axisBytes, fullAxis)
         lastControllerStateAtMs = net.minecraft.Util.getMillis()
     }
 

@@ -1,6 +1,7 @@
 package dev.nitka.nodewire.mixin.tc;
 
 import com.getitemfromblock.create_tweaked_controllers.block.TweakedLecternControllerBlockEntity;
+import com.getitemfromblock.create_tweaked_controllers.controller.ControllerRedstoneOutput;
 import com.getitemfromblock.create_tweaked_controllers.packet.TweakedLinkedControllerButtonPacket;
 import dev.nitka.nodewire.integration.tweakedcontroller.ControllerHubItem;
 import dev.nitka.nodewire.integration.tweakedcontroller.ControllerStatePipeline;
@@ -15,18 +16,15 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * Hooks Tweaked Controller's button packet at its server-side handlers.
- * After TC has done its own processing (the `@At("RETURN")` site), we
- * read the raw button bitmask via {@code @Shadow} and forward it to the
- * Nodewire Logic Block whose {@link BlockPos} the bound controller
- * stack carries in NBT (set by {@link ControllerHubItem#putHub}).
+ * Mixes into TC's server-side button packet handlers and forwards the
+ * decoded button bitmask to the Nodewire Logic Block whose {@link BlockPos}
+ * the bound controller stack carries in NBT (set by
+ * {@link ControllerHubItem#putHub(ItemStack, BlockPos)}).
  *
- * <p>{@code @Pseudo} marks the mixin as optional — the target class
- * only exists when Create: Tweaked Controllers is present. Without TC,
- * the mixin silently skips and Nodewire still loads.
- *
- * <p>{@code remap = false} because TC's class/method/field names are
- * already Mojang-mapped at compile time (and not in vanilla MC mappings).
+ * <p>{@code @Pseudo} marks the target as optional — without TC on the
+ * runtime classpath the mixin silently skips and Nodewire still loads.
+ * Decoding goes through TC's own {@code ControllerRedstoneOutput} so the
+ * wire-format bit layout never has to be guessed.
  */
 @Pseudo
 @Mixin(value = TweakedLinkedControllerButtonPacket.class, remap = false)
@@ -39,7 +37,9 @@ public abstract class MixinTweakedControllerButtonPacket {
     private void nodewire$onHandleItem(ServerPlayer player, ItemStack heldItem, CallbackInfo ci) {
         BlockPos hub = ControllerHubItem.INSTANCE.getHub(heldItem);
         if (hub == null) return;
-        ControllerStatePipeline.pushButtons(player.level(), hub, this.buttonStates);
+        ControllerRedstoneOutput out = new ControllerRedstoneOutput();
+        out.DecodeButtons(this.buttonStates);
+        ControllerStatePipeline.pushButtonStates(player.level(), hub, out.buttons);
     }
 
     @Inject(method = "handleLectern", at = @At("RETURN"), remap = false)
@@ -48,6 +48,8 @@ public abstract class MixinTweakedControllerButtonPacket {
         if (stack == null || stack.isEmpty()) return;
         BlockPos hub = ControllerHubItem.INSTANCE.getHub(stack);
         if (hub == null) return;
-        ControllerStatePipeline.pushButtons(player.level(), hub, this.buttonStates);
+        ControllerRedstoneOutput out = new ControllerRedstoneOutput();
+        out.DecodeButtons(this.buttonStates);
+        ControllerStatePipeline.pushButtonStates(player.level(), hub, out.buttons);
     }
 }

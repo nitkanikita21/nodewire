@@ -1,6 +1,7 @@
 package dev.nitka.nodewire.mixin.tc;
 
 import com.getitemfromblock.create_tweaked_controllers.block.TweakedLecternControllerBlockEntity;
+import com.getitemfromblock.create_tweaked_controllers.controller.ControllerRedstoneOutput;
 import com.getitemfromblock.create_tweaked_controllers.packet.TweakedLinkedControllerAxisPacket;
 import dev.nitka.nodewire.integration.tweakedcontroller.ControllerHubItem;
 import dev.nitka.nodewire.integration.tweakedcontroller.ControllerStatePipeline;
@@ -17,8 +18,12 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 /**
  * Mirror of {@link MixinTweakedControllerButtonPacket} for axis packets.
  * Captures both the packed int (low-precision mode) and the
- * {@code float[] fullAxis} (high-precision mode); the receiver picks
- * whichever is populated.
+ * {@code float[] fullAxis} (high-precision mode); we forward both and let
+ * the receiver pick whichever is populated.
+ *
+ * Decoding of the packed int goes through TC's own
+ * {@code ControllerRedstoneOutput.DecodeAxis(int)} (same pattern as
+ * Drive-By-Wire) — so the wire-format bit layout never has to be guessed.
  */
 @Pseudo
 @Mixin(value = TweakedLinkedControllerAxisPacket.class, remap = false)
@@ -34,7 +39,9 @@ public abstract class MixinTweakedControllerAxisPacket {
     private void nodewire$onHandleItem(ServerPlayer player, ItemStack heldItem, CallbackInfo ci) {
         BlockPos hub = ControllerHubItem.INSTANCE.getHub(heldItem);
         if (hub == null) return;
-        ControllerStatePipeline.pushAxes(player.level(), hub, this.axis, this.fullAxis);
+        ControllerRedstoneOutput out = new ControllerRedstoneOutput();
+        out.DecodeAxis(this.axis);
+        ControllerStatePipeline.pushAxisStates(player.level(), hub, out.axis, this.fullAxis);
     }
 
     @Inject(method = "handleLectern", at = @At("RETURN"), remap = false)
@@ -43,6 +50,8 @@ public abstract class MixinTweakedControllerAxisPacket {
         if (stack == null || stack.isEmpty()) return;
         BlockPos hub = ControllerHubItem.INSTANCE.getHub(stack);
         if (hub == null) return;
-        ControllerStatePipeline.pushAxes(player.level(), hub, this.axis, this.fullAxis);
+        ControllerRedstoneOutput out = new ControllerRedstoneOutput();
+        out.DecodeAxis(this.axis);
+        ControllerStatePipeline.pushAxisStates(player.level(), hub, out.axis, this.fullAxis);
     }
 }
