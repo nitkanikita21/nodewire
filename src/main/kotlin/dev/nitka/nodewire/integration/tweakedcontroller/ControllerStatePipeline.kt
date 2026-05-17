@@ -34,7 +34,13 @@ object ControllerStatePipeline {
         }
         val unboxed = BooleanArray(buttons.size) { buttons[it] == true }
         be.receiveControllerButtonStates(unboxed)
-        LOG.debug("pushButtonStates: pos={} A={} B={}", pos, unboxed.getOrElse(0) { false }, unboxed.getOrElse(1) { false })
+        // Print which buttons are set, by GLFW gamepad name.
+        val names = listOf("A", "B", "X", "Y", "LB", "RB", "Back", "Start",
+            "Guide", "L3", "R3", "DPadUp", "DPadRight", "DPadDown", "DPadLeft")
+        val pressed = buildList {
+            unboxed.forEachIndexed { i, b -> if (b) add(names.getOrElse(i) { "btn$i" }) }
+        }
+        LOG.info("pushButtonStates: pos={} pressed={}", pos, pressed)
     }
 
     /**
@@ -58,9 +64,16 @@ object ControllerStatePipeline {
         }
         val unboxed = ByteArray(axisBytes.size) { axisBytes[it] ?: 0 }
         be.receiveControllerAxisStates(unboxed, fullAxis)
-        LOG.debug(
-            "pushAxisStates: pos={} LT-byte={} RT-byte={} fullAxis={}",
+        // Show all 6 bytes so the user can see which TC slot their input
+        // lands in (sticks at indices 0..3 carry a 5-bit signed value;
+        // triggers at 4..5 are 4-bit unsigned magnitudes 0..15).
+        LOG.info(
+            "pushAxisStates: pos={} bytes=[LX={}, LY={}, RX={}, RY={}, LT={}, RT={}] fullAxis={}",
             pos,
+            unboxed.getOrElse(0) { 0 },
+            unboxed.getOrElse(1) { 0 },
+            unboxed.getOrElse(2) { 0 },
+            unboxed.getOrElse(3) { 0 },
             unboxed.getOrElse(4) { 0 },
             unboxed.getOrElse(5) { 0 },
             fullAxis?.joinToString(",")?.take(80),
