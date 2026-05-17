@@ -1152,6 +1152,97 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         }
     }
 
+    /**
+     * Wired by [NodeEditorScreen] once it has a Compose scope. Null
+     * before that point — `EditorState` is also used in headless tests
+     * where sync is not needed.
+     */
+    var templateSync: GroupTemplateSync? = null
+
+    /**
+     * Persist a (possibly inline) group to a file under that name. The
+     * group becomes linked; its existing runtime ids are mapped to fresh
+     * [TemplateNodeId]s recorded in `templateIdMap`. Returns the
+     * template that was written, or null on bad input.
+     */
+    fun saveAsTemplate(groupId: GroupId, fileName: String): dev.nitka.nodewire.graph.GroupTemplate? {
+        val safe = GroupFiles.sanitize(fileName)
+        if (safe.isEmpty()) return null
+        val idx = graph.groups.indexOfFirst { it.id == groupId }
+        if (idx < 0) return null
+        val g = graph.groups[idx]
+        val allById = graph.groups.associateBy { it.id }
+        val closure = GroupProxyPins.memberClosure(g, allById)
+
+        val templateIdMap = HashMap<dev.nitka.nodewire.graph.TemplateNodeId, dev.nitka.nodewire.graph.NodeId>()
+        for (rid in closure) templateIdMap[java.util.UUID.randomUUID()] = rid
+
+        val runtimeToTemplate = templateIdMap.entries.associate { (t, r) -> r to t }
+
+        val templateNodes = closure.mapNotNull { rid ->
+            val n = graph.nodes[rid] ?: return@mapNotNull null
+            val tid = runtimeToTemplate[rid]!!
+            tid to n.copy(id = tid)
+        }.toMap()
+        val templateEdges = graph.edges.filter {
+            it.from.node in closure && it.to.node in closure
+        }.map { e ->
+            dev.nitka.nodewire.graph.Edge(
+                dev.nitka.nodewire.graph.PinRef(runtimeToTemplate[e.from.node]!!, e.from.pin),
+                dev.nitka.nodewire.graph.PinRef(runtimeToTemplate[e.to.node]!!, e.to.pin),
+            )
+        }
+        val template = dev.nitka.nodewire.graph.GroupTemplate(templateNodes, templateEdges, emptyList())
+
+        mutateGraph {
+            graph.groups[idx] = g.copy(templateFile = safe, templateIdMap = templateIdMap)
+            syncGroupsFlow()
+        }
+        templateSync?.publishLocalEdit(safe, template)
+            ?: GroupFiles.save(safe, template)
+        templateSync?.observeFile(safe)
+        return template
+    }
+
+    /**
+     * Insert a saved template into the host graph at the given world
+     * position. Returns the new group's id, or null on missing file /
+     * detected cycle.
+     */
+    fun insertTemplate(fileName: String, atWorld: dev.nitka.nodewire.graph.CanvasPos): GroupId? {
+        val safe = GroupFiles.sanitize(fileName)
+        if (safe.isEmpty()) return null
+        val template = GroupFiles.load(safe) ?: return null
+
+        // Cycle guard: refuse if any group on this graph that's linked to
+        // a file is reachable from `safe`.
+        val rootFiles = graph.groups.mapNotNull { it.templateFile }.toSet()
+        val resolveFor: (String) -> dev.nitka.nodewire.graph.GroupTemplate? = { name -> GroupFiles.load(name) }
+        for (root in rootFiles) {
+            if (dev.nitka.nodewire.graph.GroupMembership.wouldCycle(root, safe, resolveFor)) return null
+        }
+
+        var gid: GroupId? = null
+        mutateGraph {
+            val res = dev.nitka.nodewire.graph.GroupTemplateResolver.instantiate(
+                host = graph,
+                template = template,
+                templateFile = safe,
+                anchor = atWorld,
+                resolve = resolveFor,
+            )
+            gid = res.groupId
+            for (n in graph.nodes.values) {
+                if (nodeFlows[n.id] == null) nodeFlows[n.id] = kotlinx.coroutines.flow.MutableStateFlow(n)
+            }
+            _nodes.value = graph.nodes.keys.toList()
+            _edges.value = graph.edges.toList()
+            syncGroupsFlow()
+        }
+        templateSync?.observeFile(safe)
+        return gid
+    }
+
     companion object {
         /** World-space radius around an input pin that counts as "dropped on it". */
         private const val PIN_HIT_RADIUS = 12f
