@@ -304,6 +304,28 @@ object VectorEvaluators {
                 }
                 PinValue.Float(theta)
             }
+            VecOpType.CROSS -> {
+                val a = vec3In(inputs, "a"); val b = vec3In(inputs, "b")
+                PinValue.Vec3(
+                    a.y * b.z - a.z * b.y,
+                    a.z * b.x - a.x * b.z,
+                    a.x * b.y - a.y * b.x,
+                )
+            }
+            VecOpType.ROTATE2D -> {
+                val a = vec2In(inputs, "v")
+                val theta = floatIn(inputs, "angle")
+                val c = kotlin.math.cos(theta); val s = kotlin.math.sin(theta)
+                PinValue.Vec2(a.x * c - a.y * s, a.x * s + a.y * c)
+            }
+            VecOpType.TO_VEC3 -> {
+                val a = vec2In(inputs, "v")
+                PinValue.Vec3(a.x, a.y, floatIn(inputs, "z"))
+            }
+            VecOpType.TO_VEC2 -> {
+                val a = vec3In(inputs, "v")
+                PinValue.Vec2(a.x, a.y)
+            }
             null -> if (v2) PinValue.Vec2(0f, 0f) else PinValue.Vec3(0f, 0f, 0f)
             else -> if (v2) PinValue.Vec2(0f, 0f) else PinValue.Vec3(0f, 0f, 0f)
         }

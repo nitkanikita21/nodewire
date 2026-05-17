@@ -374,4 +374,56 @@ class VectorEvaluatorsTest {
         )
         assertEquals(PinValue.Float(0f), out["out"])
     }
+
+    @Test fun vecOpCrossXY() {
+        val out = VectorEvaluators.VecOp(
+            opCfg("CROSS", "VEC3"),
+            mapOf(
+                "a" to PinValue.Vec3(1f, 0f, 0f),
+                "b" to PinValue.Vec3(0f, 1f, 0f),
+            ),
+        )
+        assertEquals(PinValue.Vec3(0f, 0f, 1f), out["out"])
+    }
+
+    @Test fun vecOpCrossParallelIsZero() {
+        val out = VectorEvaluators.VecOp(
+            opCfg("CROSS", "VEC3"),
+            mapOf(
+                "a" to PinValue.Vec3(1f, 2f, 3f),
+                "b" to PinValue.Vec3(2f, 4f, 6f),
+            ),
+        )
+        assertEquals(PinValue.Vec3(0f, 0f, 0f), out["out"])
+    }
+
+    @Test fun vecOpRotate2dQuarterTurn() {
+        // rotate (1, 0) by π/2 → (0, 1)
+        val out = VectorEvaluators.VecOp(
+            opCfg("ROTATE2D", "VEC2"),
+            mapOf(
+                "v" to PinValue.Vec2(1f, 0f),
+                "angle" to PinValue.Float((kotlin.math.PI / 2).toFloat()),
+            ),
+        )
+        val v = out["out"] as PinValue.Vec2
+        assertEquals(0f, v.x, 0.0001f)
+        assertEquals(1f, v.y, 0.0001f)
+    }
+
+    @Test fun vecOpToVec3() {
+        val out = VectorEvaluators.VecOp(
+            opCfg("TO_VEC3", "VEC2"),
+            mapOf("v" to PinValue.Vec2(1f, 2f), "z" to PinValue.Float(3f)),
+        )
+        assertEquals(PinValue.Vec3(1f, 2f, 3f), out["out"])
+    }
+
+    @Test fun vecOpToVec2() {
+        val out = VectorEvaluators.VecOp(
+            opCfg("TO_VEC2", "VEC3"),
+            mapOf("v" to PinValue.Vec3(1f, 2f, 3f)),
+        )
+        assertEquals(PinValue.Vec2(1f, 2f), out["out"])
+    }
 }
