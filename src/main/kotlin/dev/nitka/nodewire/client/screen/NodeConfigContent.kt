@@ -657,4 +657,7 @@ object NodeConfigContent {
      * the NodeType registration compiles.
      */
     val VecMake: @Composable (Node) -> Unit = { _ -> }
+
+    /** VecSplit: dim selector. Phase 6 fills body. */
+    val VecSplit: @Composable (Node) -> Unit = { _ -> }
 }

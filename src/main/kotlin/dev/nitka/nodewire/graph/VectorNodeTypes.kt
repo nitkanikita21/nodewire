@@ -31,5 +31,19 @@ object VectorNodeTypes {
         evaluate = VectorEvaluators.VecMake,
     )
 
-    fun all(): List<NodeType> = listOf(VEC_MAKE)
+    val VEC_SPLIT = NodeType(
+        id = ResourceLocation(Nodewire.ID, "vec_split"),
+        displayName = "Vec Split",
+        category = NodeCategory.VECTOR,
+        inputs = listOf(Pin("in", "In", PinType.VEC2)),
+        outputs = listOf(
+            Pin("x", "X", PinType.FLOAT),
+            Pin("y", "Y", PinType.FLOAT),
+        ),
+        defaultConfig = { CompoundTag().apply { putString("dim", "VEC2") } },
+        configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.VecSplit,
+        evaluate = VectorEvaluators.VecSplit,
+    )
+
+    fun all(): List<NodeType> = listOf(VEC_MAKE, VEC_SPLIT)
 }
