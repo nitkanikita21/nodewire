@@ -30,6 +30,58 @@ import kotlinx.coroutines.flow.asStateFlow
 class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = net.minecraft.core.BlockPos.ZERO) {
     val pinPositions = PinPositions()
 
+    private val undoController = GraphUndoController { net.minecraft.Util.getMillis() }
+
+    /**
+     * Single entry point for every graph mutation. Snapshots the
+     * pre-mutation state, runs [block], then leaves it to the caller's
+     * existing flow-update code to refresh per-node Compose state.
+     *
+     * @param mergeable true for continuous ops (drag, slider) that should
+     *   collapse into one undo step within the controller's merge window.
+     */
+    fun mutateGraph(mergeable: Boolean = false, block: () -> Unit) {
+        undoController.snapshot(graph, mergeable)
+        block()
+    }
+
+    fun canUndo(): Boolean = undoController.canUndo()
+    fun canRedo(): Boolean = undoController.canRedo()
+
+    fun undoGraph() {
+        val prev = undoController.undo(graph) ?: return
+        restoreFrom(prev)
+    }
+
+    fun redoGraph() {
+        val next = undoController.redo(graph) ?: return
+        restoreFrom(next)
+    }
+
+    /**
+     * Replace the contents of [graph] with [snapshot] in-place, then resync
+     * `nodeFlows` / `_nodes` / `_edges` so existing reactive consumers see
+     * the restored state. Selection is cleared because restored ids may
+     * not include the currently-selected ones.
+     */
+    private fun restoreFrom(snapshot: NodeGraph) {
+        graph.nodes.clear()
+        graph.edges.clear()
+        for ((id, n) in snapshot.nodes) graph.nodes[id] = n
+        graph.edges.addAll(snapshot.edges)
+
+        val toRemove = nodeFlows.keys - graph.nodes.keys
+        for (id in toRemove) nodeFlows.remove(id)
+        for ((id, n) in graph.nodes) {
+            val flow = nodeFlows[id]
+            if (flow == null) nodeFlows[id] = MutableStateFlow(n)
+            else flow.value = n
+        }
+        _nodes.value = graph.nodes.keys.toList()
+        _edges.value = graph.edges.toList()
+        clearSelection()
+    }
+
     // ── StateFlow plumbing (additive in this task; counters above are kept) ──
     //
     // Each node has its own MutableStateFlow<Node> so card composables only
