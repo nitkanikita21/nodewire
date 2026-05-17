@@ -71,6 +71,24 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
     }
 
     /**
+     * UUID of the Tweaked Controller item bound to this block. `null`
+     * when unbound. Persisted to NBT. Mutating via [setControllerId]
+     * also fires [setChanged] + a block update so clients see the
+     * change (used by the editor toolbar's controller indicator).
+     */
+    private var controllerId: java.util.UUID? = null
+
+    fun getControllerId(): java.util.UUID? = controllerId
+
+    fun setControllerId(value: java.util.UUID?) {
+        if (controllerId == value) return
+        controllerId = value
+        setChanged()
+        val l = level ?: return
+        l.sendBlockUpdated(blockPos, blockState, blockState, 3)
+    }
+
+    /**
      * Values pushed in from other BEs' [ChannelOutput] nodes via their
      * bindings. Keyed by THIS BE's channel-input name. Read at the start
      * of each tick into the evaluator's externalOutputs map.
@@ -508,11 +526,13 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
         if (blockName.isNotEmpty()) {
             tag.putString("name", blockName)
         }
+        controllerId?.let { tag.putUUID("controllerId", it) }
     }
 
     override fun load(tag: CompoundTag) {
         super.load(tag)
         blockName = tag.getString("name")  // returns "" if missing
+        controllerId = if (tag.hasUUID("controllerId")) tag.getUUID("controllerId") else null
         graph = if (tag.contains("graph")) {
             dev.nitka.nodewire.graph.NodeGraph.CODEC
                 .parse(NbtOps.INSTANCE, tag.getCompound("graph")).result()
