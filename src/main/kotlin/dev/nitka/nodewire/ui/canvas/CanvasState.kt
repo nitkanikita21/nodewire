@@ -41,16 +41,56 @@ class CanvasState(
     // own onPositioned callback.
     private var _originX by mutableStateOf(0)
     private var _originY by mutableStateOf(0)
+    private var _visibleWidthPx by mutableStateOf(0)
+    private var _visibleHeightPx by mutableStateOf(0)
 
     val panX: Float get() = _panX
     val panY: Float get() = _panY
     val zoom: Float get() = _zoom
     val originX: Int get() = _originX
     val originY: Int get() = _originY
+    val visibleWidthPx: Int get() = _visibleWidthPx
+    val visibleHeightPx: Int get() = _visibleHeightPx
 
     fun setOrigin(x: Int, y: Int) {
         _originX = x
         _originY = y
+    }
+
+    /** Push the current canvas size from `NodeCanvas.onPositioned` / onSizeChanged. */
+    fun setSize(w: Int, h: Int) {
+        _visibleWidthPx = w
+        _visibleHeightPx = h
+    }
+
+    /** Set zoom directly (clamped); for frame-fit operations. */
+    fun setZoom(z: Float) { _zoom = z.coerceIn(MIN_ZOOM, MAX_ZOOM) }
+
+    /** Set pan directly (world units); for frame-fit operations. */
+    fun setPan(x: Float, y: Float) { _panX = x; _panY = y }
+
+    /**
+     * Fit the given world-AABB into the visible viewport with a [marginPx]
+     * gutter on each side. Picks the smaller of the per-axis zoom-fits
+     * (clamped to [MIN_ZOOM]/[MAX_ZOOM]) and centres the AABB midpoint at
+     * the viewport centre.
+     *
+     * No-op if the viewport size hasn't been pushed yet, or if the AABB
+     * has non-positive width/height.
+     */
+    fun frameRect(minX: Float, minY: Float, maxX: Float, maxY: Float, marginPx: Int = 32) {
+        val viewW = _visibleWidthPx; val viewH = _visibleHeightPx
+        if (viewW <= 0 || viewH <= 0) return
+        val w = maxX - minX; val h = maxY - minY
+        if (w <= 0f || h <= 0f) return
+        val zoomFit = minOf(
+            (viewW - marginPx * 2f) / w,
+            (viewH - marginPx * 2f) / h,
+        ).coerceIn(MIN_ZOOM, MAX_ZOOM)
+        setZoom(zoomFit)
+        val midX = (minX + maxX) * 0.5f
+        val midY = (minY + maxY) * 0.5f
+        setPan(viewW * 0.5f / zoomFit - midX, viewH * 0.5f / zoomFit - midY)
     }
 
     fun panBy(dx: Float, dy: Float) {
