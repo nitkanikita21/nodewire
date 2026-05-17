@@ -90,6 +90,7 @@ fun NodeCard(
             // use the real card bounds, not a constant guess.
             .onSizeChanged { size ->
                 editor?.setCardSize(nodeId, size.width, size.height)
+                editor?.nodeBounds?.set(node.id, NodeBounds(size.width, size.height))
             }
             // Card-wide right-click opens the node context menu. Pin handles
             // are deeper in the tree so their own RMB-disconnect still wins
