@@ -8,6 +8,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateMap
 import dev.nitka.nodewire.graph.CanvasPos
+import dev.nitka.nodewire.graph.Comment
+import dev.nitka.nodewire.graph.CommentId
 import dev.nitka.nodewire.graph.Edge
 import dev.nitka.nodewire.graph.Group
 import dev.nitka.nodewire.graph.GroupId
@@ -90,6 +92,9 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         graph.groups.clear()
         graph.groups.addAll(snapshot.groups)
         syncGroupsFlow()
+        graph.comments.clear()
+        graph.comments.addAll(snapshot.comments)
+        syncCommentsFlow()
         clearSelection()
     }
 
@@ -117,6 +122,11 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
     val groups: StateFlow<List<Group>> = _groups.asStateFlow()
 
     private fun syncGroupsFlow() { _groups.value = graph.groups.toList() }
+
+    private val _comments: kotlinx.coroutines.flow.MutableStateFlow<List<Comment>> =
+        kotlinx.coroutines.flow.MutableStateFlow(graph.comments.toList())
+    val comments: kotlinx.coroutines.flow.StateFlow<List<Comment>> = _comments.asStateFlow()
+    private fun syncCommentsFlow() { _comments.value = graph.comments.toList() }
 
     private val _blockName = MutableStateFlow("")
     val blockName: StateFlow<String> = _blockName.asStateFlow()
@@ -1065,6 +1075,7 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         }
         for (e in _edges.value) g.addEdge(e)
         for (group in _groups.value) g.groups.add(group)
+        for (c in _comments.value) g.comments.add(c)
         return g
     }
 
@@ -1176,6 +1187,62 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
             graph.groups.addAll(rebuilt)
             syncGroupsFlow()
         }
+    }
+
+    // ── Comment ops ───────────────────────────────────────────────────────
+
+    /** Spawn a fresh comment at world position [pos]. */
+    fun addComment(pos: CanvasPos): CommentId {
+        val c = Comment(id = Comment.newId(), pos = pos, width = 180, height = 60, text = "")
+        mutateGraph(mergeable = false) {
+            graph.comments.add(c)
+            syncCommentsFlow()
+        }
+        return c.id
+    }
+
+    fun removeComment(id: CommentId) {
+        mutateGraph(mergeable = false) {
+            graph.comments.removeAll { it.id == id }
+            syncCommentsFlow()
+        }
+    }
+
+    /** Mergeable so typing inside a comment collapses into one undo step. */
+    fun updateCommentText(id: CommentId, text: String) {
+        mutateGraph(mergeable = true) {
+            val i = graph.comments.indexOfFirst { it.id == id }
+            if (i < 0) return@mutateGraph
+            graph.comments[i] = graph.comments[i].copy(text = text)
+            syncCommentsFlow()
+        }
+    }
+
+    fun moveComment(id: CommentId, dxWorld: Float, dyWorld: Float) {
+        mutateGraph(mergeable = true) {
+            val i = graph.comments.indexOfFirst { it.id == id }
+            if (i < 0) return@mutateGraph
+            val c = graph.comments[i]
+            graph.comments[i] = c.copy(pos = CanvasPos(c.pos.x + dxWorld, c.pos.y + dyWorld))
+            syncCommentsFlow()
+        }
+    }
+
+    fun resizeComment(id: CommentId, w: Int, h: Int) {
+        mutateGraph(mergeable = true) {
+            val i = graph.comments.indexOfFirst { it.id == id }
+            if (i < 0) return@mutateGraph
+            graph.comments[i] = graph.comments[i].copy(
+                width = w.coerceAtLeast(60),
+                height = h.coerceAtLeast(30),
+            )
+            syncCommentsFlow()
+        }
+    }
+
+    /** Comment context-menu opener (mirror of openNodeMenu / openGroupMenu). */
+    fun openCommentMenu(screenX: Int, screenY: Int, id: CommentId) {
+        contextMenu = ContextMenuTarget.Comment(screenX, screenY, id)
     }
 
     /**

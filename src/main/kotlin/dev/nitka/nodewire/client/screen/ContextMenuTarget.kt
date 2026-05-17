@@ -37,4 +37,10 @@ sealed interface ContextMenuTarget {
         override val screenY: Int,
         val groupId: dev.nitka.nodewire.graph.GroupId,
     ) : ContextMenuTarget
+
+    data class Comment(
+        override val screenX: Int,
+        override val screenY: Int,
+        val commentId: dev.nitka.nodewire.graph.CommentId,
+    ) : ContextMenuTarget
 }

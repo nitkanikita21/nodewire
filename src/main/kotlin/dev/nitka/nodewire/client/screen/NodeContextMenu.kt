@@ -25,6 +25,7 @@ fun NodeContextMenu(target: ContextMenuTarget, editor: EditorState) {
         is ContextMenuTarget.Create -> buildCreateItems(editor, target, toast)
         is ContextMenuTarget.Node -> buildNodeItems(editor, target, toast)
         is ContextMenuTarget.Group -> buildGroupItems(editor, target, toast)
+        is ContextMenuTarget.Comment -> emptyList()
     }
     ContextMenu(
         items = items,
