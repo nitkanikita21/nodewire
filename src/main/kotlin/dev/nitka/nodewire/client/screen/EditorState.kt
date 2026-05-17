@@ -1,15 +1,18 @@
 package dev.nitka.nodewire.client.screen
 
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.mutableStateMapOf
 import dev.nitka.nodewire.graph.EvalResult
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateMap
 import dev.nitka.nodewire.graph.CanvasPos
 import dev.nitka.nodewire.graph.Edge
 import dev.nitka.nodewire.graph.Node
 import dev.nitka.nodewire.graph.NodeGraph
 import dev.nitka.nodewire.graph.NodeId
+import dev.nitka.nodewire.graph.NodeTypeRegistry
 import dev.nitka.nodewire.graph.PinRef
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -623,6 +626,126 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
     fun cancelSelectionDrag() {
         selectionDragStart = null
         selectionDragCurrent = null
+    }
+
+    // ── nodeBounds + selection ops + clipboard ────────────────────────────
+
+    /** Per-card bounds, written by `NodeCard.onPositioned`, read by frame/fit. */
+    val nodeBounds: SnapshotStateMap<NodeId, NodeBounds> = mutableStateMapOf()
+
+    /** Select all nodes in the graph. */
+    fun selectAll() {
+        selectedNodes = graph.nodes.keys.toSet()
+    }
+
+    /** Replace selection with [ids]. */
+    fun selectMany(ids: Collection<NodeId>) {
+        selectedNodes = ids.toSet()
+    }
+
+    fun deleteSelected() {
+        if (selectedNodes.isEmpty()) return
+        val ids = selectedNodes.toList()
+        mutateGraph {
+            for (id in ids) {
+                graph.nodes.remove(id)
+                nodeFlows.remove(id)
+            }
+            graph.edges.removeAll { it.from.node in ids || it.to.node in ids }
+            _nodes.value = graph.nodes.keys.toList()
+            _edges.value = graph.edges.toList()
+        }
+        clearSelection()
+    }
+
+    fun duplicateSelected() {
+        if (selectedNodes.isEmpty()) return
+        val sources = selectedNodes.mapNotNull { graph.nodes[it] }
+        if (sources.isEmpty()) return
+        val newIds = mutableListOf<NodeId>()
+        mutateGraph {
+            for (src in sources) {
+                val copy = Node(
+                    id = Node.newId(),
+                    typeKey = src.typeKey,
+                    pos = CanvasPos(src.pos.x + DUPLICATE_OFFSET, src.pos.y + DUPLICATE_OFFSET),
+                    inputs = src.inputs,
+                    outputs = src.outputs,
+                    config = src.config.copy(),
+                )
+                graph.add(copy)
+                nodeFlows[copy.id] = MutableStateFlow(copy)
+                newIds.add(copy.id)
+            }
+            _nodes.value = graph.nodes.keys.toList()
+        }
+        selectMany(newIds)
+    }
+
+    fun copySelectedToClipboard() {
+        if (selectedNodes.isEmpty()) return
+        val sub = NodeGraph().apply {
+            for (n in graph.nodes.values) if (n.id in selectedNodes) add(n)
+            for (e in graph.edges) {
+                if (e.from.node in selectedNodes && e.to.node in selectedNodes) edges.add(e)
+            }
+        }
+        net.minecraft.client.Minecraft.getInstance().keyboardHandler.clipboard =
+            GraphClipboard.encode(sub)
+    }
+
+    fun cutSelectedToClipboard() {
+        if (selectedNodes.isEmpty()) return
+        copySelectedToClipboard()
+        deleteSelected()
+    }
+
+    /**
+     * Decode clipboard SNBT and paste at world ([cursorWorldX], [cursorWorldY]).
+     * Regenerates all UUIDs, drops nodes whose typeKey is no longer registered,
+     * drops edges that reference dropped nodes. Selects pasted nodes.
+     * Silent no-op if clipboard isn't our format.
+     */
+    fun pasteFromClipboard(cursorWorldX: Float, cursorWorldY: Float) {
+        val raw = net.minecraft.client.Minecraft.getInstance().keyboardHandler.clipboard ?: return
+        val sub = GraphClipboard.decode(raw) ?: return
+
+        val idMap = HashMap<NodeId, NodeId>()
+        val newNodes = sub.nodes.values.mapNotNull { old ->
+            if (NodeTypeRegistry.get(old.typeKey) == null) return@mapNotNull null
+            val newId = Node.newId()
+            idMap[old.id] = newId
+            old.copy(id = newId)
+        }
+        if (newNodes.isEmpty()) return
+
+        val cx = newNodes.map { it.pos.x }.average().toFloat()
+        val cy = newNodes.map { it.pos.y }.average().toFloat()
+        val dx = cursorWorldX - cx
+        val dy = cursorWorldY - cy
+        val translated = newNodes.map {
+            it.copy(pos = CanvasPos(it.pos.x + dx, it.pos.y + dy))
+        }
+
+        val newEdges = sub.edges.mapNotNull { e ->
+            val newFromId = idMap[e.from.node] ?: return@mapNotNull null
+            val newToId = idMap[e.to.node] ?: return@mapNotNull null
+            e.copy(
+                from = e.from.copy(node = newFromId),
+                to = e.to.copy(node = newToId),
+            )
+        }
+
+        mutateGraph {
+            for (n in translated) {
+                graph.add(n)
+                nodeFlows[n.id] = MutableStateFlow(n)
+            }
+            graph.edges.addAll(newEdges)
+            _nodes.value = graph.nodes.keys.toList()
+            _edges.value = graph.edges.toList()
+        }
+        selectMany(translated.map { it.id })
     }
 
     /**
