@@ -685,6 +685,9 @@ object NodeConfigContent {
         }
     }
 
+    /** ControllerInput: UI stub — full implementation in Task 8. */
+    val ControllerInput: @Composable (Node) -> Unit = { _ -> }
+
     /** VecSplit: same Select as VecMake; output pins reshape. */
     val VecSplit: @Composable (Node) -> Unit = { node ->
         val editor = LocalEditorState.current

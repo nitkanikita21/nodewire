@@ -315,6 +315,7 @@ object StockNodeTypes {
             RANDOM_BOOL, RANDOM_INT, PULSE,
         ).forEach(NodeTypeRegistry::register)
         VectorNodeTypes.all().forEach(NodeTypeRegistry::register)
+        NodeTypeRegistry.register(dev.nitka.nodewire.integration.tweakedcontroller.ControllerInputNode.CONTROLLER_INPUT)
     }
 
     private fun nodeType(

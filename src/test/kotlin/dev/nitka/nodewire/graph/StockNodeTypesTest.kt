@@ -43,7 +43,8 @@ class StockNodeTypesTest {
         // Vector toolkit: VEC_MAKE added (+1 → 21).
         // Vector toolkit: VEC_SPLIT added (+1 → 22).
         // Vector toolkit: VEC_OP added (+1 → 23).
-        assertEquals(23, NodeTypeRegistry.all().size)
+        // TC: controller_input added (+1 → 24).
+        assertEquals(24, NodeTypeRegistry.all().size)
     }
 
     @Test
