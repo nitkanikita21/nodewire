@@ -82,6 +82,7 @@ fun NodeCard(
     val pos = node.pos
     val selected = editor.isSelected(nodeId)
 
+
     Surface(
         modifier = modifier
             .absolutePosition(pos.x.toInt(), pos.y.toInt())
@@ -227,6 +228,17 @@ private fun ConfigSection(node: Node) {
 
 @Composable
 private fun CardBody(nodeId: java.util.UUID, node: Node) {
+    val editor = LocalEditorState.current
+    // CardBody is only invoked from the NodeCard surface block, which early-
+    // returns when editor is null, so editor is guaranteed non-null here.
+    // Defensive gate: skip pin-position writes for nodes hidden by a collapsed
+    // group. In practice, hidden NodeCards are never composed (NodeEditorScreen
+    // filters them out before calling NodeCard), so the gate is a safety net
+    // for any future path that composes a NodeCard while it is hidden.
+    val groupsValue by editor!!.groups.collectAsState()
+    val hidden = remember(groupsValue) {
+        if (groupsValue.isEmpty()) emptySet() else hiddenNodesFor(editor)
+    }
     // Each column gets half the body width. Inputs left-align inside
     // their column (cross-axis = Alignment.Start); outputs right-align
     // (Alignment.End). Combined with content-sized rows, this anchors
@@ -243,20 +255,24 @@ private fun CardBody(nodeId: java.util.UUID, node: Node) {
             verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2),
             horizontalAlignment = Alignment.Start,
         ) {
-            for (pin in node.inputs) InputPinRow(nodeId, pin)
+            for (pin in node.inputs) InputPinRow(nodeId, pin, hidden)
         }
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2),
             horizontalAlignment = Alignment.End,
         ) {
-            for (pin in node.outputs) OutputPinRow(nodeId, pin)
+            for (pin in node.outputs) OutputPinRow(nodeId, pin, hidden)
         }
     }
 }
 
 @Composable
-private fun InputPinRow(nodeId: java.util.UUID, pin: Pin) {
+private fun InputPinRow(
+    nodeId: java.util.UUID,
+    pin: Pin,
+    hidden: Set<dev.nitka.nodewire.graph.NodeId>,
+) {
     val chip = pinChipText(pin, valueFlowingInto(nodeId, pin.id))
     // Plain LTR: [●] Name chip. Content-sized row left-aligned by the
     // surrounding column.
@@ -268,6 +284,7 @@ private fun InputPinRow(nodeId: java.util.UUID, pin: Pin) {
             nodeId = nodeId,
             pin = pin,
             side = PinSide.Input,
+            hidden = hidden,
             modifier = Modifier.offset(-PIN_HANDLE_HALF, 0),
         )
         Text(pin.name, style = NwTheme.typography.caption)
@@ -276,7 +293,11 @@ private fun InputPinRow(nodeId: java.util.UUID, pin: Pin) {
 }
 
 @Composable
-private fun OutputPinRow(nodeId: java.util.UUID, pin: Pin) {
+private fun OutputPinRow(
+    nodeId: java.util.UUID,
+    pin: Pin,
+    hidden: Set<dev.nitka.nodewire.graph.NodeId>,
+) {
     val evalResult = LocalEvalResult.current
     val chip = pinChipText(pin, evalResult?.valueAt(nodeId, pin.id))
     // Mirror layout: chip, Name, [●]. Content-sized row right-aligned by
@@ -293,6 +314,7 @@ private fun OutputPinRow(nodeId: java.util.UUID, pin: Pin) {
             nodeId = nodeId,
             pin = pin,
             side = PinSide.Output,
+            hidden = hidden,
             modifier = Modifier.offset(PIN_HANDLE_HALF, 0),
         )
     }
@@ -317,6 +339,7 @@ private fun PinHandle(
     nodeId: java.util.UUID,
     pin: Pin,
     side: PinSide,
+    hidden: Set<dev.nitka.nodewire.graph.NodeId>,
     modifier: Modifier = Modifier,
 ) {
     val editor = LocalEditorState.current
@@ -332,14 +355,19 @@ private fun PinHandle(
             // from the UI root). Subtract the canvas's own origin so the
             // value lives in canvas-local "world" coords, the space the
             // WireLayer pose expects.
+            // Gate: do not overwrite proxy-pin positions registered by
+            // GroupCollapsedTile for nodes currently hidden inside a
+            // collapsed group.
             .onPositioned { coords ->
-                val ox = canvas?.originX ?: 0
-                val oy = canvas?.originY ?: 0
-                editor?.pinPositions?.set(
-                    key,
-                    (coords.centerX - ox).toFloat(),
-                    (coords.centerY - oy).toFloat(),
-                )
+                if (nodeId !in hidden) {
+                    val ox = canvas?.originX ?: 0
+                    val oy = canvas?.originY ?: 0
+                    editor?.pinPositions?.set(
+                        key,
+                        (coords.centerX - ox).toFloat(),
+                        (coords.centerY - oy).toFloat(),
+                    )
+                }
             }
             .pointerInput { ev, _, _ ->
                 if (editor == null) return@pointerInput false
