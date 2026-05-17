@@ -167,6 +167,49 @@ object VectorEvaluators {
                 if (len == 0f) PinValue.Vec3(0f, 0f, 0f)
                 else PinValue.Vec3(a.x / len, a.y / len, a.z / len)
             }
+            VecOpType.SCALE -> {
+                val s = floatIn(inputs, "s")
+                if (v2) {
+                    val a = vec2In(inputs, "v")
+                    PinValue.Vec2(a.x * s, a.y * s)
+                } else {
+                    val a = vec3In(inputs, "v")
+                    PinValue.Vec3(a.x * s, a.y * s, a.z * s)
+                }
+            }
+            VecOpType.CLAMP_MAG -> {
+                val max = floatIn(inputs, "max")
+                if (v2) {
+                    val a = vec2In(inputs, "v")
+                    val len = kotlin.math.sqrt(a.x * a.x + a.y * a.y)
+                    if (len <= max || len == 0f) PinValue.Vec2(a.x, a.y)
+                    else PinValue.Vec2(a.x / len * max, a.y / len * max)
+                } else {
+                    val a = vec3In(inputs, "v")
+                    val len = kotlin.math.sqrt(a.x * a.x + a.y * a.y + a.z * a.z)
+                    if (len <= max || len == 0f) PinValue.Vec3(a.x, a.y, a.z)
+                    else PinValue.Vec3(
+                        a.x / len * max, a.y / len * max, a.z / len * max,
+                    )
+                }
+            }
+            VecOpType.LERP -> {
+                val t = floatIn(inputs, "t")
+                if (v2) {
+                    val a = vec2In(inputs, "a"); val b = vec2In(inputs, "b")
+                    PinValue.Vec2(
+                        a.x + (b.x - a.x) * t,
+                        a.y + (b.y - a.y) * t,
+                    )
+                } else {
+                    val a = vec3In(inputs, "a"); val b = vec3In(inputs, "b")
+                    PinValue.Vec3(
+                        a.x + (b.x - a.x) * t,
+                        a.y + (b.y - a.y) * t,
+                        a.z + (b.z - a.z) * t,
+                    )
+                }
+            }
             null -> if (v2) PinValue.Vec2(0f, 0f) else PinValue.Vec3(0f, 0f, 0f)
             else -> if (v2) PinValue.Vec2(0f, 0f) else PinValue.Vec3(0f, 0f, 0f)
         }

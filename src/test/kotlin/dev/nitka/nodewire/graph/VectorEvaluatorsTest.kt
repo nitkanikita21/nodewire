@@ -213,4 +213,64 @@ class VectorEvaluatorsTest {
         )
         assertEquals(PinValue.Vec2(0f, 0f), out["out"])
     }
+
+    @Test fun vecOpScaleVec2() {
+        val out = VectorEvaluators.VecOp(
+            opCfg("SCALE", "VEC2"),
+            mapOf("v" to PinValue.Vec2(2f, 3f), "s" to PinValue.Float(4f)),
+        )
+        assertEquals(PinValue.Vec2(8f, 12f), out["out"])
+    }
+
+    @Test fun vecOpScaleVec3() {
+        val out = VectorEvaluators.VecOp(
+            opCfg("SCALE", "VEC3"),
+            mapOf("v" to PinValue.Vec3(1f, 2f, 3f), "s" to PinValue.Float(-2f)),
+        )
+        assertEquals(PinValue.Vec3(-2f, -4f, -6f), out["out"])
+    }
+
+    @Test fun vecOpClampMagBelow() {
+        val out = VectorEvaluators.VecOp(
+            opCfg("CLAMP_MAG", "VEC2"),
+            // length = 5, max = 10 → unchanged
+            mapOf("v" to PinValue.Vec2(3f, 4f), "max" to PinValue.Float(10f)),
+        )
+        assertEquals(PinValue.Vec2(3f, 4f), out["out"])
+    }
+
+    @Test fun vecOpClampMagAbove() {
+        val out = VectorEvaluators.VecOp(
+            opCfg("CLAMP_MAG", "VEC2"),
+            // length = 5, max = 2 → scaled to length 2 (i.e. (1.2, 1.6))
+            mapOf("v" to PinValue.Vec2(3f, 4f), "max" to PinValue.Float(2f)),
+        )
+        val v = out["out"] as PinValue.Vec2
+        assertEquals(1.2f, v.x, 0.0001f)
+        assertEquals(1.6f, v.y, 0.0001f)
+    }
+
+    @Test fun vecOpLerpVec2Middle() {
+        val out = VectorEvaluators.VecOp(
+            opCfg("LERP", "VEC2"),
+            mapOf(
+                "a" to PinValue.Vec2(0f, 0f),
+                "b" to PinValue.Vec2(10f, 20f),
+                "t" to PinValue.Float(0.5f),
+            ),
+        )
+        assertEquals(PinValue.Vec2(5f, 10f), out["out"])
+    }
+
+    @Test fun vecOpLerpVec3End() {
+        val out = VectorEvaluators.VecOp(
+            opCfg("LERP", "VEC3"),
+            mapOf(
+                "a" to PinValue.Vec3(1f, 2f, 3f),
+                "b" to PinValue.Vec3(7f, 8f, 9f),
+                "t" to PinValue.Float(1f),
+            ),
+        )
+        assertEquals(PinValue.Vec3(7f, 8f, 9f), out["out"])
+    }
 }
