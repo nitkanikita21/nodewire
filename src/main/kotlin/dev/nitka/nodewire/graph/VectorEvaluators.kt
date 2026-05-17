@@ -210,6 +210,37 @@ object VectorEvaluators {
                     )
                 }
             }
+            VecOpType.PROJECT -> if (v2) {
+                val a = vec2In(inputs, "a"); val b = vec2In(inputs, "b")
+                val bLenSq = b.x * b.x + b.y * b.y
+                if (bLenSq == 0f) PinValue.Vec2(0f, 0f)
+                else {
+                    val k = (a.x * b.x + a.y * b.y) / bLenSq
+                    PinValue.Vec2(b.x * k, b.y * k)
+                }
+            } else {
+                val a = vec3In(inputs, "a"); val b = vec3In(inputs, "b")
+                val bLenSq = b.x * b.x + b.y * b.y + b.z * b.z
+                if (bLenSq == 0f) PinValue.Vec3(0f, 0f, 0f)
+                else {
+                    val k = (a.x * b.x + a.y * b.y + a.z * b.z) / bLenSq
+                    PinValue.Vec3(b.x * k, b.y * k, b.z * k)
+                }
+            }
+            VecOpType.REFLECT -> if (v2) {
+                val vIn = vec2In(inputs, "v"); val n = vec2In(inputs, "n")
+                // r = v − 2 (v·n) n
+                val d = 2f * (vIn.x * n.x + vIn.y * n.y)
+                PinValue.Vec2(vIn.x - d * n.x, vIn.y - d * n.y)
+            } else {
+                val vIn = vec3In(inputs, "v"); val n = vec3In(inputs, "n")
+                val d = 2f * (vIn.x * n.x + vIn.y * n.y + vIn.z * n.z)
+                PinValue.Vec3(
+                    vIn.x - d * n.x,
+                    vIn.y - d * n.y,
+                    vIn.z - d * n.z,
+                )
+            }
             null -> if (v2) PinValue.Vec2(0f, 0f) else PinValue.Vec3(0f, 0f, 0f)
             else -> if (v2) PinValue.Vec2(0f, 0f) else PinValue.Vec3(0f, 0f, 0f)
         }

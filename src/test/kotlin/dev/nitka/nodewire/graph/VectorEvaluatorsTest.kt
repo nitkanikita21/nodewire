@@ -273,4 +273,34 @@ class VectorEvaluatorsTest {
         )
         assertEquals(PinValue.Vec3(7f, 8f, 9f), out["out"])
     }
+
+    @Test fun vecOpProjectVec2OnXAxis() {
+        // project (3, 4) onto (1, 0) → (3, 0)
+        val out = VectorEvaluators.VecOp(
+            opCfg("PROJECT", "VEC2"),
+            mapOf("a" to PinValue.Vec2(3f, 4f), "b" to PinValue.Vec2(1f, 0f)),
+        )
+        val v = out["out"] as PinValue.Vec2
+        assertEquals(3f, v.x, 0.0001f)
+        assertEquals(0f, v.y, 0.0001f)
+    }
+
+    @Test fun vecOpProjectOnZeroIsZero() {
+        val out = VectorEvaluators.VecOp(
+            opCfg("PROJECT", "VEC2"),
+            mapOf("a" to PinValue.Vec2(1f, 2f), "b" to PinValue.Vec2(0f, 0f)),
+        )
+        assertEquals(PinValue.Vec2(0f, 0f), out["out"])
+    }
+
+    @Test fun vecOpReflectVec2FlipsY() {
+        // reflect (1, -1) across normal (0, 1) → (1, 1)
+        val out = VectorEvaluators.VecOp(
+            opCfg("REFLECT", "VEC2"),
+            mapOf("v" to PinValue.Vec2(1f, -1f), "n" to PinValue.Vec2(0f, 1f)),
+        )
+        val v = out["out"] as PinValue.Vec2
+        assertEquals(1f, v.x, 0.0001f)
+        assertEquals(1f, v.y, 0.0001f)
+    }
 }
