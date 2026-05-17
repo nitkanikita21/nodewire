@@ -190,6 +190,24 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         return copy
     }
 
+    /** Edge currently being labelled via the inline overlay (null = idle). */
+    var renamingEdge: dev.nitka.nodewire.graph.Edge? by mutableStateOf(null)
+
+    /**
+     * Update an edge's label (empty / blank → clear). Picks the edge by
+     * value equality on (from, to, label) which is stable as long as the
+     * caller passes the actual edge instance from `edges.value`.
+     */
+    fun setEdgeLabel(edge: dev.nitka.nodewire.graph.Edge, label: String?) {
+        mutateGraph(mergeable = false) {
+            val sanitized = label?.takeIf { it.isNotBlank() }
+            val idx = graph.edges.indexOf(edge)
+            if (idx < 0) return@mutateGraph
+            graph.edges[idx] = edge.copy(label = sanitized)
+            _edges.value = graph.edges.toList()
+        }
+    }
+
     /** What context menu (if any) is currently open. Null = closed. */
     var contextMenu: ContextMenuTarget? by mutableStateOf(null)
         private set
