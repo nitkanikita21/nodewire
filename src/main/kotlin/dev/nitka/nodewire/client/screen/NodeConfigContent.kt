@@ -695,6 +695,57 @@ object NodeConfigContent {
 
     private val VEC_DIMS = listOf("VEC2", "VEC3")
 
-    /** VecOp: op + dim selectors. Phase 6 fills body. */
-    val VecOp: @Composable (Node) -> Unit = { _ -> }
+    /**
+     * VecOp: op picker + dim picker. Dim is disabled (locked) when the
+     * selected op forces a specific dimension (CROSS=VEC3, ROTATE2D=VEC2,
+     * TO_VEC3/TO_VEC2 ignore dim).
+     */
+    val VecOp: @Composable (Node) -> Unit = { node ->
+        val editor = LocalEditorState.current
+        var op by remember(node.id) {
+            mutableStateOf(node.config.getString("op").ifEmpty { "ADD" })
+        }
+        var dim by remember(node.id) {
+            mutableStateOf(node.config.getString("dim").ifEmpty { "VEC2" })
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2)) {
+            LabeledRow("Op") {
+                Select(
+                    options = VEC_OPS,
+                    selected = op,
+                    onSelect = { next ->
+                        op = next
+                        editor?.changeVecOp(node.id, next, dim)
+                    },
+                    label = { it.lowercase() },
+                )
+            }
+            if (!isVecOpDimLocked(op)) {
+                LabeledRow("Dim") {
+                    Select(
+                        options = VEC_DIMS,
+                        selected = dim,
+                        onSelect = { next ->
+                            dim = next
+                            editor?.changeVecOp(node.id, op, next)
+                        },
+                        label = { it.lowercase() },
+                    )
+                }
+            }
+        }
+    }
+
+    /** Full op catalog, grouped roughly the way users think: binary first,
+     *  then unary, scalar-mixed, reductions, dim-specific, conversions. */
+    private val VEC_OPS = listOf(
+        "ADD", "SUB", "MUL_COMPONENT", "MIN", "MAX",
+        "NEGATE", "NORMALIZE", "ABS",
+        "SCALE", "CLAMP_MAG", "LERP", "PROJECT", "REFLECT",
+        "DOT", "LENGTH", "LENGTH_SQ", "DISTANCE", "ANGLE",
+        "CROSS", "ROTATE2D", "TO_VEC3", "TO_VEC2",
+    )
+
+    private fun isVecOpDimLocked(op: String): Boolean =
+        op == "CROSS" || op == "ROTATE2D" || op == "TO_VEC3" || op == "TO_VEC2"
 }
