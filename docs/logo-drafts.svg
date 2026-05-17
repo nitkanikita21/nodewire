@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 440" width="800" height="440">
+  <defs>
+    <linearGradient id="block" x1="200" y1="80" x2="200" y2="360" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#e4ff66"/>
+      <stop offset="50%" stop-color="#86c61e"/>
+      <stop offset="100%" stop-color="#2e5a0d"/>
+    </linearGradient>
+
+    <filter id="drop" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="8"/>
+      <feOffset dx="0" dy="10" result="off"/>
+      <feComponentTransfer><feFuncA type="linear" slope="0.5"/></feComponentTransfer>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <mask id="cut-bolt" maskUnits="userSpaceOnUse" x="0" y="0" width="400" height="400">
+      <rect width="400" height="400" fill="white"/>
+      <path d="M 228 108 L 128 218 L 188 218 L 172 328 L 272 218 L 212 218 Z" fill="black"/>
+    </mask>
+
+    <mask id="cut-hub" maskUnits="userSpaceOnUse" x="0" y="0" width="400" height="400">
+      <rect width="400" height="400" fill="white"/>
+      <g stroke="black" stroke-width="14" stroke-linecap="round">
+        <line x1="200" y1="220" x2="275" y2="220"/>
+        <line x1="200" y1="220" x2="253.03" y2="273.03"/>
+        <line x1="200" y1="220" x2="200" y2="295"/>
+        <line x1="200" y1="220" x2="146.97" y2="273.03"/>
+        <line x1="200" y1="220" x2="125" y2="220"/>
+        <line x1="200" y1="220" x2="146.97" y2="166.97"/>
+        <line x1="200" y1="220" x2="200" y2="145"/>
+        <line x1="200" y1="220" x2="253.03" y2="166.97"/>
+      </g>
+      <g fill="black">
+        <circle cx="200" cy="220" r="24"/>
+        <circle cx="275" cy="220" r="14"/>
+        <circle cx="253.03" cy="273.03" r="14"/>
+        <circle cx="200" cy="295" r="14"/>
+        <circle cx="146.97" cy="273.03" r="14"/>
+        <circle cx="125" cy="220" r="14"/>
+        <circle cx="146.97" cy="166.97" r="14"/>
+        <circle cx="200" cy="145" r="14"/>
+        <circle cx="253.03" cy="166.97" r="14"/>
+      </g>
+    </mask>
+
+    <symbol id="hex" viewBox="0 0 400 400" width="400" height="400">
+      <polygon points="200,80 320,150 320,290 200,360 80,290 80,150" fill="url(#block)"/>
+    </symbol>
+  </defs>
+
+  <rect width="800" height="440" fill="#0b0d10"/>
+
+  <style>
+    .label { fill: #4b5563; font-family: 'JetBrains Mono', monospace; font-size: 13px; letter-spacing: 3px; text-anchor: middle; }
+    .ref { fill: #b6f23d; font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 3px; text-anchor: middle; }
+  </style>
+
+  <g transform="translate(0,0)">
+    <g filter="url(#drop)" mask="url(#cut-bolt)"><use href="#hex"/></g>
+    <text class="label" x="200" y="395">BOLT</text>
+    <text class="ref" x="200" y="415">/ REF</text>
+  </g>
+
+  <g transform="translate(400,0)">
+    <g filter="url(#drop)" mask="url(#cut-hub)"><use href="#hex"/></g>
+    <text class="label" x="200" y="395">HUB</text>
+  </g>
+</svg>

@@ -137,7 +137,9 @@ class TextFieldStateHolder(
 
     /**
      * Convert a local x (within the input's outer bounds) to a character
-     * index in the text. Binary search over substring widths.
+     * index in the text. Binary search over substring widths, then snap to
+     * whichever boundary is closer — clicks past the midpoint of a glyph
+     * land AFTER it, matching standard text-editor caret behaviour.
      */
     fun pixelToCharIndex(localX: Int): Int {
         val px = (localX - paddingLeftPx + scrollXPx).coerceAtLeast(0)
@@ -146,6 +148,11 @@ class TextFieldStateHolder(
         while (lo < hi) {
             val mid = (lo + hi + 1) / 2
             if (fontWidthOf(text.substring(0, mid)) <= px) lo = mid else hi = mid - 1
+        }
+        if (lo < text.length) {
+            val leftEdge = fontWidthOf(text.substring(0, lo))
+            val rightEdge = fontWidthOf(text.substring(0, lo + 1))
+            if (px * 2 > leftEdge + rightEdge) return lo + 1
         }
         return lo
     }

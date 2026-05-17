@@ -250,13 +250,53 @@ class NwUiOwner {
     }
 
     private fun routeToFocus(focus: UiNode, event: PointerEvent): Boolean {
-        val (absX, absY) = focus.absoluteOffset()
-        val localX = event.x - absX
-        val localY = event.y - absY
+        val (localX, localY) = focusLocalCoords(focus, event.x, event.y)
         for (mod in focus.inputModifiers) {
             if (mod is PointerHandler && mod.handle(event, localX, localY)) return true
         }
         return false
+    }
+
+    /**
+     * Walks the root → focus chain, converting a SCREEN-pixel point into the
+     * focus's local coordinate space.
+     *
+     * Why we can't just sum `layoutX` up the chain (the old `absoluteOffset`):
+     * descendants of a [CanvasModifier] live in world coordinates (the canvas
+     * applies a `translate(pan) ∘ scale(zoom)` pose at paint time), while the
+     * canvas itself and its ancestors live in screen coordinates. Summing the
+     * mixed values only coincides with the true screen position of the focus
+     * when `zoom == 1f` and `pan == (0, 0)`. With any non-trivial canvas
+     * transform — pan after middle-drag, zoom via Ctrl+wheel, or an
+     * F-key frame — drag-routed `localX`/`localY` drifted from press-routed
+     * values, which surfaced as mouse selection that "slid" relative to the
+     * cursor.
+     *
+     * Mirrors the canvas-pose inversion the HitTester does when descending
+     * past a CanvasModifier, so press and drag report identical local coords.
+     */
+    private fun focusLocalCoords(focus: UiNode, screenX: Int, screenY: Int): Pair<Int, Int> {
+        val path = ArrayDeque<UiNode>()
+        var n: UiNode? = focus
+        while (n != null) { path.addFirst(n); n = n.parent }
+
+        var x = screenX.toFloat()
+        var y = screenY.toFloat()
+        for (i in 0 until path.size - 1) {
+            val node = path[i]
+            x -= node.layoutX
+            y -= node.layoutY
+            val canvasMod = node.inputModifiers
+                .filterIsInstance<CanvasModifier>()
+                .firstOrNull()
+            if (canvasMod != null) {
+                x = x / canvasMod.state.zoom - canvasMod.state.panX
+                y = y / canvasMod.state.zoom - canvasMod.state.panY
+            }
+        }
+        x -= focus.layoutX
+        y -= focus.layoutY
+        return x.toInt() to y.toInt()
     }
 
     /**

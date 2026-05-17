@@ -1,7 +1,10 @@
 package dev.nitka.nodewire.integration.tweakedcontroller
 
+import net.minecraft.core.BlockPos
 import net.minecraft.world.item.ItemStack
+import net.minecraft.world.level.Level
 import net.minecraftforge.fml.ModList
+import java.lang.reflect.Method
 import java.util.UUID
 
 /**
@@ -26,6 +29,35 @@ object TweakedController {
             null
         }
     }
+
+    /**
+     * TC's Lectern Controller BlockEntity. The lectern holds a controller
+     * item and exposes [lecternGetButton] / [lecternGetAxis] for reading
+     * gamepad state of whoever currently sits on it. We locate it by
+     * scanning loaded chunks around a Logic Block at evaluation time.
+     */
+    private val lecternBeClass: Class<*>? by lazy {
+        try {
+            Class.forName("com.getitemfromblock.create_tweaked_controllers.block.TweakedLecternControllerBlockEntity")
+        } catch (_: Throwable) {
+            null
+        }
+    }
+
+    private val lecternGetController: Method? by lazy {
+        lecternBeClass?.let { runCatching { it.getMethod("getController") }.getOrNull() }
+    }
+
+    private val lecternGetButton: Method? by lazy {
+        lecternBeClass?.let { runCatching { it.getMethod("GetButton", Int::class.javaPrimitiveType) }.getOrNull() }
+    }
+
+    private val lecternGetAxis: Method? by lazy {
+        lecternBeClass?.let { runCatching { it.getMethod("GetAxis", Int::class.javaPrimitiveType) }.getOrNull() }
+    }
+
+    /** Half-side length of the chunk scan box, in blocks. */
+    private const val LECTERN_SEARCH_RADIUS_BLOCKS = 64
 
     /** True iff TC mod is loaded into the current runtime. */
     fun isLoaded(): Boolean = ModList.get()?.isLoaded(MOD_ID) ?: false
@@ -62,19 +94,86 @@ object TweakedController {
     }
 
     /**
-     * Fetch the current input state for the controller [id]. Returns
-     * `null` when TC isn't loaded, the controller is offline, or the
-     * server-side state hasn't been replicated by TC.
+     * Fetch the current input state for the controller [id], or `null`
+     * when TC isn't loaded, no matching lectern is in range, or no player
+     * is sitting on the lectern.
      *
-     * TODO(follow-up): wire reflection into
-     *   TweakedLinkedControllerServerHandler.receivedInputs (WorldAttached<Map<UUID,Collection<TweakedManualFrequency>>>)
-     *   and .receivedAxes (WorldAttached<Map<UUID,List<TweakedManualAxisFrequency>>>).
-     * Until that's done, this returns null so the evaluator emits zero values.
+     * Strategy: scan loaded chunks within [LECTERN_SEARCH_RADIUS_BLOCKS]
+     * of [origin] for a TweakedLecternControllerBlockEntity whose held
+     * controller stack carries our `nw:bindId` matching [id]. Reads
+     * button/axis state directly off that BE via reflection — the BE
+     * receives state from the seated player's gamepad packets.
+     *
+     * Performance: per-tick chunk scan. With one Logic Block and a few
+     * lecterns it's fine; if it becomes a hotspot, add a level-scoped
+     * UUID → BlockPos cache invalidated on lectern load/unload.
      */
-    @Suppress("UNUSED_PARAMETER")
-    fun getControllerState(id: UUID): ControllerState? {
+    fun getControllerState(level: Level, origin: BlockPos, id: UUID): ControllerState? {
         if (!isLoaded()) return null
+        val lecternClass = lecternBeClass ?: return null
+        val getController = lecternGetController ?: return null
+        val getButton = lecternGetButton ?: return null
+        val getAxis = lecternGetAxis ?: return null
+
+        val r = LECTERN_SEARCH_RADIUS_BLOCKS
+        val minChunkX = (origin.x - r) shr 4
+        val maxChunkX = (origin.x + r) shr 4
+        val minChunkZ = (origin.z - r) shr 4
+        val maxChunkZ = (origin.z + r) shr 4
+
+        for (cx in minChunkX..maxChunkX) {
+            for (cz in minChunkZ..maxChunkZ) {
+                val chunk = level.chunkSource.getChunkNow(cx, cz) ?: continue
+                for ((_, be) in chunk.blockEntities) {
+                    if (!lecternClass.isInstance(be)) continue
+                    val stack = (getController.invoke(be) as? ItemStack) ?: continue
+                    if (stack.isEmpty) continue
+                    val tag = stack.tag ?: continue
+                    if (!tag.hasUUID(NW_BIND_ID_KEY)) continue
+                    if (tag.getUUID(NW_BIND_ID_KEY) != id) continue
+                    return readLecternState(be, getButton, getAxis)
+                }
+            }
+        }
         return null
+    }
+
+    /**
+     * GLFW gamepad index map. Verified against TC 1.20.1-1.2.6's
+     * `TweakedLecternControllerBlockEntity.GetButton(int)` /
+     * `.GetAxis(int)` (which consume the same indices).
+     *
+     * Buttons: 0=A, 1=B, 2=X, 3=Y, 4=LB, 5=RB, 6=Back, 7=Start,
+     *          9=LStickClick, 10=RStickClick, 11=DPadUp, 12=DPadRight,
+     *          13=DPadDown, 14=DPadLeft.  (8 = Guide, unused by Nodewire.)
+     *
+     * Axes: 0=LStickX, 1=LStickY, 2=RStickX, 3=RStickY, 4=LT, 5=RT.
+     */
+    private fun readLecternState(be: Any, getButton: Method, getAxis: Method): ControllerState {
+        fun btn(i: Int): Boolean = runCatching { getButton.invoke(be, i) as Boolean }.getOrElse { false }
+        fun axis(i: Int): Float = runCatching { getAxis.invoke(be, i) as Float }.getOrElse { 0f }
+        return ControllerState(
+            leftStickX = axis(0),
+            leftStickY = axis(1),
+            rightStickX = axis(2),
+            rightStickY = axis(3),
+            leftTrigger = axis(4),
+            rightTrigger = axis(5),
+            buttonA = btn(0),
+            buttonB = btn(1),
+            buttonX = btn(2),
+            buttonY = btn(3),
+            leftBumper = btn(4),
+            rightBumper = btn(5),
+            back = btn(6),
+            start = btn(7),
+            leftStickClick = btn(9),
+            rightStickClick = btn(10),
+            dpadUp = btn(11),
+            dpadRight = btn(12),
+            dpadDown = btn(13),
+            dpadLeft = btn(14),
+        )
     }
 }
 

@@ -5,8 +5,10 @@ import dev.nitka.nodewire.graph.NodeCategory
 import dev.nitka.nodewire.graph.NodeEvaluator
 import dev.nitka.nodewire.graph.NodeType
 import dev.nitka.nodewire.graph.PinValue
+import net.minecraft.core.BlockPos
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.resources.ResourceLocation
+import net.minecraft.world.level.Level
 import java.util.UUID
 
 /**
@@ -25,12 +27,18 @@ import java.util.UUID
 object ControllerInputNode {
 
     /**
-     * Thread-local carrying the controllerId of the Logic Block whose graph
-     * is currently being evaluated. Set by LogicBlockEntity.serverTick
-     * before calling StatefulGraphEvaluator.tick, cleared in finally.
-     * Null when no evaluation is in progress.
+     * Per-tick evaluator context: level + Logic Block origin + bound
+     * controllerId. Set by [dev.nitka.nodewire.block.LogicBlockEntity.serverTick]
+     * before [dev.nitka.nodewire.graph.StatefulGraphEvaluator.tick],
+     * restored in `finally`. Null outside an active tick.
+     *
+     * The evaluator needs more than just the UUID because TC state is read
+     * from a *lectern* near the Logic Block, not from a global UUID map —
+     * see [TweakedController.getControllerState].
      */
-    val currentControllerId: ThreadLocal<UUID?> = ThreadLocal.withInitial { null }
+    data class EvalContext(val level: Level, val origin: BlockPos, val controllerId: UUID?)
+
+    val currentContext: ThreadLocal<EvalContext?> = ThreadLocal.withInitial { null }
 
     val Evaluator: NodeEvaluator = { config, _ ->
         val channel = ControllerChannel.fromName(config.getString("channel"))
@@ -40,8 +48,10 @@ object ControllerInputNode {
         val deadzone = config.getFloat("deadzone")
         val invert = config.getBoolean("invert")
 
-        val id = currentControllerId.get()
-        val state = id?.let { TweakedController.getControllerState(it) }
+        val ctx = currentContext.get()
+        val state = ctx?.controllerId?.let {
+            TweakedController.getControllerState(ctx.level, ctx.origin, it)
+        }
 
         if (state == null) {
             // TC absent, controller offline, or no id bound — emit zero values

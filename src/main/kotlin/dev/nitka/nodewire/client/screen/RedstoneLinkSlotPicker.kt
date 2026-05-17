@@ -22,6 +22,7 @@ import dev.nitka.nodewire.ui.layout.Column
 import dev.nitka.nodewire.ui.layout.LayoutCoordinates
 import dev.nitka.nodewire.ui.layout.Row
 import dev.nitka.nodewire.ui.modifier.input.clickable
+import dev.nitka.nodewire.ui.modifier.input.onHover
 import dev.nitka.nodewire.ui.modifier.input.onPositioned
 import dev.nitka.nodewire.ui.modifier.input.pointerInput
 import dev.nitka.nodewire.ui.modifier.layout.fillMaxWidth
@@ -66,6 +67,7 @@ fun RedstoneLinkFrequencySlots(node: Node, editor: EditorState?) {
 private fun FrequencySlot(node: Node, editor: EditorState?, slotKey: String) {
     var pickerOpen by remember { mutableStateOf(false) }
     var anchor by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    var hovered by remember { mutableStateOf(false) }
     val canvas = LocalCanvasState.current
     val currentStack = ItemStack.of(node.config.getCompound(slotKey))
 
@@ -80,6 +82,7 @@ private fun FrequencySlot(node: Node, editor: EditorState?, slotKey: String) {
                     setSlot(node, editor, slotKey, stack)
                 }
             }
+            .onHover { hovered = it }
             .clickable { pickerOpen = true }
             .pointerInput { ev, _, _ ->
                 if (ev is PointerEvent.Press && ev.button == 1) {
@@ -89,6 +92,16 @@ private fun FrequencySlot(node: Node, editor: EditorState?, slotKey: String) {
             },
     ) {
         ItemSlotIcon(currentStack)
+    }
+
+    if (hovered && !pickerOpen) {
+        val a = anchor
+        if (a != null) {
+            val (px, py) = tooltipScreenAnchor(a, canvas)
+            Popup(position = PopupPosition.AtScreen(px, py)) {
+                SlotTooltipPanel(currentStack)
+            }
+        }
     }
 
     if (pickerOpen) {
@@ -109,6 +122,38 @@ private fun FrequencySlot(node: Node, editor: EditorState?, slotKey: String) {
             }
         }
     }
+}
+
+/**
+ * Hover tooltip: current item name (or "Empty") + control hints. Helps
+ * users discover that RMB clears the slot — the most common "I can't
+ * change it back" complaint.
+ */
+@Composable
+private fun SlotTooltipPanel(stack: ItemStack) {
+    Box(
+        modifier = Modifier
+            .background(NwTheme.colors.surface)
+            .border(BorderStroke(1, NwTheme.colors.border))
+            .padding(horizontal = 6, vertical = 3),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(1)) {
+            Text(if (stack.isEmpty) "Empty" else stack.hoverName.string)
+            Text("LMB: pick · RMB: clear", style = NwTheme.typography.caption)
+        }
+    }
+}
+
+private fun tooltipScreenAnchor(anchor: LayoutCoordinates, canvas: CanvasState?): Pair<Int, Int> {
+    if (canvas == null) {
+        return (anchor.screenX + anchor.width + 4) to anchor.screenY
+    }
+    val z = canvas.zoom
+    val localX = anchor.screenX - canvas.originX
+    val localY = anchor.screenY - canvas.originY
+    val realX = canvas.originX + ((localX + canvas.panX) * z).toInt()
+    val realY = canvas.originY + ((localY + canvas.panY) * z).toInt()
+    return (realX + (anchor.width * z).toInt() + 4) to realY
 }
 
 /**
@@ -153,9 +198,10 @@ private fun InventoryPickerPopover(onPick: (ItemStack) -> Unit) {
     var query by remember { mutableStateOf("") }
 
     val candidates = remember(source, query) {
+        val filter = parseSearchFilter(query)
         when (source) {
-            PickerSource.Inventory -> uniqueFromInventory(query)
-            PickerSource.All -> uniqueFromRegistry(query)
+            PickerSource.Inventory -> uniqueFromInventory(filter)
+            PickerSource.All -> uniqueFromRegistry(filter)
         }
     }
 
@@ -173,7 +219,7 @@ private fun InventoryPickerPopover(onPick: (ItemStack) -> Unit) {
             ) {
                 TextInput(
                     value = query,
-                    placeholder = "Search...",
+                    placeholder = "Search  @mod  #tag",
                     onValueChange = { query = it },
                     modifier = Modifier.weight(1f),
                 )
@@ -207,29 +253,80 @@ private fun InventoryPickerPopover(onPick: (ItemStack) -> Unit) {
     }
 }
 
-/** Player inventory, deduped by item id, filtered by query. */
-private fun uniqueFromInventory(query: String): List<ItemStack> {
+/**
+ * EMI-style search filter. Whitespace-separated tokens combined with AND:
+ *   - `@mod`   matches item's namespace (mod id) containing `mod`
+ *   - `#tag`   matches any item-tag path containing `tag`
+ *   - bare     matches display-name substring
+ *
+ * Examples:
+ *   "redstone"              — name contains "redstone"
+ *   "@create gear"          — Create mod items whose name contains "gear"
+ *   "#wool red"             — items in any tag containing "wool" with red in name
+ */
+private sealed interface SearchTerm {
+    val q: String
+    data class Name(override val q: String) : SearchTerm
+    data class Mod(override val q: String) : SearchTerm
+    data class Tag(override val q: String) : SearchTerm
+}
+
+private data class SearchFilter(val terms: List<SearchTerm>) {
+    val isEmpty: Boolean get() = terms.isEmpty()
+}
+
+private fun parseSearchFilter(query: String): SearchFilter {
+    if (query.isBlank()) return SearchFilter(emptyList())
+    val terms = query.trim().split(Regex("\\s+")).mapNotNull { tok ->
+        when {
+            tok.length > 1 && tok.startsWith("@") -> SearchTerm.Mod(tok.substring(1).lowercase())
+            tok.length > 1 && tok.startsWith("#") -> SearchTerm.Tag(tok.substring(1).lowercase())
+            tok.isNotEmpty() -> SearchTerm.Name(tok.lowercase())
+            else -> null
+        }
+    }
+    return SearchFilter(terms)
+}
+
+private fun matchesFilter(stack: ItemStack, filter: SearchFilter): Boolean {
+    if (filter.isEmpty) return true
+    val key = BuiltInRegistries.ITEM.getKey(stack.item)
+    val modId = key.namespace.lowercase()
+    val name by lazy { stack.hoverName.string.lowercase() }
+    val tags by lazy {
+        stack.item.builtInRegistryHolder().tags().map { it.location().path.lowercase() }.toList()
+    }
+    return filter.terms.all { term ->
+        when (term) {
+            is SearchTerm.Mod -> modId.contains(term.q)
+            is SearchTerm.Tag -> tags.any { it.contains(term.q) }
+            is SearchTerm.Name -> name.contains(term.q)
+        }
+    }
+}
+
+/** Player inventory, deduped by item id, filtered by [SearchFilter]. */
+private fun uniqueFromInventory(filter: SearchFilter): List<ItemStack> {
     val items = Minecraft.getInstance().player?.inventory?.items.orEmpty()
     val seen = HashSet<String>()
     return items.filter {
         if (it.isEmpty) return@filter false
         if (!seen.add(it.item.descriptionId)) return@filter false
-        query.isEmpty() || it.hoverName.string.contains(query, ignoreCase = true)
+        matchesFilter(it, filter)
     }
 }
 
 /**
  * Every registered item in the game, lazily iterated and capped at 36 hits
  * so we don't materialise tens of thousands of stacks just to render a 9×4
- * grid. Empty `query` returns the first 36 items in registration order;
- * non-empty filters by display-name substring.
+ * grid. Empty filter returns the first 36 items in registration order.
  */
-private fun uniqueFromRegistry(query: String): List<ItemStack> {
+private fun uniqueFromRegistry(filter: SearchFilter): List<ItemStack> {
     val result = ArrayList<ItemStack>(36)
     for (item in BuiltInRegistries.ITEM) {
         if (item == net.minecraft.world.item.Items.AIR) continue
         val stack = ItemStack(item)
-        if (query.isEmpty() || stack.hoverName.string.contains(query, ignoreCase = true)) {
+        if (matchesFilter(stack, filter)) {
             result.add(stack)
             if (result.size >= 36) break
         }

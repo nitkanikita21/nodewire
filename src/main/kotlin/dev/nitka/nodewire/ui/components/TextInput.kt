@@ -21,12 +21,12 @@ import dev.nitka.nodewire.ui.input.text.TextFieldState
 import dev.nitka.nodewire.ui.input.text.TextFieldStateHolder
 import dev.nitka.nodewire.ui.input.text.TextRange
 import dev.nitka.nodewire.ui.layout.Layout
+import dev.nitka.nodewire.ui.modifier.input.onHover
 import dev.nitka.nodewire.ui.modifier.input.onSizeChanged
 import dev.nitka.nodewire.ui.modifier.input.pointerInput
+import dev.nitka.nodewire.ui.modifier.layout.height
 import dev.nitka.nodewire.ui.modifier.layout.padding
 import dev.nitka.nodewire.ui.modifier.style.background
-import dev.nitka.nodewire.ui.modifier.style.border
-import dev.nitka.nodewire.ui.render.BorderStroke
 import dev.nitka.nodewire.ui.theme.NwTheme
 import kotlinx.coroutines.delay
 import net.minecraft.Util
@@ -65,9 +65,14 @@ fun TextInput(
         )
     }
 
-    // Wire holder runtime knobs each composition (cheap; no allocation).
-    holder.fontWidthOf = { font.width(it) }
-    holder.fontHeightPx = font.lineHeight
+    // Text is rendered at caption scale so the field matches Select's
+    // visual size (Select uses caption typography). Holder font metrics
+    // must follow suit so caret / selection / scroll math is in the same
+    // screen-pixel units the renderer paints in.
+    val textScale = NwTheme.typography.caption.scale
+    val scaledLineHeight = (font.lineHeight * textScale).toInt().coerceAtLeast(1)
+    holder.fontWidthOf = { (font.width(it) * textScale).toInt() }
+    holder.fontHeightPx = scaledLineHeight
     holder.paddingLeftPx = 0
 
     val cb = rememberUpdatedState(onValueChange)
@@ -116,17 +121,27 @@ fun TextInput(
     // Force read of blinkTick so the composer treats it as a dependency.
     @Suppress("UNUSED_EXPRESSION") blinkTick
 
+    // Intrinsic height: scaled font line + 2px vertical padding. Matches
+    // Select (Text(caption) inside a Row with vertical=1 padding) so both
+    // controls have the same row height inside node config sections.
+    val rowHeight = scaledLineHeight + 2
+    var hovered by remember { mutableStateOf(false) }
+    // Background mirrors Select: surfaceHover at rest, surfacePressed when
+    // hovered or focused. No border — Select doesn't have one either; the
+    // distinct fill against the (typically `surface`) parent is the field
+    // affordance.
+    val bg = when {
+        focused -> NwTheme.colors.surfacePressed
+        hovered -> NwTheme.colors.surfacePressed
+        else -> NwTheme.colors.surfaceHover
+    }
+
     Layout(
         modifier = modifier
-            .background(
-                if (focused) NwTheme.colors.surfacePressed else NwTheme.colors.surfaceHover,
-                NwTheme.shapes.medium,
-            )
-            .let { m ->
-                if (focused) m.border(BorderStroke(1, NwTheme.colors.accent), NwTheme.shapes.medium)
-                else m
-            }
+            .height(rowHeight)
+            .background(bg, NwTheme.shapes.medium)
             .padding(horizontal = NwTheme.dimens.space4, vertical = 1)
+            .onHover { hovered = it }
             .onSizeChanged { size -> holder.visibleWidthPx = size.width }
             .pointerInput { ev, localX, _ ->
                 if (!enabled) return@pointerInput false
@@ -153,6 +168,7 @@ fun TextInput(
             placeholder = placeholder,
             isFocused = { focused },
             blinkOn = { blinkOn },
+            textScale = textScale,
         ),
     )
 }

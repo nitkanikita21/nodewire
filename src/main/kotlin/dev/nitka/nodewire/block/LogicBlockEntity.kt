@@ -372,12 +372,15 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
             }
         }
 
-        val prevControllerId = dev.nitka.nodewire.integration.tweakedcontroller.ControllerInputNode.currentControllerId.get()
-        dev.nitka.nodewire.integration.tweakedcontroller.ControllerInputNode.currentControllerId.set(controllerId)
+        val tcNode = dev.nitka.nodewire.integration.tweakedcontroller.ControllerInputNode
+        val prevCtx = tcNode.currentContext.get()
+        tcNode.currentContext.set(
+            dev.nitka.nodewire.integration.tweakedcontroller.ControllerInputNode.EvalContext(level, pos, controllerId),
+        )
         val result = try {
             eval.tick(external)
         } finally {
-            dev.nitka.nodewire.integration.tweakedcontroller.ControllerInputNode.currentControllerId.set(prevControllerId)
+            tcNode.currentContext.set(prevCtx)
         }
 
         if (ModList.get().isLoaded("create")) {

@@ -159,7 +159,11 @@ fun applyOutputMode(
             mapOf("value" to PinValue.Float(raw.first * sign))
 
         ControllerOutputMode.REDSTONE ->
-            mapOf("value" to PinValue.Redstone(unitToRedstone(raw.first * sign)))
+            mapOf("value" to PinValue.Redstone(
+                if (channel.category == ControllerChannelCategory.TRIGGER)
+                    unitToRedstone(raw.first * sign)
+                else if (raw.third) 15 else 0
+            ))
 
         ControllerOutputMode.BOOL ->
             mapOf("pressed" to PinValue.Bool(
