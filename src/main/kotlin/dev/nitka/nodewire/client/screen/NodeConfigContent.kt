@@ -733,12 +733,11 @@ object NodeConfigContent {
                     label = { it.name.lowercase().replace('_', ' ') },
                 )
             }
-            val showDeadzone = cat == dev.nitka.nodewire.integration.tweakedcontroller
-                .ControllerChannelCategory.STICK ||
-                cat == dev.nitka.nodewire.integration.tweakedcontroller
-                .ControllerChannelCategory.DPAD_COMPOSITE ||
-                cat == dev.nitka.nodewire.integration.tweakedcontroller
-                .ControllerChannelCategory.TRIGGER
+            // Deadzone applies whenever the channel produces a continuous
+            // value (composite stick, axis half, or trigger). Buttons
+            // skip the deadzone row.
+            val showDeadzone = cat != dev.nitka.nodewire.integration.tweakedcontroller
+                .ControllerChannelCategory.BUTTON
             if (showDeadzone) {
                 FloatField(node, "deadzone", "Deadzone", editor)
             }

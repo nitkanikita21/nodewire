@@ -5,43 +5,104 @@ import dev.nitka.nodewire.graph.PinValue
 import dev.nitka.nodewire.graph.PinType
 
 /**
- * Logical category a channel belongs to. Drives which [OutputMode]
- * variants are valid and what the raw input shape looks like:
- *   * Stick / DPadComposite — produce a 2D vector
- *   * Trigger — produce a 0..1 float
- *   * Button / DPadSingle — produce a bool
+ * One channel = one of TC's 25 user-configurable input slots, exactly
+ * as the player sees them in TC's config GUI.
+ *
+ * TC's model (verified against `create-tweaked-controllers-1.20.1-1.2.6`
+ * sources + `assets/.../lang/en_us.json`):
+ *
+ *   * 15 button slots (indices 0..14 in [ControlProfile.layout]).
+ *     Each maps 1:1 to one bit in [ControllerRedstoneOutput.buttons].
+ *   * 10 axis-half slots (indices 15..24). Stick axes are split into
+ *     positive and negative halves — TC re-combines them into 4 signed
+ *     bytes in [ControllerRedstoneOutput.axis] (bytes 0..3, bit 4 =
+ *     sign, bits 0..3 = magnitude). Triggers (slots 23..24) are
+ *     unsigned magnitudes in bytes 4..5.
+ *
+ * On top of TC's 25 raw slots we expose 3 *composite* convenience
+ * channels — [LEFT_STICK], [RIGHT_STICK], [DPAD] — that combine
+ * positive/negative axis halves (or 4 d-pad buttons) into a single 2D
+ * value, because most graphs want "the stick as a vector", not four
+ * separate slot reads.
  */
-enum class ControllerChannelCategory { STICK, TRIGGER, BUTTON, DPAD_SINGLE, DPAD_COMPOSITE }
+enum class ControllerChannelCategory {
+    /**
+     * Composite 2D channel ([LEFT_STICK], [RIGHT_STICK], [DPAD]).
+     * Combines four raw inputs into a Vec2 in [−1, 1]² (sticks read
+     * the signed bytes; d-pad subtracts negative buttons from positive).
+     */
+    COMPOSITE_VEC2,
+
+    /** TC button slot — slots 0..14 in [ControlProfile.layout]. Output BOOL/REDSTONE. */
+    BUTTON,
+
+    /**
+     * TC axis-half slot — slots 15..22 in [ControlProfile.layout]. A
+     * stick axis split into positive or negative direction; output is
+     * the magnitude 0..1. Output modes RAW/REDSTONE/BOOL.
+     */
+    AXIS_HALF,
+
+    /**
+     * TC trigger slot — slots 23..24 in [ControlProfile.layout]. An
+     * unsigned 0..1 magnitude (no negative half because triggers only
+     * go in one direction). Same output modes as [AXIS_HALF].
+     */
+    TRIGGER,
+}
 
 /**
- * Every input source on the gamepad. Names are stable (serialized to
- * NBT by [name]); adding new entries is forward-compatible.
+ * The 25 TC slots + 3 composite convenience channels. Channel names
+ * preserve TC's GUI labels so the player can match what they see in
+ * TC's config menu directly.
  *
- * [displayName] is the human-readable label for UI.
+ * The enum [name] is the NBT serialization key — never reorder or
+ * rename existing entries without a data-migration step.
  */
 enum class ControllerChannel(
     val displayName: String,
     val category: ControllerChannelCategory,
 ) {
-    LEFT_STICK("Left Stick", ControllerChannelCategory.STICK),
-    RIGHT_STICK("Right Stick", ControllerChannelCategory.STICK),
-    LEFT_TRIGGER("Left Trigger", ControllerChannelCategory.TRIGGER),
-    RIGHT_TRIGGER("Right Trigger", ControllerChannelCategory.TRIGGER),
-    BUTTON_A("Button A", ControllerChannelCategory.BUTTON),
-    BUTTON_B("Button B", ControllerChannelCategory.BUTTON),
-    BUTTON_X("Button X", ControllerChannelCategory.BUTTON),
-    BUTTON_Y("Button Y", ControllerChannelCategory.BUTTON),
-    LEFT_BUMPER("Left Bumper", ControllerChannelCategory.BUTTON),
-    RIGHT_BUMPER("Right Bumper", ControllerChannelCategory.BUTTON),
-    LEFT_STICK_CLICK("Left Stick Click", ControllerChannelCategory.BUTTON),
-    RIGHT_STICK_CLICK("Right Stick Click", ControllerChannelCategory.BUTTON),
-    START("Start", ControllerChannelCategory.BUTTON),
-    BACK("Back", ControllerChannelCategory.BUTTON),
-    DPAD_UP("D-Pad Up", ControllerChannelCategory.DPAD_SINGLE),
-    DPAD_DOWN("D-Pad Down", ControllerChannelCategory.DPAD_SINGLE),
-    DPAD_LEFT("D-Pad Left", ControllerChannelCategory.DPAD_SINGLE),
-    DPAD_RIGHT("D-Pad Right", ControllerChannelCategory.DPAD_SINGLE),
-    DPAD("D-Pad", ControllerChannelCategory.DPAD_COMPOSITE);
+    // --- Composite convenience (Nodewire-only) ----------------------
+
+    LEFT_STICK("Left Stick (composite)", ControllerChannelCategory.COMPOSITE_VEC2),
+    RIGHT_STICK("Right Stick (composite)", ControllerChannelCategory.COMPOSITE_VEC2),
+    DPAD("D-Pad (composite)", ControllerChannelCategory.COMPOSITE_VEC2),
+
+    // --- TC button slots 0..14 --------------------------------------
+
+    BUTTON_A("A Button", ControllerChannelCategory.BUTTON),
+    BUTTON_B("B Button", ControllerChannelCategory.BUTTON),
+    BUTTON_X("X Button", ControllerChannelCategory.BUTTON),
+    BUTTON_Y("Y Button", ControllerChannelCategory.BUTTON),
+    LEFT_SHOULDER("Left Shoulder", ControllerChannelCategory.BUTTON),
+    RIGHT_SHOULDER("Right Shoulder", ControllerChannelCategory.BUTTON),
+    BACK_BUTTON("Back Button", ControllerChannelCategory.BUTTON),
+    START_BUTTON("Start Button", ControllerChannelCategory.BUTTON),
+    GUIDE_BUTTON("Guide Button", ControllerChannelCategory.BUTTON),
+    LEFT_JOYSTICK_CLICK("Left Joystick Click", ControllerChannelCategory.BUTTON),
+    RIGHT_JOYSTICK_CLICK("Right Joystick Click", ControllerChannelCategory.BUTTON),
+    DPAD_UP("D-Pad Up", ControllerChannelCategory.BUTTON),
+    DPAD_RIGHT("D-Pad Right", ControllerChannelCategory.BUTTON),
+    DPAD_DOWN("D-Pad Down", ControllerChannelCategory.BUTTON),
+    DPAD_LEFT("D-Pad Left", ControllerChannelCategory.BUTTON),
+
+    // --- TC axis-half slots 15..22 ----------------------------------
+    // (names match TC's gui_gamepad_axis_0..7 from en_us.json)
+
+    LEFT_X_POS("Left +X Axis", ControllerChannelCategory.AXIS_HALF),
+    LEFT_X_NEG("Left -X Axis", ControllerChannelCategory.AXIS_HALF),
+    LEFT_Y_POS("Left +Y Axis", ControllerChannelCategory.AXIS_HALF),
+    LEFT_Y_NEG("Left -Y Axis", ControllerChannelCategory.AXIS_HALF),
+    RIGHT_X_POS("Right +X Axis", ControllerChannelCategory.AXIS_HALF),
+    RIGHT_X_NEG("Right -X Axis", ControllerChannelCategory.AXIS_HALF),
+    RIGHT_Y_POS("Right +Y Axis", ControllerChannelCategory.AXIS_HALF),
+    RIGHT_Y_NEG("Right -Y Axis", ControllerChannelCategory.AXIS_HALF),
+
+    // --- TC trigger slots 23..24 ------------------------------------
+
+    LEFT_TRIGGER("Left Trigger Axis", ControllerChannelCategory.TRIGGER),
+    RIGHT_TRIGGER("Right Trigger Axis", ControllerChannelCategory.TRIGGER);
 
     companion object {
         fun fromName(name: String): ControllerChannel =
@@ -50,82 +111,103 @@ enum class ControllerChannel(
 }
 
 /**
- * How the channel's raw value should be projected to one or more pin
- * outputs. Valid variants depend on the channel's [ControllerChannelCategory].
+ * How a channel reading projects onto output pins.
+ *   * [VEC2_RAW] / [XY_RAW] / [XY_REDSTONE] / [MAGNITUDE_BOOL] — only
+ *     valid for [ControllerChannelCategory.COMPOSITE_VEC2].
+ *   * [RAW] / [REDSTONE] / [BOOL] — valid for all single-value
+ *     categories ([BUTTON], [AXIS_HALF], [TRIGGER]).
  */
 enum class ControllerOutputMode { VEC2_RAW, XY_RAW, XY_REDSTONE, MAGNITUDE_BOOL, RAW, REDSTONE, BOOL }
 
 /**
- * Which output modes are valid for a given category. The first entry
- * in each list is the default when the category is selected.
+ * Output modes valid for a given category. First entry = category default.
  */
 fun allowedOutputModes(cat: ControllerChannelCategory): List<ControllerOutputMode> = when (cat) {
-    ControllerChannelCategory.STICK,
-    ControllerChannelCategory.DPAD_COMPOSITE -> listOf(
+    ControllerChannelCategory.COMPOSITE_VEC2 -> listOf(
         ControllerOutputMode.VEC2_RAW,
         ControllerOutputMode.XY_RAW,
         ControllerOutputMode.XY_REDSTONE,
         ControllerOutputMode.MAGNITUDE_BOOL,
     )
+    ControllerChannelCategory.BUTTON -> listOf(
+        ControllerOutputMode.BOOL,
+        ControllerOutputMode.REDSTONE,
+    )
+    ControllerChannelCategory.AXIS_HALF,
     ControllerChannelCategory.TRIGGER -> listOf(
         ControllerOutputMode.RAW,
         ControllerOutputMode.REDSTONE,
         ControllerOutputMode.BOOL,
     )
-    ControllerChannelCategory.BUTTON,
-    ControllerChannelCategory.DPAD_SINGLE -> listOf(
-        ControllerOutputMode.BOOL,
-        ControllerOutputMode.REDSTONE,
-    )
 }
 
 /**
- * Raw channel value read off [state], normalized to ControllerState
- * conventions. Returns a Triple of (xOrAxis, yOrZero, boolOrZero)
- * because different categories use different slots — [applyOutputMode]
- * picks the right one.
+ * Reads the channel's raw scalar value off the latest controller state.
+ *
+ *   * Composite sticks return `(x, y, false)` in [−1, 1]² (signed).
+ *   * Single buttons return `(0, 0, pressed?)`.
+ *   * Axis-halves return `(magnitude, 0, false)` in `[0, 1]`. The
+ *     positive half fires only when the underlying signed axis is `> 0`;
+ *     the negative half fires only when `< 0`. Magnitudes use
+ *     `abs(value)` so each half maps cleanly into 0..1.
+ *   * Triggers return `(magnitude, 0, false)` in `[0, 1]`.
  */
 internal fun rawChannelValue(state: ControllerState, ch: ControllerChannel): Triple<Float, Float, Boolean> {
+    fun pos(v: Float) = if (v > 0f) v else 0f
+    fun neg(v: Float) = if (v < 0f) -v else 0f
     return when (ch) {
+        // Composite sticks: full Vec2 with sign.
         ControllerChannel.LEFT_STICK -> Triple(state.leftStickX, state.leftStickY, false)
         ControllerChannel.RIGHT_STICK -> Triple(state.rightStickX, state.rightStickY, false)
-        ControllerChannel.LEFT_TRIGGER -> Triple(state.leftTrigger, 0f, false)
-        ControllerChannel.RIGHT_TRIGGER -> Triple(state.rightTrigger, 0f, false)
+        ControllerChannel.DPAD -> Triple(
+            (if (state.dpadRight) 1f else 0f) - (if (state.dpadLeft) 1f else 0f),
+            (if (state.dpadUp) 1f else 0f) - (if (state.dpadDown) 1f else 0f),
+            false,
+        )
+
+        // Buttons.
         ControllerChannel.BUTTON_A -> Triple(0f, 0f, state.buttonA)
         ControllerChannel.BUTTON_B -> Triple(0f, 0f, state.buttonB)
         ControllerChannel.BUTTON_X -> Triple(0f, 0f, state.buttonX)
         ControllerChannel.BUTTON_Y -> Triple(0f, 0f, state.buttonY)
-        ControllerChannel.LEFT_BUMPER -> Triple(0f, 0f, state.leftBumper)
-        ControllerChannel.RIGHT_BUMPER -> Triple(0f, 0f, state.rightBumper)
-        ControllerChannel.LEFT_STICK_CLICK -> Triple(0f, 0f, state.leftStickClick)
-        ControllerChannel.RIGHT_STICK_CLICK -> Triple(0f, 0f, state.rightStickClick)
-        ControllerChannel.START -> Triple(0f, 0f, state.start)
-        ControllerChannel.BACK -> Triple(0f, 0f, state.back)
+        ControllerChannel.LEFT_SHOULDER -> Triple(0f, 0f, state.leftBumper)
+        ControllerChannel.RIGHT_SHOULDER -> Triple(0f, 0f, state.rightBumper)
+        ControllerChannel.BACK_BUTTON -> Triple(0f, 0f, state.back)
+        ControllerChannel.START_BUTTON -> Triple(0f, 0f, state.start)
+        ControllerChannel.GUIDE_BUTTON -> Triple(0f, 0f, false) // ControllerState doesn't track guide; reserved.
+        ControllerChannel.LEFT_JOYSTICK_CLICK -> Triple(0f, 0f, state.leftStickClick)
+        ControllerChannel.RIGHT_JOYSTICK_CLICK -> Triple(0f, 0f, state.rightStickClick)
         ControllerChannel.DPAD_UP -> Triple(0f, 0f, state.dpadUp)
+        ControllerChannel.DPAD_RIGHT -> Triple(0f, 0f, state.dpadRight)
         ControllerChannel.DPAD_DOWN -> Triple(0f, 0f, state.dpadDown)
         ControllerChannel.DPAD_LEFT -> Triple(0f, 0f, state.dpadLeft)
-        ControllerChannel.DPAD_RIGHT -> Triple(0f, 0f, state.dpadRight)
-        ControllerChannel.DPAD -> {
-            val x = (if (state.dpadRight) 1f else 0f) - (if (state.dpadLeft) 1f else 0f)
-            val y = (if (state.dpadUp) 1f else 0f) - (if (state.dpadDown) 1f else 0f)
-            Triple(x, y, false)
-        }
+
+        // Stick axis halves — magnitude in 0..1, gated on sign.
+        ControllerChannel.LEFT_X_POS -> Triple(pos(state.leftStickX), 0f, false)
+        ControllerChannel.LEFT_X_NEG -> Triple(neg(state.leftStickX), 0f, false)
+        ControllerChannel.LEFT_Y_POS -> Triple(pos(state.leftStickY), 0f, false)
+        ControllerChannel.LEFT_Y_NEG -> Triple(neg(state.leftStickY), 0f, false)
+        ControllerChannel.RIGHT_X_POS -> Triple(pos(state.rightStickX), 0f, false)
+        ControllerChannel.RIGHT_X_NEG -> Triple(neg(state.rightStickX), 0f, false)
+        ControllerChannel.RIGHT_Y_POS -> Triple(pos(state.rightStickY), 0f, false)
+        ControllerChannel.RIGHT_Y_NEG -> Triple(neg(state.rightStickY), 0f, false)
+
+        // Triggers — already 0..1 unsigned.
+        ControllerChannel.LEFT_TRIGGER -> Triple(state.leftTrigger, 0f, false)
+        ControllerChannel.RIGHT_TRIGGER -> Triple(state.rightTrigger, 0f, false)
     }
 }
 
 /**
- * Project a controller channel reading into the output pins of a
- * `controller_input` node. Returns a map keyed by pin id matching what
- * [pinsForControllerInput] produces for the same (channel, mode).
+ * Project a channel reading onto output pins per [mode].
  *
- * Deadzone applies to Stick / DPadComposite magnitude (for
- * [ControllerOutputMode.MAGNITUDE_BOOL]) and to Trigger value (for
- * [ControllerOutputMode.BOOL]).
+ *   * COMPOSITE_VEC2 mode set ([VEC2_RAW] etc.) — only meaningful for
+ *     composite-vec2 channels; uses both `(x, y)` components.
+ *   * Single-value modes ([RAW], [REDSTONE], [BOOL]) — read `raw.first`
+ *     (for axes / triggers) or `raw.third` (for buttons), and project.
  *
- * Invert flips sign of Trigger raw value and of stick axes when used
- * via [ControllerOutputMode.XY_RAW] / [ControllerOutputMode.XY_REDSTONE]
- * (it's typically used when "up = positive" doesn't match the user's
- * preferred mapping for a particular game-side use).
+ * Deadzone applies to BOOL conversions and to MAGNITUDE_BOOL.
+ * Invert flips signs of axes / triggers / composite stick reads.
  */
 fun applyOutputMode(
     state: ControllerState,
@@ -146,8 +228,8 @@ fun applyOutputMode(
         )
 
         ControllerOutputMode.XY_REDSTONE -> mapOf(
-            "x" to PinValue.Redstone(axisToRedstone(raw.first * sign)),
-            "y" to PinValue.Redstone(axisToRedstone(raw.second * sign)),
+            "x" to PinValue.Redstone(signedAxisToRedstone(raw.first * sign)),
+            "y" to PinValue.Redstone(signedAxisToRedstone(raw.second * sign)),
         )
 
         ControllerOutputMode.MAGNITUDE_BOOL -> {
@@ -155,65 +237,63 @@ fun applyOutputMode(
             mapOf("pressed" to PinValue.Bool(mag > deadzone))
         }
 
-        ControllerOutputMode.RAW ->
-            mapOf("value" to PinValue.Float(raw.first * sign))
+        ControllerOutputMode.RAW -> mapOf("value" to PinValue.Float(raw.first * sign))
 
-        ControllerOutputMode.REDSTONE ->
-            mapOf("value" to PinValue.Redstone(
-                if (channel.category == ControllerChannelCategory.TRIGGER)
-                    unitToRedstone(raw.first * sign)
-                else if (raw.third) 15 else 0
-            ))
+        ControllerOutputMode.REDSTONE -> mapOf(
+            "value" to PinValue.Redstone(
+                when (channel.category) {
+                    ControllerChannelCategory.BUTTON -> if (raw.third) 15 else 0
+                    // Axis halves and triggers are 0..1 magnitudes → linear 0..15.
+                    ControllerChannelCategory.AXIS_HALF,
+                    ControllerChannelCategory.TRIGGER -> unitToRedstone(raw.first * sign)
+                    // Composite stick reduced to single redstone — magnitude of vector.
+                    ControllerChannelCategory.COMPOSITE_VEC2 ->
+                        unitToRedstone(kotlin.math.sqrt(raw.first * raw.first + raw.second * raw.second))
+                }
+            )
+        )
 
-        ControllerOutputMode.BOOL ->
-            mapOf("pressed" to PinValue.Bool(
-                if (channel.category == ControllerChannelCategory.TRIGGER)
-                    (raw.first * sign) > deadzone
-                else raw.third,
-            ))
+        ControllerOutputMode.BOOL -> mapOf(
+            "pressed" to PinValue.Bool(
+                when (channel.category) {
+                    ControllerChannelCategory.BUTTON -> raw.third
+                    ControllerChannelCategory.AXIS_HALF,
+                    ControllerChannelCategory.TRIGGER -> (raw.first * sign) > deadzone
+                    ControllerChannelCategory.COMPOSITE_VEC2 ->
+                        kotlin.math.sqrt(raw.first * raw.first + raw.second * raw.second) > deadzone
+                }
+            )
+        )
     }
 }
 
-/** Map [−1, 1] axis to [0, 15] redstone. Center axis (0) → 7. */
-private fun axisToRedstone(axis: Float): Int =
+/** Map signed axis −1..1 to redstone 0..15 centered at 7 (used by composite sticks). */
+private fun signedAxisToRedstone(axis: Float): Int =
     (((axis.coerceIn(-1f, 1f) + 1f) * 0.5f) * 15f).toInt().coerceIn(0, 15)
 
-/** Map [0, 1] trigger to [0, 15] redstone. */
+/** Map unsigned magnitude 0..1 to redstone 0..15 (axis halves, triggers). */
 private fun unitToRedstone(v: Float): Int =
     (v.coerceIn(0f, 1f) * 15f).toInt().coerceIn(0, 15)
 
 /**
- * Output pin list for a given (channel, mode). Used by both the
- * NodeType registration and the EditorState reshape mutator so they
- * never drift apart.
+ * Output pin list for a (channel, mode). Used by both the NodeType
+ * registration and the EditorState reshape mutator so they never drift apart.
  */
 fun pinsForControllerInput(
     channel: ControllerChannel,
     mode: ControllerOutputMode,
-): List<dev.nitka.nodewire.graph.Pin> {
-    return when (mode) {
-        ControllerOutputMode.VEC2_RAW -> listOf(
-            Pin("xy", "XY", PinType.VEC2),
-        )
-        ControllerOutputMode.XY_RAW -> listOf(
-            Pin("x", "X", PinType.FLOAT),
-            Pin("y", "Y", PinType.FLOAT),
-        )
-        ControllerOutputMode.XY_REDSTONE -> listOf(
-            Pin("x", "X", PinType.REDSTONE),
-            Pin("y", "Y", PinType.REDSTONE),
-        )
-        ControllerOutputMode.MAGNITUDE_BOOL -> listOf(
-            Pin("pressed", "Pressed", PinType.BOOL),
-        )
-        ControllerOutputMode.RAW -> listOf(
-            Pin("value", "Value", PinType.FLOAT),
-        )
-        ControllerOutputMode.REDSTONE -> listOf(
-            Pin("value", "Signal", PinType.REDSTONE),
-        )
-        ControllerOutputMode.BOOL -> listOf(
-            Pin("pressed", "Pressed", PinType.BOOL),
-        )
-    }
+): List<dev.nitka.nodewire.graph.Pin> = when (mode) {
+    ControllerOutputMode.VEC2_RAW -> listOf(Pin("xy", "XY", PinType.VEC2))
+    ControllerOutputMode.XY_RAW -> listOf(
+        Pin("x", "X", PinType.FLOAT),
+        Pin("y", "Y", PinType.FLOAT),
+    )
+    ControllerOutputMode.XY_REDSTONE -> listOf(
+        Pin("x", "X", PinType.REDSTONE),
+        Pin("y", "Y", PinType.REDSTONE),
+    )
+    ControllerOutputMode.MAGNITUDE_BOOL -> listOf(Pin("pressed", "Pressed", PinType.BOOL))
+    ControllerOutputMode.RAW -> listOf(Pin("value", "Value", PinType.FLOAT))
+    ControllerOutputMode.REDSTONE -> listOf(Pin("value", "Signal", PinType.REDSTONE))
+    ControllerOutputMode.BOOL -> listOf(Pin("pressed", "Pressed", PinType.BOOL))
 }
