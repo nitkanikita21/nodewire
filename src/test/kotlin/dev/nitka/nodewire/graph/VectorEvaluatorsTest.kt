@@ -44,4 +44,33 @@ class VectorEvaluatorsTest {
         )
         assertEquals(PinValue.Vec3(0f, 0f, 0f), out["out"])
     }
+
+    @Test fun vecSplitVec2() {
+        val out = VectorEvaluators.VecSplit(
+            cfg { putString("dim", "VEC2") },
+            mapOf("in" to PinValue.Vec2(7f, 8f)),
+        )
+        assertEquals(PinValue.Float(7f), out["x"])
+        assertEquals(PinValue.Float(8f), out["y"])
+    }
+
+    @Test fun vecSplitVec3() {
+        val out = VectorEvaluators.VecSplit(
+            cfg { putString("dim", "VEC3") },
+            mapOf("in" to PinValue.Vec3(1f, 2f, 3f)),
+        )
+        assertEquals(PinValue.Float(1f), out["x"])
+        assertEquals(PinValue.Float(2f), out["y"])
+        assertEquals(PinValue.Float(3f), out["z"])
+    }
+
+    @Test fun vecSplitMissingInputZero() {
+        val out = VectorEvaluators.VecSplit(
+            cfg { putString("dim", "VEC3") },
+            emptyMap(),
+        )
+        assertEquals(PinValue.Float(0f), out["x"])
+        assertEquals(PinValue.Float(0f), out["y"])
+        assertEquals(PinValue.Float(0f), out["z"])
+    }
 }

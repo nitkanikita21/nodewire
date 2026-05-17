@@ -39,4 +39,28 @@ object VectorEvaluators {
         }
         mapOf("out" to out)
     }
+
+    // --- decompose ---------------------------------------------------
+
+    /**
+     * VecSplit: outputs x/y (Vec2) or x/y/z (Vec3) scalars from a single
+     * vector input named "in". Missing input → all zeros.
+     */
+    val VecSplit: NodeEvaluator = { config, inputs ->
+        val dim = config.getString("dim").ifEmpty { "VEC2" }
+        if (dim == "VEC3") {
+            val v = vec3In(inputs, "in")
+            mapOf(
+                "x" to PinValue.Float(v.x),
+                "y" to PinValue.Float(v.y),
+                "z" to PinValue.Float(v.z),
+            )
+        } else {
+            val v = vec2In(inputs, "in")
+            mapOf(
+                "x" to PinValue.Float(v.x),
+                "y" to PinValue.Float(v.y),
+            )
+        }
+    }
 }
