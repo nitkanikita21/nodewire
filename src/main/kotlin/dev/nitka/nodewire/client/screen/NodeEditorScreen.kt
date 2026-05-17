@@ -7,7 +7,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import dev.nitka.nodewire.ui.feedback.LocalToastManager
 import dev.nitka.nodewire.graph.CanvasPos
 import dev.nitka.nodewire.graph.Edge
 import dev.nitka.nodewire.graph.EvalResult
@@ -123,6 +125,23 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
                 }
             }
             editor.canvasState = canvas
+            val scope = rememberCoroutineScope()
+            val toast = LocalToastManager.current
+            LaunchedEffect(editor) {
+                if (editor.templateSync == null) {
+                    val store = GroupTemplateStore()
+                    editor.templateSync = GroupTemplateSync(
+                        store = store,
+                        scope = scope,
+                        editor = editor,
+                        onEdgeDropped = { n -> toast?.warning("$n edge(s) dropped on template update") },
+                    )
+                    for (g in editor.graph.groups) {
+                        val f = g.templateFile ?: continue
+                        editor.templateSync?.observeFile(f)
+                    }
+                }
+            }
             val nodeIds by editor.nodes.collectAsState()
             // Live evaluator: runs once per game tick (50ms) so stateful
             // nodes (Timer) advance smoothly in the editor preview. Graph
@@ -257,6 +276,17 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
                     // Popup handles overlay layering itself.
                     editor.contextMenu?.let { target ->
                         NodeContextMenu(target = target, editor = editor)
+                    }
+                    editor.pendingSaveTemplateForGroup?.let { gid ->
+                        SaveAsDialog(
+                            initial = editor.graph.groups.firstOrNull { it.id == gid }?.name ?: "Group",
+                            onDismiss = { editor.pendingSaveTemplateForGroup = null },
+                            onConfirm = { name ->
+                                val tpl = editor.saveAsTemplate(gid, name)
+                                if (tpl == null) toast?.warning("Save as template failed")
+                                else toast?.success("Saved template '$name'")
+                            },
+                        )
                     }
                 }
                 } // end Column
