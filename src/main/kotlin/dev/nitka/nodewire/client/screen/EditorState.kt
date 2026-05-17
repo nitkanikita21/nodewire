@@ -9,6 +9,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.SnapshotStateMap
 import dev.nitka.nodewire.graph.CanvasPos
 import dev.nitka.nodewire.graph.Edge
+import dev.nitka.nodewire.graph.Group
+import dev.nitka.nodewire.graph.GroupId
+import dev.nitka.nodewire.graph.MemberRef
 import dev.nitka.nodewire.graph.Node
 import dev.nitka.nodewire.graph.NodeGraph
 import dev.nitka.nodewire.graph.NodeId
@@ -84,6 +87,9 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         }
         _nodes.value = graph.nodes.keys.toList()
         _edges.value = graph.edges.toList()
+        graph.groups.clear()
+        graph.groups.addAll(snapshot.groups)
+        syncGroupsFlow()
         clearSelection()
     }
 
@@ -105,6 +111,12 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
     private val _edges: MutableStateFlow<List<Edge>> =
         MutableStateFlow(graph.edges.toList())
     val edges: StateFlow<List<Edge>> = _edges.asStateFlow()
+
+    private val _groups: MutableStateFlow<List<Group>> =
+        MutableStateFlow(graph.groups.toList())
+    val groups: StateFlow<List<Group>> = _groups.asStateFlow()
+
+    private fun syncGroupsFlow() { _groups.value = graph.groups.toList() }
 
     private val _blockName = MutableStateFlow("")
     val blockName: StateFlow<String> = _blockName.asStateFlow()
@@ -150,6 +162,7 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
             nodeFlows.remove(id)
             _nodes.value = _nodes.value - id
             _edges.value = _edges.value.filter { it.from.node != id && it.to.node != id }
+            syncGroupsFlow()
         }
     }
 
@@ -1003,6 +1016,18 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
     }
 
     /**
+     * Replace the entire graph contents with [other] (deep enough — we
+     * reuse the existing [restoreFrom] path so per-node flows stay live
+     * and downstream readers don't blow up on missing entries). Pushed
+     * through [mutateGraph] so the swap itself is one undo step.
+     */
+    fun replaceGraph(other: NodeGraph) {
+        mutateGraph(mergeable = false) {
+            restoreFrom(other)
+        }
+    }
+
+    /**
      * Build a fresh [NodeGraph] from the current per-node + edge flows.
      * Called on screen close to ship the latest state to the server via
      * [dev.nitka.nodewire.net.SaveGraphPacket].
@@ -1015,6 +1040,116 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         }
         for (e in _edges.value) g.addEdge(e)
         return g
+    }
+
+    /** Create an inline group containing the current selection. */
+    fun createGroupFromSelection(name: String): GroupId? {
+        if (selectedNodes.isEmpty()) return null
+        val ids = selectedNodes.toList()
+        val xs = ids.mapNotNull { graph.nodes[it]?.pos?.x }
+        val ys = ids.mapNotNull { graph.nodes[it]?.pos?.y }
+        val anchor = if (xs.isEmpty()) CanvasPos.Zero
+        else CanvasPos(xs.min(), ys.min())
+        val g = Group(
+            id = Group.newId(),
+            name = name,
+            members = ids.map { MemberRef.Node(it) },
+            templateFile = null,
+            templateIdMap = null,
+            collapsed = false,
+            pos = anchor,
+            collapsedSize = null,
+        )
+        mutateGraph {
+            graph.groups.add(g)
+            syncGroupsFlow()
+        }
+        return g.id
+    }
+
+    /** Dissolve a group; members survive at their current positions. */
+    fun ungroup(id: GroupId) {
+        mutateGraph {
+            graph.groups.removeAll { it.id == id }
+            val rebuilt = graph.groups.map { g ->
+                g.copy(members = g.members.filter { m -> m !is MemberRef.Sub || m.id != id })
+            }
+            graph.groups.clear()
+            graph.groups.addAll(rebuilt)
+            syncGroupsFlow()
+        }
+    }
+
+    fun toggleCollapsed(id: GroupId) {
+        mutateGraph {
+            val i = graph.groups.indexOfFirst { it.id == id }
+            if (i < 0) return@mutateGraph
+            graph.groups[i] = graph.groups[i].copy(collapsed = !graph.groups[i].collapsed)
+            syncGroupsFlow()
+        }
+    }
+
+    fun unlinkGroup(id: GroupId) {
+        mutateGraph {
+            val i = graph.groups.indexOfFirst { it.id == id }
+            if (i < 0) return@mutateGraph
+            graph.groups[i] = graph.groups[i].copy(templateFile = null, templateIdMap = null)
+            syncGroupsFlow()
+        }
+    }
+
+    fun addMemberToGroup(groupId: GroupId, nodeId: NodeId) {
+        mutateGraph {
+            val i = graph.groups.indexOfFirst { it.id == groupId }
+            if (i < 0) return@mutateGraph
+            val cur = graph.groups[i]
+            if (cur.members.any { it is MemberRef.Node && it.id == nodeId }) return@mutateGraph
+            graph.groups[i] = cur.copy(members = cur.members + MemberRef.Node(nodeId))
+            syncGroupsFlow()
+        }
+    }
+
+    fun removeMemberFromGroup(groupId: GroupId, nodeId: NodeId) {
+        mutateGraph {
+            val i = graph.groups.indexOfFirst { it.id == groupId }
+            if (i < 0) return@mutateGraph
+            val cur = graph.groups[i]
+            graph.groups[i] = cur.copy(
+                members = cur.members.filter { it !is MemberRef.Node || it.id != nodeId }
+            )
+            syncGroupsFlow()
+        }
+    }
+
+    /** Move every node in [groupId]'s closure by `(dx, dy)`. Used by frame header drag. */
+    fun moveGroup(groupId: GroupId, dxWorld: Float, dyWorld: Float) {
+        val g = graph.groups.firstOrNull { it.id == groupId } ?: return
+        val allById = graph.groups.associateBy { it.id }
+        val closure = GroupProxyPins.memberClosure(g, allById)
+        if (closure.isEmpty() && g.templateFile == null) return
+        mutateGraph(mergeable = true) {
+            for (id in closure) {
+                _updateNodeInternal(id) { n ->
+                    n.copy(pos = CanvasPos(n.pos.x + dxWorld, n.pos.y + dyWorld))
+                }
+            }
+            // Also shift the group anchor + nested group anchors so sub-tiles follow.
+            val anchorMap = graph.groups.associate { it.id to it.pos }.toMutableMap()
+            val touched = HashSet<GroupId>()
+            val stack = ArrayDeque<Group>(); stack.addLast(g)
+            while (stack.isNotEmpty()) {
+                val cur = stack.removeLast()
+                if (!touched.add(cur.id)) continue
+                anchorMap[cur.id] = CanvasPos(
+                    cur.pos.x + dxWorld, cur.pos.y + dyWorld
+                )
+                for (m in cur.members) if (m is MemberRef.Sub) allById[m.id]?.let(stack::addLast)
+            }
+            val rebuilt = graph.groups.map { gg -> gg.copy(pos = anchorMap[gg.id] ?: gg.pos) }
+            graph.groups.clear()
+            graph.groups.addAll(rebuilt)
+            syncGroupsFlow()
+        }
     }
 
     companion object {
