@@ -142,6 +142,12 @@ dependencies {
     // (we never call CI's API directly). Version id EScBvcOc = 1.2.1 forge
     // variant on Modrinth (the plain "1.2.1" maven coord resolves to fabric).
     modRuntimeOnly("maven.modrinth:interactive:EScBvcOc")
+    // Create: Tweaked Controllers — adds gamepad/controller input devices as
+    // Create signal sources. compileOnly for API access (controller item classes,
+    // state accessors), runtimeOnly for in-dev testing without forcing the dep
+    // on players. Version 1.20.1-1.2.6 (Modrinth artifact id: ELlJoT2Q).
+    modCompileOnly("maven.modrinth:create-tweaked-controllers:1.20.1-1.2.6")
+    modRuntimeOnly("maven.modrinth:create-tweaked-controllers:1.20.1-1.2.6")
     // VS API classes (org.valkyrienskies.core.api.*) live in these split modules.
     // The forge jar marks them runtime-only; pulled in as compileOnly so direct
     // VS API imports resolve at compile time. Version must match the forge jar's
