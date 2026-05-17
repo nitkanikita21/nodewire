@@ -139,6 +139,7 @@ object StockNodeTypes {
                 putFloat("float", 0f)
                 putString("string", "")
                 putFloat("x", 0f); putFloat("y", 0f); putFloat("z", 0f)
+                putFloat("x2", 0f); putFloat("y2", 0f)
             }
         },
         configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.Constant,

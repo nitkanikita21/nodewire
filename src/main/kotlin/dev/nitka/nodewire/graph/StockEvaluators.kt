@@ -47,6 +47,9 @@ object StockEvaluators {
             PinType.INT -> PinValue.Int(config.getInt("int"))
             PinType.FLOAT -> PinValue.Float(config.getFloat("float"))
             PinType.STRING -> PinValue.Str(config.getString("string"))
+            PinType.VEC2 -> PinValue.Vec2(
+                config.getFloat("x2"), config.getFloat("y2"),
+            )
             PinType.VEC3 -> PinValue.Vec3(
                 config.getFloat("x"), config.getFloat("y"), config.getFloat("z"),
             )
