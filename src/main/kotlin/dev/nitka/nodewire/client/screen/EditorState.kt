@@ -748,6 +748,30 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         selectMany(translated.map { it.id })
     }
 
+    /** Hooked up from `NodeEditorScreen.Content` so frame methods can adjust pan/zoom. */
+    var canvasState: dev.nitka.nodewire.ui.canvas.CanvasState? = null
+
+    fun frameSelectedOrAll() {
+        val ids = if (selectedNodes.isNotEmpty()) selectedNodes else graph.nodes.keys
+        frameNodes(ids)
+    }
+
+    fun frameAll() = frameNodes(graph.nodes.keys)
+
+    private fun frameNodes(ids: Set<NodeId>) {
+        if (ids.isEmpty()) return
+        val canvas = canvasState ?: return
+        var minX = Float.MAX_VALUE; var minY = Float.MAX_VALUE
+        var maxX = -Float.MAX_VALUE; var maxY = -Float.MAX_VALUE
+        for (id in ids) {
+            val n = graph.nodes[id] ?: continue
+            val b = nodeBounds[id] ?: NodeBounds(120, 60)
+            minX = minOf(minX, n.pos.x); minY = minOf(minY, n.pos.y)
+            maxX = maxOf(maxX, n.pos.x + b.width); maxY = maxOf(maxY, n.pos.y + b.height)
+        }
+        canvas.frameRect(minX, minY, maxX, maxY)
+    }
+
     /**
      * Build a fresh [NodeGraph] from the current per-node + edge flows.
      * Called on screen close to ship the latest state to the server via

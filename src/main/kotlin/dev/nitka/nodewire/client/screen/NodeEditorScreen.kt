@@ -105,6 +105,7 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
                     e.setBlockName(be?.getBlockName() ?: "")
                 }
             }
+            editor.canvasState = canvas
             val nodeIds by editor.nodes.collectAsState()
             // Live evaluator: runs once per game tick (50ms) so stateful
             // nodes (Timer) advance smoothly in the editor preview. Graph
