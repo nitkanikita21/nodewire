@@ -53,6 +53,20 @@ object ControllerBindHandler {
                 Component.literal("Controller linked to ${event.pos.toShortString()}")
                     .withStyle(ChatFormatting.GREEN),
             )
+            // The hard-to-discover step: TC's controller stays IDLE
+            // (no packets sent) until the player activates it. Activation
+            // is "right-click in air with the controller in hand" — same
+            // gesture as binding, just NOT pointed at a block. Without
+            // this, no buttons/triggers ever reach the Mixin and the node
+            // outputs stay at zero. Loud message so the user sees it.
+            player.sendSystemMessage(
+                Component.literal("Now right-click in AIR with the controller to activate it (mode → ACTIVE).")
+                    .withStyle(ChatFormatting.GOLD),
+            )
+            player.sendSystemMessage(
+                Component.literal("Then press buttons/triggers to drive Controller Input nodes.")
+                    .withStyle(ChatFormatting.GRAY),
+            )
             LOG.info(
                 "bind: linked controller to {} for player {} (nw:hubPos written to item NBT)",
                 event.pos,
