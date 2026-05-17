@@ -660,4 +660,7 @@ object NodeConfigContent {
 
     /** VecSplit: dim selector. Phase 6 fills body. */
     val VecSplit: @Composable (Node) -> Unit = { _ -> }
+
+    /** VecOp: op + dim selectors. Phase 6 fills body. */
+    val VecOp: @Composable (Node) -> Unit = { _ -> }
 }

@@ -42,7 +42,8 @@ class StockNodeTypesTest {
         // Redstone-link: REDSTONE_LINK_INPUT, REDSTONE_LINK_OUTPUT added (+2 → 20).
         // Vector toolkit: VEC_MAKE added (+1 → 21).
         // Vector toolkit: VEC_SPLIT added (+1 → 22).
-        assertEquals(22, NodeTypeRegistry.all().size)
+        // Vector toolkit: VEC_OP added (+1 → 23).
+        assertEquals(23, NodeTypeRegistry.all().size)
     }
 
     @Test

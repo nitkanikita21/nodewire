@@ -45,5 +45,25 @@ object VectorNodeTypes {
         evaluate = VectorEvaluators.VecSplit,
     )
 
-    fun all(): List<NodeType> = listOf(VEC_MAKE, VEC_SPLIT)
+    val VEC_OP = NodeType(
+        id = ResourceLocation(Nodewire.ID, "vec_op"),
+        displayName = "Vec Op",
+        category = NodeCategory.VECTOR,
+        // Default op = ADD on VEC2 → two Vec2 inputs, one Vec2 output.
+        inputs = listOf(
+            Pin("a", "A", PinType.VEC2),
+            Pin("b", "B", PinType.VEC2),
+        ),
+        outputs = listOf(Pin("out", "Out", PinType.VEC2)),
+        defaultConfig = {
+            CompoundTag().apply {
+                putString("op", "ADD")
+                putString("dim", "VEC2")
+            }
+        },
+        configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.VecOp,
+        evaluate = VectorEvaluators.VecOp,
+    )
+
+    fun all(): List<NodeType> = listOf(VEC_MAKE, VEC_SPLIT, VEC_OP)
 }
