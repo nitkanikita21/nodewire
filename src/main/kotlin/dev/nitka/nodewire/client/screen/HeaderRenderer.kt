@@ -15,6 +15,7 @@ fun headerColorFor(category: NodeCategory): Color = when (category) {
     NodeCategory.IO         -> Color(0xFF_2E_5A_A8.toInt())  // steel blue
     NodeCategory.LOGIC      -> Color(0xFF_A0_38_38.toInt())  // crimson
     NodeCategory.MATH       -> Color(0xFF_7E_6A_2A.toInt())  // ochre
+    NodeCategory.VECTOR     -> Color(0xFF_8C_5A_E8.toInt())  // accent purple
     NodeCategory.CONVERSION -> Color(0xFF_A8_5A_2E.toInt())  // burnt orange
     NodeCategory.FLOW       -> Color(0xFF_6A_38_A0.toInt())  // violet
     NodeCategory.CONSTANTS  -> Color(0xFF_38_82_4A.toInt())  // forest green
