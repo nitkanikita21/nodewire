@@ -303,4 +303,75 @@ class VectorEvaluatorsTest {
         assertEquals(1f, v.x, 0.0001f)
         assertEquals(1f, v.y, 0.0001f)
     }
+
+    @Test fun vecOpDotVec2() {
+        val out = VectorEvaluators.VecOp(
+            opCfg("DOT", "VEC2"),
+            mapOf("a" to PinValue.Vec2(1f, 2f), "b" to PinValue.Vec2(3f, 4f)),
+        )
+        // 1*3 + 2*4 = 11
+        assertEquals(PinValue.Float(11f), out["out"])
+    }
+
+    @Test fun vecOpDotVec3Orthogonal() {
+        val out = VectorEvaluators.VecOp(
+            opCfg("DOT", "VEC3"),
+            mapOf(
+                "a" to PinValue.Vec3(1f, 0f, 0f),
+                "b" to PinValue.Vec3(0f, 1f, 0f),
+            ),
+        )
+        assertEquals(PinValue.Float(0f), out["out"])
+    }
+
+    @Test fun vecOpLengthVec2() {
+        val out = VectorEvaluators.VecOp(
+            opCfg("LENGTH", "VEC2"),
+            mapOf("v" to PinValue.Vec2(3f, 4f)),
+        )
+        assertEquals(PinValue.Float(5f), out["out"])
+    }
+
+    @Test fun vecOpLengthZeroIsZero() {
+        val out = VectorEvaluators.VecOp(
+            opCfg("LENGTH", "VEC3"),
+            mapOf("v" to PinValue.Vec3(0f, 0f, 0f)),
+        )
+        assertEquals(PinValue.Float(0f), out["out"])
+    }
+
+    @Test fun vecOpLengthSqVec3() {
+        val out = VectorEvaluators.VecOp(
+            opCfg("LENGTH_SQ", "VEC3"),
+            mapOf("v" to PinValue.Vec3(2f, 3f, 6f)),
+        )
+        // 4 + 9 + 36 = 49
+        assertEquals(PinValue.Float(49f), out["out"])
+    }
+
+    @Test fun vecOpDistanceVec2() {
+        val out = VectorEvaluators.VecOp(
+            opCfg("DISTANCE", "VEC2"),
+            mapOf("a" to PinValue.Vec2(1f, 1f), "b" to PinValue.Vec2(4f, 5f)),
+        )
+        // sqrt(9 + 16) = 5
+        assertEquals(PinValue.Float(5f), out["out"])
+    }
+
+    @Test fun vecOpAngleVec2Orthogonal() {
+        val out = VectorEvaluators.VecOp(
+            opCfg("ANGLE", "VEC2"),
+            mapOf("a" to PinValue.Vec2(1f, 0f), "b" to PinValue.Vec2(0f, 1f)),
+        )
+        val f = (out["out"] as PinValue.Float).value
+        assertEquals((kotlin.math.PI / 2).toFloat(), f, 0.0001f)
+    }
+
+    @Test fun vecOpAngleWithZeroVectorIsZero() {
+        val out = VectorEvaluators.VecOp(
+            opCfg("ANGLE", "VEC2"),
+            mapOf("a" to PinValue.Vec2(0f, 0f), "b" to PinValue.Vec2(1f, 0f)),
+        )
+        assertEquals(PinValue.Float(0f), out["out"])
+    }
 }

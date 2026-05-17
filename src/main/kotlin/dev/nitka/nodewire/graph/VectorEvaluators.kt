@@ -241,6 +241,69 @@ object VectorEvaluators {
                     vIn.z - d * n.z,
                 )
             }
+            VecOpType.DOT -> {
+                val f = if (v2) {
+                    val a = vec2In(inputs, "a"); val b = vec2In(inputs, "b")
+                    a.x * b.x + a.y * b.y
+                } else {
+                    val a = vec3In(inputs, "a"); val b = vec3In(inputs, "b")
+                    a.x * b.x + a.y * b.y + a.z * b.z
+                }
+                PinValue.Float(f)
+            }
+            VecOpType.LENGTH -> {
+                val sq = if (v2) {
+                    val a = vec2In(inputs, "v")
+                    a.x * a.x + a.y * a.y
+                } else {
+                    val a = vec3In(inputs, "v")
+                    a.x * a.x + a.y * a.y + a.z * a.z
+                }
+                PinValue.Float(kotlin.math.sqrt(sq))
+            }
+            VecOpType.LENGTH_SQ -> {
+                val sq = if (v2) {
+                    val a = vec2In(inputs, "v")
+                    a.x * a.x + a.y * a.y
+                } else {
+                    val a = vec3In(inputs, "v")
+                    a.x * a.x + a.y * a.y + a.z * a.z
+                }
+                PinValue.Float(sq)
+            }
+            VecOpType.DISTANCE -> {
+                val sq = if (v2) {
+                    val a = vec2In(inputs, "a"); val b = vec2In(inputs, "b")
+                    val dx = a.x - b.x; val dy = a.y - b.y
+                    dx * dx + dy * dy
+                } else {
+                    val a = vec3In(inputs, "a"); val b = vec3In(inputs, "b")
+                    val dx = a.x - b.x; val dy = a.y - b.y; val dz = a.z - b.z
+                    dx * dx + dy * dy + dz * dz
+                }
+                PinValue.Float(kotlin.math.sqrt(sq))
+            }
+            VecOpType.ANGLE -> {
+                val theta = if (v2) {
+                    val a = vec2In(inputs, "a"); val b = vec2In(inputs, "b")
+                    val la = kotlin.math.sqrt(a.x * a.x + a.y * a.y)
+                    val lb = kotlin.math.sqrt(b.x * b.x + b.y * b.y)
+                    if (la == 0f || lb == 0f) 0f
+                    else kotlin.math.acos(
+                        ((a.x * b.x + a.y * b.y) / (la * lb)).coerceIn(-1f, 1f),
+                    )
+                } else {
+                    val a = vec3In(inputs, "a"); val b = vec3In(inputs, "b")
+                    val la = kotlin.math.sqrt(a.x * a.x + a.y * a.y + a.z * a.z)
+                    val lb = kotlin.math.sqrt(b.x * b.x + b.y * b.y + b.z * b.z)
+                    if (la == 0f || lb == 0f) 0f
+                    else kotlin.math.acos(
+                        ((a.x * b.x + a.y * b.y + a.z * b.z) / (la * lb))
+                            .coerceIn(-1f, 1f),
+                    )
+                }
+                PinValue.Float(theta)
+            }
             null -> if (v2) PinValue.Vec2(0f, 0f) else PinValue.Vec3(0f, 0f, 0f)
             else -> if (v2) PinValue.Vec2(0f, 0f) else PinValue.Vec3(0f, 0f, 0f)
         }
