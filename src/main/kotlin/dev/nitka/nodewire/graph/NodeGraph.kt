@@ -32,6 +32,19 @@ class NodeGraph {
         edges.add(edge)
     }
 
+    /**
+     * Full deep copy via codec round-trip. Cost is a few hundred μs per
+     * snapshot at typical sizes; the codec already handles every node
+     * config / edge shape correctly, so this is robust against future
+     * Node/Edge schema additions.
+     */
+    fun deepCopy(): NodeGraph {
+        val tag = CODEC.encodeStart(net.minecraft.nbt.NbtOps.INSTANCE, this)
+            .result().orElseThrow()
+        return CODEC.parse(net.minecraft.nbt.NbtOps.INSTANCE, tag)
+            .result().orElseThrow()
+    }
+
     companion object {
         val CODEC: Codec<NodeGraph> = RecordCodecBuilder.create { i ->
             i.group(
