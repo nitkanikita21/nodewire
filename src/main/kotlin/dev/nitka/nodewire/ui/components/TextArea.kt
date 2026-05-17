@@ -271,12 +271,19 @@ private class TextAreaRenderer(
             return
         }
 
-        // Render each line. Lines are split on '\n' — empty lines render as
-        // nothing but still advance y, so blank paragraphs work.
+        // Render each line, clipped to the node's box. Lines whose top
+        // edge already lies beyond the bottom of the node are skipped so
+        // text doesn't overflow the comment card.
         val lines = text.split('\n')
         var y = 0
         for (line in lines) {
-            if (line.isNotEmpty()) drawScaledText(line, 0, y, textColor)
+            if (y + lineHeightPx > h) break
+            if (line.isNotEmpty()) {
+                // Truncate per-line text to the visible width so it doesn't
+                // bleed past the right edge either.
+                val visible = truncateToWidth(line, w)
+                drawScaledText(visible, 0, y, textColor)
+            }
             y += lineHeightPx
         }
 
@@ -287,16 +294,28 @@ private class TextAreaRenderer(
             for (i in 0 until caret) {
                 if (text[i] == '\n') { lineIdx++; lineStart = i + 1 }
             }
-            val caretCol = caret - lineStart
-            val lineText = run {
-                var end = lineStart
-                while (end < text.length && text[end] != '\n') end++
-                text.substring(lineStart, end)
-            }
-            val cx = fontWidth(lineText.substring(0, caretCol.coerceAtMost(lineText.length)))
             val cy = lineIdx * lineHeightPx
-            fillRect(cx, cy, 1, lineHeightPx, caretColor)
+            if (cy + lineHeightPx <= h) {
+                val caretCol = caret - lineStart
+                val lineText = run {
+                    var end = lineStart
+                    while (end < text.length && text[end] != '\n') end++
+                    text.substring(lineStart, end)
+                }
+                val cx = fontWidth(lineText.substring(0, caretCol.coerceAtMost(lineText.length)))
+                if (cx < w) fillRect(cx, cy, 1, lineHeightPx, caretColor)
+            }
         }
+    }
+
+    private fun truncateToWidth(line: String, maxWidth: Int): String {
+        if (fontWidth(line) <= maxWidth) return line
+        var lo = 0; var hi = line.length
+        while (lo < hi) {
+            val mid = (lo + hi + 1) / 2
+            if (fontWidth(line.substring(0, mid)) <= maxWidth) lo = mid else hi = mid - 1
+        }
+        return line.substring(0, lo)
     }
 
     private fun NwCanvas.drawScaledText(text: String, x: Int, y: Int, color: Color) {

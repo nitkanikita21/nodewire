@@ -7,21 +7,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import dev.nitka.nodewire.graph.Comment
 import dev.nitka.nodewire.ui.canvas.LocalCanvasState
-import dev.nitka.nodewire.ui.components.Surface
-import dev.nitka.nodewire.ui.components.SurfaceStyle
 import dev.nitka.nodewire.ui.components.Text
 import dev.nitka.nodewire.ui.components.TextArea
 import dev.nitka.nodewire.ui.core.Modifier
 import dev.nitka.nodewire.ui.input.PointerEvent
 import dev.nitka.nodewire.ui.layout.Box
 import dev.nitka.nodewire.ui.layout.Column
-import dev.nitka.nodewire.ui.layout.PaddingValues
 import dev.nitka.nodewire.ui.modifier.input.pointerInput
 import dev.nitka.nodewire.ui.modifier.layout.absolutePosition
-import dev.nitka.nodewire.ui.modifier.layout.fillMaxSize
-import dev.nitka.nodewire.ui.modifier.layout.fillMaxWidth
+import dev.nitka.nodewire.ui.modifier.layout.height
 import dev.nitka.nodewire.ui.modifier.layout.padding
 import dev.nitka.nodewire.ui.modifier.layout.size
+import dev.nitka.nodewire.ui.modifier.layout.width
 import dev.nitka.nodewire.ui.modifier.style.background
 import dev.nitka.nodewire.ui.modifier.style.border
 import dev.nitka.nodewire.ui.render.BorderStroke
@@ -48,76 +45,74 @@ fun CommentCard(comment: Comment) {
             .background(NwTheme.colors.surfaceHover, NwTheme.shapes.medium)
             .border(BorderStroke(1, NwTheme.colors.border), NwTheme.shapes.medium),
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            // Header strip — drag handle + right-click menu.
-            Surface(
-                modifier = Modifier
-                    .size(comment.width, HEADER_HEIGHT)
-                    .pointerInput { ev, x, y ->
-                        when (ev) {
-                            is PointerEvent.Drag -> {
-                                val zoom = canvas?.zoom ?: 1f
-                                editor.moveComment(comment.id, ev.deltaX / zoom, ev.deltaY / zoom)
-                                true
-                            }
-                            is PointerEvent.Press -> {
-                                if (ev.button == RIGHT_BUTTON && canvas != null) {
-                                    val worldX = comment.pos.x + x
-                                    val worldY = comment.pos.y + y
-                                    val sx = ((worldX + canvas.panX) * canvas.zoom).toInt()
-                                    val sy = ((worldY + canvas.panY) * canvas.zoom).toInt()
-                                    editor.openCommentMenu(sx, sy, comment.id)
-                                }
-                                true
-                            }
-                            else -> false
-                        }
-                    },
-                style = SurfaceStyle(
-                    color = NwTheme.colors.surfacePressed,
-                    shape = NwTheme.shapes.small,
-                    border = null,
-                    padding = PaddingValues(
-                        horizontal = NwTheme.dimens.space4,
-                        vertical = NwTheme.dimens.space2,
-                    ),
-                ),
-            ) {
-                Text("Comment", style = NwTheme.typography.caption)
-            }
-
-            // Body — view or edit mode.
-            // Single left-click on the body enters edit mode (PointerEvent.Press
-            // carries no clickCount, so we cannot distinguish single vs double).
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(NwTheme.dimens.space4)
-                    .pointerInput { ev, _, _ ->
-                        if (ev is PointerEvent.Press && ev.button == LEFT_BUTTON) {
-                            editing = true
+        // Header strip — drag handle + right-click menu.
+        // Plain Box (not Surface) so the click area matches the visual size
+        // exactly: no SurfaceStyle padding inflating it.
+        Box(
+            modifier = Modifier
+                .width(comment.width)
+                .height(HEADER_HEIGHT)
+                .background(NwTheme.colors.surfacePressed)
+                .padding(horizontal = NwTheme.dimens.space4)
+                .pointerInput { ev, x, y ->
+                    when (ev) {
+                        is PointerEvent.Drag -> {
+                            val zoom = canvas?.zoom ?: 1f
+                            editor.moveComment(comment.id, ev.deltaX / zoom, ev.deltaY / zoom)
                             true
-                        } else false
-                    },
-            ) {
-                if (editing) {
-                    TextArea(
-                        value = comment.text,
-                        onValueChange = { editor.updateCommentText(comment.id, it) },
-                        modifier = Modifier.fillMaxSize(),
-                        placeholder = "type here…",
-                    )
-                } else {
-                    val lines = if (comment.text.isEmpty()) listOf("(empty)") else comment.text.split('\n')
-                    Column {
-                        for (line in lines) {
-                            Text(
-                                line,
-                                style = if (comment.text.isEmpty())
-                                    NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceMuted)
-                                else NwTheme.typography.caption,
-                            )
                         }
+                        is PointerEvent.Press -> {
+                            if (ev.button == RIGHT_BUTTON && canvas != null) {
+                                val worldX = comment.pos.x + x
+                                val worldY = comment.pos.y + y
+                                val sx = ((worldX + canvas.panX) * canvas.zoom).toInt()
+                                val sy = ((worldY + canvas.panY) * canvas.zoom).toInt()
+                                editor.openCommentMenu(sx, sy, comment.id)
+                            }
+                            true
+                        }
+                        else -> false
+                    }
+                },
+        ) {
+            Text("Comment", style = NwTheme.typography.caption)
+        }
+
+        // Body — view or edit mode. Sized explicitly to the remaining
+        // height so TextArea / Text never overflows the card.
+        val bodyW = comment.width
+        val bodyH = (comment.height - HEADER_HEIGHT).coerceAtLeast(0)
+        Box(
+            modifier = Modifier
+                .absolutePosition(0, HEADER_HEIGHT)
+                .size(bodyW, bodyH)
+                .padding(NwTheme.dimens.space4)
+                .pointerInput { ev, _, _ ->
+                    if (ev is PointerEvent.Press && ev.button == LEFT_BUTTON) {
+                        editing = true
+                        true
+                    } else false
+                },
+        ) {
+            val innerW = (bodyW - NwTheme.dimens.space4 * 2).coerceAtLeast(0)
+            val innerH = (bodyH - NwTheme.dimens.space4 * 2).coerceAtLeast(0)
+            if (editing) {
+                TextArea(
+                    value = comment.text,
+                    onValueChange = { editor.updateCommentText(comment.id, it) },
+                    modifier = Modifier.size(innerW, innerH),
+                    placeholder = "type here…",
+                )
+            } else {
+                val lines = if (comment.text.isEmpty()) listOf("(empty)") else comment.text.split('\n')
+                Column(modifier = Modifier.size(innerW, innerH)) {
+                    for (line in lines) {
+                        Text(
+                            line,
+                            style = if (comment.text.isEmpty())
+                                NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceMuted)
+                            else NwTheme.typography.caption,
+                        )
                     }
                 }
             }
