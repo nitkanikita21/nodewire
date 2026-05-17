@@ -56,8 +56,13 @@ fun WireLayer() {
             PinType.QUAT to c.pinQuat,
         )
     }
+    val labelBg = NwTheme.colors.surface
+    val labelBorder = NwTheme.colors.border
+    val labelText = NwTheme.colors.onSurface
     val edges by editor.edges.collectAsState()
-    val renderer = remember(editor, pinColors) { WireRenderer(editor, pinColors) }
+    val renderer = remember(editor, pinColors, labelBg, labelBorder, labelText) {
+        WireRenderer(editor, pinColors, labelBg, labelBorder, labelText)
+    }
     renderer.edges = edges
     Layout(
         modifier = Modifier.absolutePosition(0, 0).fillMaxSize(),
@@ -68,6 +73,9 @@ fun WireLayer() {
 private class WireRenderer(
     private val editor: EditorState,
     private val pinColors: Map<PinType, Color>,
+    private val labelBg: Color,
+    private val labelBorder: Color,
+    private val labelText: Color,
 ) : Renderer {
 
     var edges: List<dev.nitka.nodewire.graph.Edge> = emptyList()
@@ -81,6 +89,18 @@ private class WireRenderer(
             val pinType = fromNode.outputs.firstOrNull { it.id == edge.from.pin }?.type ?: continue
             val color = pinColors[pinType] ?: continue
             drawBezier(from.first, from.second, to.first, to.second, color)
+            val label = edge.label
+            if (!label.isNullOrEmpty()) {
+                val midX = ((from.first + to.first) * 0.5f).toInt()
+                val midY = ((from.second + to.second) * 0.5f).toInt()
+                val textW = font.width(label)
+                val padX = 3; val padY = 1
+                val boxW = textW + padX * 2
+                val boxH = font.lineHeight + padY * 2
+                fillRect(midX - boxW / 2, midY - boxH / 2, boxW, boxH, labelBg)
+                drawBorder(midX - boxW / 2, midY - boxH / 2, boxW, boxH, 1, labelBorder)
+                drawText(label, midX - textW / 2, midY - font.lineHeight / 2, labelText)
+            }
         }
         // Rubber-band wire: shown while a wire drag is in progress, from
         // either an output or an input pin. Drawn last so it stays on top
