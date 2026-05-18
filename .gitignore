@@ -1,23 +1,30 @@
+# Gradle / build outputs
 .gradle/
 build/
 out/
-run/
+.kotlin/
+
+# IDE
 .idea/
 *.iml
-# IDE
 *.ipr
 *.iws
 .vscode/
-.kotlin/
+*.swp
 
-# Forge / FG
-forge*changelog.txt
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Forge runtime
+run/
 logs/
 crash-reports/
+forge*changelog.txt
 
-# Local symlinks
-run/mods
-
-# Local dev mods (copied from PrismLauncher instance, ~300MB, not for git)
+# Local dev mods (copied from a launcher instance, large, not for git)
 mods/
+
+# AI-driven design docs (kept privately, see CLAUDE.md)
+docs/superpowers/
 .superpowers/
