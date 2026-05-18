@@ -329,7 +329,7 @@ object StockNodeTypes {
         evaluate: NodeEvaluator? = null,
         tickEvaluator: TickEvaluator? = null,
     ) = NodeType(
-        id = ResourceLocation(Nodewire.ID, id),
+        id = ResourceLocation.fromNamespaceAndPath(Nodewire.ID, id),
         displayName = displayName,
         category = category,
         inputs = inputs,

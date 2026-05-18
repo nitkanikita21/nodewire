@@ -12,7 +12,7 @@ class GroupTemplateResolverTest {
 
     private fun constantNode(id: UUID): Node = Node(
         id = id,
-        typeKey = ResourceLocation("nodewire", "constant"),
+        typeKey = ResourceLocation.fromNamespaceAndPath("nodewire", "constant"),
         pos = CanvasPos.Zero,
         inputs = emptyList(),
         outputs = listOf(Pin("out", "Out", PinType.BOOL)),

@@ -23,7 +23,7 @@ import net.minecraft.world.item.ItemStack
  */
 @JeiPlugin
 class NodewireJeiPlugin : IModPlugin {
-    override fun getPluginUid(): ResourceLocation = ResourceLocation(Nodewire.ID, "jei")
+    override fun getPluginUid(): ResourceLocation = ResourceLocation.fromNamespaceAndPath(Nodewire.ID, "jei")
 
     override fun registerGuiHandlers(reg: IGuiHandlerRegistration) {
         reg.addGhostIngredientHandler(NodeEditorScreen::class.java, NodeEditorGhostHandler())

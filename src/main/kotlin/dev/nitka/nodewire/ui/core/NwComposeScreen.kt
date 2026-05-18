@@ -54,7 +54,7 @@ abstract class NwComposeScreen(title: Component) : Screen(title) {
         super.init()
         val mc = Minecraft.getInstance()
         if (mc.level != null && !blurActive) {
-            mc.gameRenderer.loadEffect(ResourceLocation("shaders/post/blur.json"))
+            mc.gameRenderer.loadEffect(ResourceLocation.parse("shaders/post/blur.json"))
             blurActive = true
         }
         // Provide the screen-size CompositionLocal at the very top of the

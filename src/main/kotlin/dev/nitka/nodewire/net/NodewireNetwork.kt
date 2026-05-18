@@ -17,7 +17,7 @@ object NodewireNetwork {
     private const val PROTOCOL = "1"
 
     val CHANNEL: SimpleChannel = NetworkRegistry.ChannelBuilder
-        .named(ResourceLocation(Nodewire.ID, "main"))
+        .named(ResourceLocation.fromNamespaceAndPath(Nodewire.ID, "main"))
         .networkProtocolVersion { PROTOCOL }
         .clientAcceptedVersions { it == PROTOCOL }
         .serverAcceptedVersions { it == PROTOCOL }

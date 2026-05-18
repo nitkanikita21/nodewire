@@ -28,7 +28,7 @@ import org.valkyrienskies.mod.common.getLoadedShipManagingPos
 data class VsShipPayload(val shipId: Long, override val blockPos: BlockPos) : EndpointPayload
 
 object VsShipBackend : EndpointBackend {
-    override val id: ResourceLocation = ResourceLocation("nodewire", "vs_ship")
+    override val id: ResourceLocation = ResourceLocation.fromNamespaceAndPath("nodewire", "vs_ship")
 
     override val payloadCodec: Codec<out EndpointPayload> = RecordCodecBuilder.create<VsShipPayload> { i ->
         i.group(

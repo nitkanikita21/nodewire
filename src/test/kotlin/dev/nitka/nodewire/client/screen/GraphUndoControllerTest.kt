@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test
 
 class GraphUndoControllerTest {
 
-    private val typeKey = ResourceLocation("nodewire", "constant")
+    private val typeKey = ResourceLocation.fromNamespaceAndPath("nodewire", "constant")
 
     private fun graphWith(count: Int): NodeGraph =
         NodeGraph().apply {

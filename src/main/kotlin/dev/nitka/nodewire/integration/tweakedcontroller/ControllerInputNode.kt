@@ -60,7 +60,7 @@ object ControllerInputNode {
     }
 
     val CONTROLLER_INPUT: NodeType = NodeType(
-        id = ResourceLocation(Nodewire.ID, "controller_input"),
+        id = ResourceLocation.fromNamespaceAndPath(Nodewire.ID, "controller_input"),
         displayName = "Controller Input",
         category = NodeCategory.IO,
         inputs = emptyList(),

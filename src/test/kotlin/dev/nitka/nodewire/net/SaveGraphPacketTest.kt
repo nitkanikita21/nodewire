@@ -17,7 +17,7 @@ class SaveGraphPacketTest {
 
     private fun andNode(id: UUID): Node = Node(
         id = id,
-        typeKey = ResourceLocation("nodewire", "and"),
+        typeKey = ResourceLocation.fromNamespaceAndPath("nodewire", "and"),
         pos = CanvasPos.Zero,
         inputs = listOf(Pin("a", "A", PinType.BOOL), Pin("b", "B", PinType.BOOL)),
         outputs = listOf(Pin("out", "Out", PinType.BOOL)),
@@ -25,7 +25,7 @@ class SaveGraphPacketTest {
 
     private fun intNode(id: UUID, pinId: String): Node = Node(
         id = id,
-        typeKey = ResourceLocation("nodewire", "int_const"),
+        typeKey = ResourceLocation.fromNamespaceAndPath("nodewire", "int_const"),
         pos = CanvasPos.Zero,
         inputs = emptyList(),
         outputs = listOf(Pin(pinId, pinId, PinType.INT)),

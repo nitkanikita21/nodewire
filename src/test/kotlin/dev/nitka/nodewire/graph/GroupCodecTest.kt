@@ -50,7 +50,7 @@ class GroupCodecTest {
         val nid = UUID.randomUUID()
         val node = Node(
             id = nid,
-            typeKey = net.minecraft.resources.ResourceLocation("nodewire", "constant"),
+            typeKey = net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("nodewire", "constant"),
             pos = CanvasPos.Zero,
             inputs = emptyList(),
             outputs = listOf(Pin("out", "Out", PinType.BOOL)),

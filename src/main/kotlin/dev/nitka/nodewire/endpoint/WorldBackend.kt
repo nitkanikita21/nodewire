@@ -15,7 +15,7 @@ data class WorldPayload(override val blockPos: BlockPos) : EndpointPayload
  * get first chance.
  */
 object WorldBackend : EndpointBackend {
-    override val id: ResourceLocation = ResourceLocation("nodewire", "world")
+    override val id: ResourceLocation = ResourceLocation.fromNamespaceAndPath("nodewire", "world")
     override val payloadCodec: Codec<out EndpointPayload> =
         BlockPos.CODEC.xmap(::WorldPayload) { it.blockPos }
 

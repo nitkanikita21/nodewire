@@ -10,7 +10,7 @@ class GroupNestingTest {
 
     private fun n(id: UUID) = Node(
         id = id,
-        typeKey = ResourceLocation("nodewire", "constant"),
+        typeKey = ResourceLocation.fromNamespaceAndPath("nodewire", "constant"),
         pos = CanvasPos.Zero,
         inputs = emptyList(),
         outputs = listOf(Pin("out", "Out", PinType.BOOL)),
