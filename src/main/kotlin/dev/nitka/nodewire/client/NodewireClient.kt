@@ -8,14 +8,14 @@ import dev.nitka.nodewire.client.wire.WireWorldRenderer
 import dev.nitka.nodewire.ui.dev.DemoScreen
 import net.minecraft.client.KeyMapping
 import net.minecraft.client.Minecraft
-import net.minecraftforge.client.event.RegisterClientCommandsEvent
-import net.minecraftforge.client.event.RegisterKeyMappingsEvent
-import net.minecraftforge.client.event.RenderLevelStageEvent
-import net.minecraftforge.client.settings.KeyConflictContext
-import net.minecraftforge.event.TickEvent
-import net.minecraftforge.eventbus.api.IEventBus
+import net.neoforged.bus.api.IEventBus
+import net.neoforged.neoforge.client.event.ClientTickEvent
+import net.neoforged.neoforge.client.event.RegisterClientCommandsEvent
+import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent
+import net.neoforged.neoforge.client.event.RenderLevelStageEvent
+import net.neoforged.neoforge.client.settings.KeyConflictContext
 import org.lwjgl.glfw.GLFW
-import thedarkcolour.kotlinforforge.forge.FORGE_BUS
+import thedarkcolour.kotlinforforge.neoforge.forge.FORGE_BUS
 
 /**
  * Client-only setup. Registers the `N` keybind for opening [DemoScreen] in
@@ -47,8 +47,7 @@ object NodewireClient {
         LOG.info("Nodewire client handlers registered (MOD bus + FORGE bus)")
     }
 
-    private fun onClientTick(event: TickEvent.ClientTickEvent) {
-        if (event.phase != TickEvent.Phase.END) return
+    private fun onClientTick(event: ClientTickEvent.Post) {
         if (Minecraft.getInstance().screen != null) return
         if (OPEN_DEMO_KEY.consumeClick()) {
             LOG.info("Opening DemoScreen")

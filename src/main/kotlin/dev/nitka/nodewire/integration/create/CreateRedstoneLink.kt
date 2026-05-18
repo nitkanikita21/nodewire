@@ -26,9 +26,10 @@ import net.minecraft.world.level.Level
 object CreateRedstoneLink {
 
     /** Decode a `Couple<Frequency>` from a node's config tag (`freq1`, `freq2`). */
-    fun frequencyOf(cfg: CompoundTag): Couple<Frequency> {
-        val s1 = ItemStack.of(cfg.getCompound("freq1"))
-        val s2 = ItemStack.of(cfg.getCompound("freq2"))
+    fun frequencyOf(cfg: CompoundTag, level: Level): Couple<Frequency> {
+        val ra = level.registryAccess()
+        val s1 = ItemStack.parse(ra, cfg.getCompound("freq1")).orElse(ItemStack.EMPTY)
+        val s2 = ItemStack.parse(ra, cfg.getCompound("freq2")).orElse(ItemStack.EMPTY)
         return Couple.create(Frequency.of(s1), Frequency.of(s2))
     }
 

@@ -9,8 +9,11 @@ import net.neoforged.neoforge.network.PacketDistributor
 import net.minecraft.ChatFormatting
 import net.minecraft.client.Minecraft
 import net.minecraft.core.BlockPos
+import net.minecraft.core.component.DataComponents
+import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.NbtUtils
 import net.minecraft.network.chat.Component
+import net.minecraft.world.item.component.CustomData
 import net.minecraft.world.InteractionResult
 import net.minecraft.world.item.Item
 import net.minecraft.world.item.ItemStack
@@ -80,12 +83,15 @@ class ChannelLinkToolItem(props: Properties) : Item(props) {
      * feedback; the server re-validates.
      */
     private fun handleNonLogicTarget(stack: ItemStack, ctx: UseOnContext) {
-        val tag = stack.tag
-        if (tag == null || !tag.contains(NBT_SOURCE_POS) || !tag.contains(NBT_SOURCE_NAME)) {
+        val tag = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag()
+        if (!tag.contains(NBT_SOURCE_POS) || !tag.contains(NBT_SOURCE_NAME)) {
             actionBar("Pick a source first: Shift + right-click a logic block", true)
             return
         }
-        val sourcePos = NbtUtils.readBlockPos(tag.getCompound(NBT_SOURCE_POS))
+        val sourcePos = NbtUtils.readBlockPos(tag, NBT_SOURCE_POS).orElse(null) ?: run {
+            actionBar("Invalid source position stored", true)
+            return
+        }
         val sourceName = tag.getString(NBT_SOURCE_NAME)
         val mc = Minecraft.getInstance()
         val sourceBe = mc.level?.getBlockEntity(sourcePos) as? LogicBlockEntity
@@ -112,7 +118,7 @@ class ChannelLinkToolItem(props: Properties) : Item(props) {
         val targetRef = dev.nitka.nodewire.endpoint.EndpointRef.from(mc.level!!, targetPos)
         PacketDistributor.sendToServer(BindSideChannelPacket(sourcePos, sourceName, targetRef, targetSide))
         actionBar(
-            "Bound ${sourcePos.toShortString()}/$sourceName → ${targetPos.toShortString()} ${targetSide.name.lowercase()}",
+            "Bound (${sourcePos.x},${sourcePos.y},${sourcePos.z})/$sourceName → (${targetPos.x},${targetPos.y},${targetPos.z}) ${targetSide.name.lowercase()}",
             false,
         )
     }
@@ -122,20 +128,25 @@ class ChannelLinkToolItem(props: Properties) : Item(props) {
         val srcPos = be.blockPos
         mc.setScreen(
             dev.nitka.nodewire.client.screen.BindingsManagerScreen(be) { picked ->
-                stack.orCreateTag.put(NBT_SOURCE_POS, NbtUtils.writeBlockPos(srcPos))
-                stack.orCreateTag.putString(NBT_SOURCE_NAME, picked)
-                actionBar("Source: ${srcPos.toShortString()} / $picked", false)
+                val newTag = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag()
+                newTag.put(NBT_SOURCE_POS, NbtUtils.writeBlockPos(srcPos))
+                newTag.putString(NBT_SOURCE_NAME, picked)
+                stack.set(DataComponents.CUSTOM_DATA, CustomData.of(newTag))
+                actionBar("Source: (${srcPos.x},${srcPos.y},${srcPos.z}) / $picked", false)
             },
         )
     }
 
     private fun openTargetPicker(stack: ItemStack, be: LogicBlockEntity) {
-        val tag = stack.tag
-        if (tag == null || !tag.contains(NBT_SOURCE_POS) || !tag.contains(NBT_SOURCE_NAME)) {
+        val tag = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag()
+        if (!tag.contains(NBT_SOURCE_POS) || !tag.contains(NBT_SOURCE_NAME)) {
             actionBar("Pick a source first: Shift + right-click a logic block", true)
             return
         }
-        val sourcePos = NbtUtils.readBlockPos(tag.getCompound(NBT_SOURCE_POS))
+        val sourcePos = NbtUtils.readBlockPos(tag, NBT_SOURCE_POS).orElse(null) ?: run {
+            actionBar("Invalid source position stored", true)
+            return
+        }
         val sourceName = tag.getString(NBT_SOURCE_NAME)
         if (sourcePos == be.blockPos) {
             actionBar("Source and target must differ", true)
@@ -176,7 +187,7 @@ class ChannelLinkToolItem(props: Properties) : Item(props) {
             val targetRef = dev.nitka.nodewire.endpoint.EndpointRef.from(mc.level!!, targetPos)
             PacketDistributor.sendToServer(BindChannelPacket(sourcePos, sourceName, targetRef, picked))
             actionBar(
-                "Bound ${sourcePos.toShortString()}/$sourceName → ${targetPos.toShortString()}/$picked",
+                "Bound (${sourcePos.x},${sourcePos.y},${sourcePos.z})/$sourceName → (${targetPos.x},${targetPos.y},${targetPos.z})/$picked",
                 false,
             )
         })

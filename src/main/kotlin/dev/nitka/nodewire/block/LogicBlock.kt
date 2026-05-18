@@ -2,7 +2,6 @@ package dev.nitka.nodewire.block
 
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
-import net.minecraft.world.InteractionHand
 import net.minecraft.world.InteractionResult
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.level.BlockGetter
@@ -15,8 +14,8 @@ import net.minecraft.world.level.block.entity.BlockEntityType
 import net.minecraft.world.level.block.state.BlockBehaviour
 import net.minecraft.world.level.block.state.BlockState
 import net.minecraft.world.phys.BlockHitResult
-import net.minecraftforge.api.distmarker.Dist
-import net.minecraftforge.fml.DistExecutor
+import net.neoforged.api.distmarker.Dist
+import net.neoforged.fml.loading.FMLEnvironment
 
 /**
  * Block placed in the world that carries a node graph in its
@@ -74,17 +73,16 @@ class LogicBlock(props: BlockBehaviour.Properties) : Block(props), EntityBlock {
         direction: Direction,
     ): Int = getSignal(state, level, pos, direction)
 
-    override fun use(
+    override fun useWithoutItem(
         state: BlockState,
         level: Level,
         pos: BlockPos,
         player: Player,
-        hand: InteractionHand,
         hit: BlockHitResult,
     ): InteractionResult {
         if (level.isClientSide) {
-            DistExecutor.unsafeRunWhenOn(Dist.CLIENT) {
-                Runnable { dev.nitka.nodewire.client.NodeEditorLauncher.open(pos) }
+            if (FMLEnvironment.dist == Dist.CLIENT) {
+                dev.nitka.nodewire.client.NodeEditorLauncher.open(pos)
             }
         }
         return InteractionResult.sidedSuccess(level.isClientSide)

@@ -5,7 +5,7 @@ import com.mojang.logging.LogUtils
 import dev.nitka.nodewire.client.highlight.BlockHighlightRenderer
 import net.minecraft.commands.Commands
 import net.minecraft.commands.arguments.coordinates.BlockPosArgument
-import net.minecraftforge.client.event.RegisterClientCommandsEvent
+import net.neoforged.neoforge.client.event.RegisterClientCommandsEvent
 
 object HighlightCommand {
     private val LOG = LogUtils.getLogger()

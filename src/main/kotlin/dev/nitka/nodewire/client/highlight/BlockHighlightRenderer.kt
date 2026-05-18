@@ -8,7 +8,7 @@ import net.minecraft.client.Minecraft
 import net.minecraft.client.renderer.RenderStateShard
 import net.minecraft.client.renderer.RenderType
 import net.minecraft.core.BlockPos
-import net.minecraftforge.client.event.RenderLevelStageEvent
+import net.neoforged.neoforge.client.event.RenderLevelStageEvent
 import org.joml.Matrix4f
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.PI
@@ -153,9 +153,8 @@ object BlockHighlightRenderer {
         x: Double, y: Double, z: Double,
         r: Int, g: Int, b: Int, a: Int,
     ) {
-        builder.vertex(matrix, x.toFloat(), y.toFloat(), z.toFloat())
-            .color(r, g, b, a)
-            .endVertex()
+        builder.addVertex(matrix, x.toFloat(), y.toFloat(), z.toFloat())
+            .setColor(r, g, b, a)
     }
 
     private const val DEFAULT_DURATION_MS = 3000L
