@@ -97,6 +97,10 @@ private fun buildNodeItems(
     target: ContextMenuTarget.Node,
     toast: dev.nitka.nodewire.ui.feedback.ToastManager?,
 ): List<ContextMenuItem> = listOf(
+    ContextMenuItem.Action(label = "Rename") {
+        editor.renamingNode = target.nodeId
+    },
+    ContextMenuItem.Separator,
     ContextMenuItem.Action(label = "Duplicate") {
         editor.duplicateNode(target.nodeId)
         toast?.info("Duplicated")
