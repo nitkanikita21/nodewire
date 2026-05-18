@@ -8,7 +8,16 @@
   A Minecraft Forge 1.20.1 mod that replaces redstone with a node-based logic system. Build logic visually in an in-world editor, then export it as a reusable graph — across ship boundaries (Valkyrien Skies) and alongside Create.
 </p>
 
-> **Status:** early in development. Core editor, save/load, groups, comments, and wire labels are working. APIs and save formats are not yet stable.
+<p align="center">
+  <img src="https://img.shields.io/badge/status-early%20development-f59e0b?style=flat-square" alt="Status: early development"/>
+  <img src="https://img.shields.io/badge/minecraft-1.20.1-62a834?style=flat-square&logo=minecraft&logoColor=white" alt="Minecraft 1.20.1"/>
+  <img src="https://img.shields.io/badge/forge-47.4.10-1f2937?style=flat-square" alt="Forge 47.4.10"/>
+  <img src="https://img.shields.io/badge/kotlin-2.0.20-7f52ff?style=flat-square&logo=kotlin&logoColor=white" alt="Kotlin 2.0.20"/>
+  <img src="https://img.shields.io/github/license/nitkanikita21/nodewire?style=flat-square&color=86c61e" alt="License: MIT"/>
+  <img src="https://img.shields.io/github/actions/workflow/status/nitkanikita21/nodewire/build.yml?branch=master&style=flat-square&label=build" alt="Build status"/>
+</p>
+
+> Core editor, save/load, groups, comments, and wire labels are working. APIs and save formats are not yet stable.
 
 ## Features
 
