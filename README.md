@@ -47,6 +47,8 @@ The bundled `libs/yoga-1.0.0-j17.jar` is included so the project builds out of t
 2. Enter a world.
 3. Press **N** to open the dev demo screen, or place the Nodewire block and right-click it to open the editor.
 
+See [`docs/usage.md`](docs/usage.md) for the editing workflow, keybinds, node categories, and mod-integration details.
+
 ## Project layout
 
 ```
