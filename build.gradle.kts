@@ -118,21 +118,21 @@ dependencies {
     // Kotlin for NeoForge — language loader on NeoForge.
     implementation("thedarkcolour:kotlinforforge-neoforge:${kffVer}")
 
-    // --- Sable — sub-level physics library (replaces Valkyrien Skies 2) ---
-    // Provides moving block structures backed by Rapier physics. Used by
-    // Create Aeronautics and by Nodewire's SableSubLevelBackend (Phase 6).
-    // NOTE: confirm exact maven coord on first build — see
-    //   https://maven.ryanhcode.dev/releases  for current group/artifact.
     // NOTE: NeoForge mod jars are pre-Mojang-mapped — use standard
     // implementation / compileOnly / runtimeOnly (no modImplementation,
     // that was a legacyForge-only DSL to trigger SRG → Mojang remap).
-    implementation("dev.ryanhcode.sable:sable-neoforge:1.2.2+mc1.21.1")
+
+    // --- Sable — sub-level physics library (replaces Valkyrien Skies 2) ---
+    // TODO(phase-6): re-enable once exact maven coord is confirmed against
+    // https://maven.ryanhcode.dev/releases . The group:artifact:version
+    // string is provisional and was not resolved on first attempt.
+    // implementation("dev.ryanhcode.sable:sable-neoforge:1.2.2+mc1.21.1")
 
     // --- Create Aeronautics 1.2.1 (via Curse Maven) ---
-    // No independent maven — Curse Maven uses the file id from CurseForge.
-    // 1.2.1 NeoForge for mc1.21.1 = curse file id 8003941.
-    compileOnly("curse.maven:create-aeronautics-676721:8003941")
-    runtimeOnly("curse.maven:create-aeronautics-676721:8003941")
+    // TODO(phase-7): re-enable when verified. Curse file id 8003941 is the
+    // 1.2.1 NeoForge mc1.21.1 build per the CurseForge file page.
+    // compileOnly("curse.maven:create-aeronautics-676721:8003941")
+    // runtimeOnly("curse.maven:create-aeronautics-676721:8003941")
 
     // --- Create 6.0.10 for NeoForge 1.21.1 + transitive deps ---
     // :slim excludes nested JarInJar mods so we control versions explicitly.
