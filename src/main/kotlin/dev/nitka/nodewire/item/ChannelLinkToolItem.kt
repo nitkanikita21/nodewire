@@ -5,7 +5,7 @@ import dev.nitka.nodewire.client.screen.ChannelPickerScreen
 import dev.nitka.nodewire.graph.PinType
 import dev.nitka.nodewire.net.BindChannelPacket
 import dev.nitka.nodewire.net.BindSideChannelPacket
-import dev.nitka.nodewire.net.NodewireNetwork
+import net.neoforged.neoforge.network.PacketDistributor
 import net.minecraft.ChatFormatting
 import net.minecraft.client.Minecraft
 import net.minecraft.core.BlockPos
@@ -110,9 +110,7 @@ class ChannelLinkToolItem(props: Properties) : Item(props) {
         // No adjacency requirement — virtual signals travel via VirtualSignalMap
         // surfaced through a Level mixin, so the source can be anywhere.
         val targetRef = dev.nitka.nodewire.endpoint.EndpointRef.from(mc.level!!, targetPos)
-        NodewireNetwork.CHANNEL.sendToServer(
-            BindSideChannelPacket(sourcePos, sourceName, targetRef, targetSide),
-        )
+        PacketDistributor.sendToServer(BindSideChannelPacket(sourcePos, sourceName, targetRef, targetSide))
         actionBar(
             "Bound ${sourcePos.toShortString()}/$sourceName → ${targetPos.toShortString()} ${targetSide.name.lowercase()}",
             false,
@@ -176,9 +174,7 @@ class ChannelLinkToolItem(props: Properties) : Item(props) {
         val targetPos = be.blockPos
         mc.setScreen(ChannelPickerScreen("Target channel (${sourceType.name.lowercase()})", options) { picked ->
             val targetRef = dev.nitka.nodewire.endpoint.EndpointRef.from(mc.level!!, targetPos)
-            NodewireNetwork.CHANNEL.sendToServer(
-                BindChannelPacket(sourcePos, sourceName, targetRef, picked),
-            )
+            PacketDistributor.sendToServer(BindChannelPacket(sourcePos, sourceName, targetRef, picked))
             actionBar(
                 "Bound ${sourcePos.toShortString()}/$sourceName → ${targetPos.toShortString()}/$picked",
                 false,

@@ -8,7 +8,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import dev.nitka.nodewire.graph.NodeGraph
-import dev.nitka.nodewire.net.NodewireNetwork
 import dev.nitka.nodewire.net.SetBlockNamePacket
 import dev.nitka.nodewire.ui.components.ContextMenu
 import dev.nitka.nodewire.ui.components.ContextMenuItem
@@ -41,7 +40,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import net.minecraft.core.BlockPos
-import net.minecraftforge.network.PacketDistributor
+import net.neoforged.neoforge.network.PacketDistributor
 
 /**
  * Thin top toolbar. Layout:
@@ -333,10 +332,7 @@ private class NameDebouncer(private val scope: kotlinx.coroutines.CoroutineScope
         pending?.cancel()
         pending = scope.launch {
             delay(DEBOUNCE_MS)
-            NodewireNetwork.CHANNEL.send(
-                PacketDistributor.SERVER.noArg(),
-                SetBlockNamePacket(pos, name),
-            )
+            PacketDistributor.sendToServer(SetBlockNamePacket(pos, name))
         }
     }
     companion object {

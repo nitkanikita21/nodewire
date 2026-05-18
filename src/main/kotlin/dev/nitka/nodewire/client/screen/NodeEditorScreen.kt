@@ -19,9 +19,8 @@ import dev.nitka.nodewire.graph.PinRef
 import dev.nitka.nodewire.graph.StatefulGraphEvaluator
 import dev.nitka.nodewire.graph.StockNodeTypes
 import kotlinx.coroutines.delay
-import dev.nitka.nodewire.net.NodewireNetwork
 import dev.nitka.nodewire.net.SaveGraphPacket
-import net.minecraftforge.network.PacketDistributor
+import net.neoforged.neoforge.network.PacketDistributor
 import dev.nitka.nodewire.ui.canvas.NodeCanvas
 import dev.nitka.nodewire.ui.canvas.rememberCanvasState
 import dev.nitka.nodewire.ui.core.Modifier
@@ -105,10 +104,7 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
     override fun removed() {
         val editor = editorRef
         val snapshot = editor?.snapshotGraph() ?: graph
-        NodewireNetwork.CHANNEL.send(
-            PacketDistributor.SERVER.noArg(),
-            SaveGraphPacket(pos, snapshot),
-        )
+        PacketDistributor.sendToServer(SaveGraphPacket(pos, snapshot))
         super.removed()
     }
 
