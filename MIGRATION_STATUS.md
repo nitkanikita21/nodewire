@@ -8,7 +8,7 @@ Branch: `port/neoforge-1.21.1`. **This branch does not compile yet** — porting
 - [x] **Phase 2 — Research.** Confirmed maven coords for Create / Ponder / Flywheel / Registrate / JEI / EMI on 1.21.1. KFF NeoForge 5.5.0 picked. NeoForge 21.1.172 is the chosen stable.
 - [x] **Phase 3 — `ResourceLocation` API.** 47 call sites migrated across 23 files.
 - [x] **Phase 5 — Strip Valkyrien Skies 2.** `integration/vs/` removed. `EndpointBackends` no longer registers VS. VS tests removed.
-- [x] **Phase 7 (TC part) — Strip Tweaked Controllers.** No 1.21.1 release exists for the mod we used; entire `integration/tweakedcontroller/` package removed (7 files + 2 tests + 2 mixin classes). `controller_input` node-type registration replaced with `// TODO(post-port)`. Editor toolbar / EditorState / NodeConfigContent gates the controller UI behind the same TODO. ~1300 LOC removed.
+- [x] **Phase 7-TC — Tweaked Controllers reinstated.** Initial strip was premature: TC 1.2.7 has a 1.21.1 NeoForge build (Curse file id 7958165, project id 898849). Files restored from `fa8738c~1` and ported to NeoForge API: `net.minecraftforge.*` → `net.neoforged.*`, `stack.tag` → `DataComponents.CUSTOM_DATA`. Mixins kept (`@Pseudo` + `remap = false`, package targets unchanged between 1.2.6 and 1.2.7). All call sites in `Nodewire.kt`, `LogicBlockEntity.kt`, `EditorState.kt`, `EditorToolbar.kt`, `NodeConfigContent.kt`, `StockNodeTypes.kt`, `nodewire.mixins.json` restored.
 - [x] **Phase 4 — Network rewrite.** All 7 packets rewritten as `CustomPacketPayload` data classes with static `TYPE` + `STREAM_CODEC`. `NodewireNetwork` is now an `@EventBusSubscriber` on the mod bus that listens for `RegisterPayloadHandlersEvent`. Send sites switched to `PacketDistributor.sendToServer` / `sendToPlayer`. `HighlightPacket` (server→client) drops `DistExecutor`.
 - [x] **Phase 8 — API surface fixes.** All 15 remaining production files migrated to NeoForge:
   - `Registry.kt`: `DeferredRegister.Blocks/Items`, `DeferredBlock`/`DeferredItem`/`DeferredHolder`, `ofFullCopy`.
@@ -20,7 +20,7 @@ Branch: `port/neoforge-1.21.1`. **This branch does not compile yet** — porting
   - `PinValue.kt`: `Codec.STRING.dispatch` → `MapCodec` form using `RecordCodecBuilder.mapCodec`.
   - `ChannelLinkToolItem.kt` + `PinValue.kt` constant-of-ItemStack: NBT → `DataComponents.CUSTOM_DATA` (`CustomData` wrapper).
   - `CreateRedstoneLink.kt` + `RedstoneLinkSlotPicker.kt`: `ItemStack.of` → registry-aware `ItemStack.parse(RegistryAccess, Tag)`. `frequencyOf(Level, ...)` for the new Create 6.0.10 signature.
-- [x] **Phase 9 — Tests green.** `./gradlew test` passes: **320 tests, 0 failures.** (Was 337 on master; -17 = TC tests removed in Phase 5+7.) Only one assertion adjustment needed: `StockNodeTypesTest` expected count 24 → 23 (`controller_input` removed).
+- [x] **Phase 9 — Tests green.** `./gradlew test` passes: **337 tests, 0 failures** (parity with master after TC reinstate). `StockNodeTypesTest` count back to 24.
 - [x] **Create deps fix-up.** `dependencySubstitution` for Create 6.0.10-280's typo'd Architectury POM coord (`13d.0.8` → `13.0.8`). `isTransitive = false` on Create slim variant to skip POM-declared optional deps (CC:Tweaked etc.). Added `maven.architectury.dev` repo.
 
 ## What's pending
@@ -31,7 +31,7 @@ Branch: `port/neoforge-1.21.1`. **This branch does not compile yet** — porting
   3. Register the backend in `EndpointBackends`.
   4. Add round-trip codec test (mirror of `EndpointRefCodecTest` for the new payload type).
 - [ ] **Phase 7 (Aeronautics part) — Create Aeronautics integration.** Re-enable the Curse Maven dep (`curse.maven:create-aeronautics-676721:8003941`, currently commented out). Decide what nodes / hooks the mod exposes that Nodewire should integrate (signal sources on aircraft, etc.).
-- [ ] **Post-port TODO sweep.** ~6 `// TODO(post-port)` markers left across `StockNodeTypes`, `EditorState`, `EditorToolbar`, `NodeConfigContent`, `LogicBlockEntity`. Each is a small concrete decision (drop or reimplement against new APIs). Grep with:
+- [ ] **Post-port TODO sweep.** All `// TODO(post-port)` markers from Phase 5+7 strip were cleared in Phase 7-TC reinstate. Re-check with:
   ```
   grep -rn "TODO(post-port)" src/main/kotlin/
   ```
