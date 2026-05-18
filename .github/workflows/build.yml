@@ -32,6 +32,17 @@ jobs:
       - name: Test
         run: ./gradlew test --no-daemon --stacktrace
 
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            build/reports/tests/test/
+            build/test-results/test/
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Upload jar artifact
         if: success()
         uses: actions/upload-artifact@v4
