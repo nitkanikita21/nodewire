@@ -203,10 +203,26 @@ private fun TitleBar(
                 }
             },
     ) {
-        Text(
-            displayTitleOf(node),
-            style = NwTheme.typography.caption.copy(color = NwTheme.colors.onAccent),
-        )
+        val label = node.label
+        if (label != null) {
+            Column {
+                Text(
+                    label,
+                    style = NwTheme.typography.caption.copy(color = NwTheme.colors.onAccent),
+                )
+                Text(
+                    displayTitleOf(node),
+                    style = NwTheme.typography.caption.copy(
+                        color = NwTheme.colors.onAccent.copy(alpha = 0.6f),
+                    ),
+                )
+            }
+        } else {
+            Text(
+                displayTitleOf(node),
+                style = NwTheme.typography.caption.copy(color = NwTheme.colors.onAccent),
+            )
+        }
     }
 }
 
