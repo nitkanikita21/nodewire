@@ -473,6 +473,6 @@ private fun displayTitleOf(node: Node): String {
     }
 }
 
-private const val CARD_WIDTH = 130
+internal const val CARD_WIDTH = 130
 private const val PIN_HANDLE_SIZE = 8
 private const val PIN_HANDLE_HALF = PIN_HANDLE_SIZE / 2
