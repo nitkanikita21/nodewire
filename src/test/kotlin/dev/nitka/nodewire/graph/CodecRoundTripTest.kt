@@ -287,4 +287,44 @@ class CodecRoundTripTest {
             targetSide = net.minecraft.core.Direction.NORTH,
         ),
     )
+
+    @Test fun nodeWithLabelNbt() {
+        val n = Node(
+            id = Node.newId(),
+            typeKey = net.minecraft.resources.ResourceLocation("nodewire", "logic_gate"),
+            pos = CanvasPos(0f, 0f),
+            inputs = emptyList(),
+            outputs = emptyList(),
+            label = "My Door Counter",
+        )
+        roundTripNbt(Node.CODEC, n)
+    }
+
+    @Test fun nodeWithNullLabelNbt() {
+        val n = Node(
+            id = Node.newId(),
+            typeKey = net.minecraft.resources.ResourceLocation("nodewire", "logic_gate"),
+            pos = CanvasPos(0f, 0f),
+            inputs = emptyList(),
+            outputs = emptyList(),
+        )
+        assertEquals(null, n.label)
+        roundTripNbt(Node.CODEC, n)
+    }
+
+    @Test fun nodeLegacyWithoutLabelFieldDecodesToNull() {
+        val tag = net.minecraft.nbt.CompoundTag().apply {
+            // UUID_CODEC serialises as a plain string, not putUUID's two-long encoding
+            putString("id", java.util.UUID.randomUUID().toString())
+            putString("type", "nodewire:logic_gate")
+            put("pos", net.minecraft.nbt.CompoundTag().apply {
+                putFloat("x", 0f); putFloat("y", 0f)
+            })
+            put("inputs", net.minecraft.nbt.ListTag())
+            put("outputs", net.minecraft.nbt.ListTag())
+            put("config", net.minecraft.nbt.CompoundTag())
+        }
+        val decoded = Node.CODEC.parse(NbtOps.INSTANCE, tag).result().orElseThrow()
+        assertEquals(null, decoded.label)
+    }
 }

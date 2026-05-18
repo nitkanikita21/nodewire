@@ -39,6 +39,7 @@ data class Node(
     val inputs: List<Pin>,
     val outputs: List<Pin>,
     val config: CompoundTag = CompoundTag(),
+    val label: String? = null,
 ) {
     companion object {
         val CODEC: Codec<Node> = RecordCodecBuilder.create { i ->
@@ -49,7 +50,11 @@ data class Node(
                 Pin.CODEC.listOf().fieldOf("inputs").forGetter(Node::inputs),
                 Pin.CODEC.listOf().fieldOf("outputs").forGetter(Node::outputs),
                 CompoundTag.CODEC.fieldOf("config").forGetter(Node::config),
-            ).apply(i, ::Node)
+                Codec.STRING.optionalFieldOf("label")
+                    .forGetter { java.util.Optional.ofNullable(it.label) },
+            ).apply(i) { id, type, pos, inputs, outputs, config, label ->
+                Node(id, type, pos, inputs, outputs, config, label.orElse(null))
+            }
         }
 
         fun newId(): NodeId = UUID.randomUUID()
