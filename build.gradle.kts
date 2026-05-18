@@ -74,11 +74,18 @@ neoForge {
             client()
             systemProperty("forge.logging.markers", "REGISTRIES")
             systemProperty("forge.logging.console.level", "debug")
+            // Disable coroutines DebugProbes — JPMS isolates kotlin.stdlib
+            // (bundled by KFF) from kotlinx.coroutines.core (separate module),
+            // so the stdlib's DebugProbesKt.probeCoroutineCreated bridge
+            // throws IllegalAccessError on the first `launch {}`. Disabling
+            // the agent sidesteps the cross-module reflection entirely.
+            systemProperty("kotlinx.coroutines.debug", "off")
         }
         register("server") {
             server()
             systemProperty("forge.logging.markers", "REGISTRIES")
             systemProperty("forge.logging.console.level", "debug")
+            systemProperty("kotlinx.coroutines.debug", "off")
         }
     }
 
