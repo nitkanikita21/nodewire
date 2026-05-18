@@ -2,11 +2,15 @@
   <img src="docs/logo.svg" alt="Nodewire logo" width="200"/>
 </p>
 
-# Nodewire
+<h1 align="center">Nodewire</h1>
 
-A Minecraft Forge 1.20.1 mod that replaces redstone with a node-based logic system. Build logic visually in an in-world editor, then export it as a reusable graph — across ship boundaries (Valkyrien Skies) and alongside Create.
+<p align="center">
+  A Minecraft Forge 1.20.1 mod that replaces redstone with a node-based logic system. Build logic visually in an in-world editor, then export it as a reusable graph — across ship boundaries (Valkyrien Skies) and alongside Create.
+</p>
 
-> **Status:** early in development. Core editor, save/load, groups, comments, and wire labels are working. APIs and save formats are not yet stable.
+<p align="center">
+  <em><strong>Status:</strong> early in development. Core editor, save/load, groups, comments, and wire labels are working. APIs and save formats are not yet stable.</em>
+</p>
 
 ## Features
 
