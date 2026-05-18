@@ -13,7 +13,9 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar
 @EventBusSubscriber(modid = Nodewire.ID, bus = EventBusSubscriber.Bus.MOD)
 object NodewireNetwork {
 
-    @JvmStatic
+    // No @JvmStatic — KFF's AutoKotlinEventBusSubscriber registers Kotlin
+    // `object`s as instances, so @SubscribeEvent methods must be instance
+    // methods (Kotlin auto-routes them through INSTANCE).
     @SubscribeEvent
     fun register(event: RegisterPayloadHandlersEvent) {
         val registrar: PayloadRegistrar = event.registrar("1")
