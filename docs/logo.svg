@@ -48,7 +48,9 @@
   </defs>
 
   <rect width="400" height="400" fill="url(#bg)"/>
-  <g filter="url(#drop)" mask="url(#cut-hub)">
-    <polygon points="200,80 320,150 320,290 200,360 80,290 80,150" fill="url(#block)"/>
+  <g transform="translate(0,-15)">
+    <g filter="url(#drop)" mask="url(#cut-hub)">
+      <polygon points="200,80 320,150 320,290 200,360 80,290 80,150" fill="url(#block)"/>
+    </g>
   </g>
 </svg>
