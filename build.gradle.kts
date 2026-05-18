@@ -1,10 +1,9 @@
 plugins {
-    // ModDevGradle Legacy — successor to ForgeGradle 6, supports Forge 1.20.1.
-    // Properly configures Mixin refmap remap (via modImplementation), unlike FG6.
-    id("net.neoforged.moddev.legacyforge") version "2.0.141"
+    // ModDevGradle (non-legacy) — for NeoForge 1.20.2+ / 1.21.x.
+    // The .legacyforge plugin was for Forge 1.20.1 (now retired in master).
+    id("net.neoforged.moddev") version "2.0.141"
     id("org.jetbrains.kotlin.jvm") version "2.0.20"
-    // Compose Compiler Gradle Plugin (standalone since Kotlin 2.0). Version
-    // is the Kotlin version it pairs with — does not itself add a runtime dep.
+    // Compose Compiler Gradle Plugin pairs with the Kotlin version.
     id("org.jetbrains.kotlin.plugin.compose") version "2.0.20"
     `java-library`
     idea
@@ -18,7 +17,7 @@ val modAuthors: String by project
 val modDescription: String by project
 
 val mcVer: String by project
-val forgeVer: String by project
+val neoForgeVer: String by project
 val kffVer: String by project
 
 group = modGroup
@@ -26,44 +25,48 @@ version = modVersion
 base.archivesName.set(modId)
 
 java {
-    toolchain.languageVersion.set(JavaLanguageVersion.of(17))
+    // NeoForge 1.21.1 requires Java 21.
+    toolchain.languageVersion.set(JavaLanguageVersion.of(21))
 }
 
 kotlin {
-    jvmToolchain(17)
+    jvmToolchain(21)
 }
 
 repositories {
     maven("https://maven.neoforged.net/releases/")
     maven("https://thedarkcolour.github.io/KotlinForForge/")
-    maven("https://maven.valkyrienskies.org/")
-    maven("https://maven.createmod.net")
-    maven("https://maven.ithundxr.dev/mirror")
-    maven("https://raw.githubusercontent.com/Fuzss/modresources/main/maven/")
-    maven("https://maven.tterrag.com/")
-    maven("https://maven.blamejared.com/")
-    maven("https://maven.terraformersmc.com/")
+    maven("https://maven.createmod.net")             // Create, Ponder, Flywheel
+    maven("https://maven.ithundxr.dev/snapshots")    // Registrate (1.21.x is under snapshots maven)
+    maven("https://maven.blamejared.com/")           // JEI
+    maven("https://maven.terraformersmc.com/")       // EMI
+    maven("https://maven.ryanhcode.dev/releases")    // Sable
     // JetBrains Compose dev maven (multiplatform compose-runtime, etc.)
     maven("https://maven.pkg.jetbrains.space/public/p/compose/dev")
     // Google maven — Compose runtime transitively needs androidx.annotation
     google()
     mavenCentral()
-    // Modrinth maven — for mods only published there (e.g. Create: Interactive).
+    // Modrinth maven — fallback for mods only published there.
     exclusiveContent {
         forRepository { maven { url = uri("https://api.modrinth.com/maven") } }
         filter { includeGroup("maven.modrinth") }
     }
+    // Curse Maven — for Create Aeronautics (not on independent maven).
+    exclusiveContent {
+        forRepository { maven { url = uri("https://www.cursemaven.com") } }
+        filter { includeGroup("curse.maven") }
+    }
 }
 
-legacyForge {
-    enable {
-        forgeVersion = "$mcVer-$forgeVer"
-    }
+neoForge {
+    version = neoForgeVer
 
     parchment {
-        minecraftVersion.set("1.20.1")
-        mappingsVersion.set("2023.09.03")
+        minecraftVersion = "1.21.1"
+        mappingsVersion = "2024.11.17"
     }
+
+    validateAccessTransformers = true
 
     runs {
         register("client") {
@@ -85,28 +88,9 @@ legacyForge {
     }
 }
 
-// Mixin support — legacyForge plugin exposes a top-level `mixin` block that
-// (a) tells Forge's Mixin loader about our config and (b) wires the refmap
-// generation/remap step into the build. The refmap is what maps source
-// Mojang names (used in our Java mixin) to SRG names baked into the runtime
-// MC jar.
-mixin {
-    config("nodewire.mixins.json")
-    // Wires the Mixin annotation processor for the `main` source set —
-    // ModDevGradle plumbs the right tsrg path into the AP automatically
-    // and writes the refmap to `nodewire.refmap.json`, then remaps it to
-    // SRG at jar time.
-    add(sourceSets["main"], "nodewire.refmap.json")
-}
-
-// KFF bundles kotlin-stdlib at runtime. We must NOT let any other dep pull it onto
-// the classpath again, or modlauncher complains about duplicate module exports.
-// ModDev isolates the mod's JPMS module from KFF's module — compose-runtime and
-// yoga (non-mod libs) can't see kotlin.* exported by KFF, and we can't put kotlin
-// on additionalRuntimeClasspath without hitting JPMS duplicate-export errors.
-// Solution: SHADE compose-runtime + yoga classes directly into the nodewire jar
-// (and into the dev sourceSet output) so they're part of OUR module — they then
-// transparently see KFF's kotlin-stdlib via cross-module exports.
+// KFF bundles kotlin-stdlib at runtime — same JPMS constraint as before.
+// compose-runtime + yoga are still SHADED into the mod jar so they live in
+// our module and can see KFF's kotlin.* exports.
 val shadedLibs by configurations.creating
 
 dependencies {
@@ -131,103 +115,63 @@ sourceSets.named("main") {
 }
 
 dependencies {
-    // Kotlin for Forge — language loader (KFF 4.12 needs Kotlin 2.2, so we pin 4.11)
-    implementation("thedarkcolour:kotlinforforge:${kffVer}")
+    // Kotlin for NeoForge — language loader on NeoForge.
+    implementation("thedarkcolour:kotlinforforge-neoforge:${kffVer}")
 
-    // Valkyrien Skies 2 — physics & ship API.
-    // `modImplementation` auto-remaps SRG → Mojang names via ModDevGradle.
-    modImplementation("org.valkyrienskies:valkyrienskies-120-forge:2.4.10+a7a0898ae1")
-    // Create: Interactive — rewrites Create contraptions as VS ships so our
-    // VsShipBackend transparently covers contraption blocks. Runtime-only
-    // (we never call CI's API directly). Version id EScBvcOc = 1.2.1 forge
-    // variant on Modrinth (the plain "1.2.1" maven coord resolves to fabric).
-    modRuntimeOnly("maven.modrinth:interactive:EScBvcOc")
-    // Create: Tweaked Controllers — adds gamepad/controller input devices as
-    // Create signal sources. compileOnly for API access (controller item classes,
-    // state accessors), runtimeOnly for in-dev testing without forcing the dep
-    // on players. Version 1.20.1-1.2.6 (Modrinth artifact id: ELlJoT2Q).
-    modCompileOnly("maven.modrinth:create-tweaked-controllers:1.20.1-1.2.6")
-    modRuntimeOnly("maven.modrinth:create-tweaked-controllers:1.20.1-1.2.6")
-    // VS API classes (org.valkyrienskies.core.api.*) live in these split modules.
-    // The forge jar marks them runtime-only; pulled in as compileOnly so direct
-    // VS API imports resolve at compile time. Version must match the forge jar's
-    // POM-declared core deps (see VS 2.4.10's pom: core 1.1.0+1d4a7373e9).
-    compileOnly("org.valkyrienskies.core:internal:1.1.0+1d4a7373e9")
-    compileOnly("org.valkyrienskies.core:util:1.1.0+1d4a7373e9")
+    // --- Sable — sub-level physics library (replaces Valkyrien Skies 2) ---
+    // Provides moving block structures backed by Rapier physics. Used by
+    // Create Aeronautics and by Nodewire's SableSubLevelBackend (Phase 6).
+    // NOTE: confirm exact maven coord on first build — see
+    //   https://maven.ryanhcode.dev/releases  for current group/artifact.
+    modImplementation("dev.ryanhcode.sable:sable-neoforge:1.2.2+mc1.21.1")
 
-    // Create 6.0.8 + transitive deps (per Create wiki's official dev recipe).
-    // :slim excludes nested JarInJar mods so we control their versions explicitly.
-    modImplementation("com.simibubi.create:create-1.20.1:6.0.8-289:slim")
-    modImplementation("net.createmod.ponder:Ponder-Forge-1.20.1:1.0.91")
-    modCompileOnly("dev.engine-room.flywheel:flywheel-forge-api-1.20.1:1.0.5")
-    modRuntimeOnly("dev.engine-room.flywheel:flywheel-forge-1.20.1:1.0.5")
-    modImplementation("com.tterrag.registrate:Registrate:MC1.20-1.3.3")
-    implementation("io.github.llamalad7:mixinextras-forge:0.4.1")
-    // mixinextras-forge ships as a thin JarInJar wrapper — its classes (the
-    // @ModifyReturnValue / @WrapOperation / etc. annotations) live in
-    // mixinextras-common, which we need on the compile classpath explicitly.
+    // --- Create Aeronautics 1.2.1 (via Curse Maven) ---
+    // No independent maven — Curse Maven uses the file id from CurseForge.
+    // 1.2.1 NeoForge for mc1.21.1 = curse file id 8003941.
+    modCompileOnly("curse.maven:create-aeronautics-676721:8003941")
+    modRuntimeOnly("curse.maven:create-aeronautics-676721:8003941")
+
+    // --- Create 6.0.10 for NeoForge 1.21.1 + transitive deps ---
+    // :slim excludes nested JarInJar mods so we control versions explicitly.
+    modImplementation("com.simibubi.create:create-${mcVer}:6.0.10-280:slim")
+    modImplementation("net.createmod.ponder:ponder-neoforge:1.0.82+mc${mcVer}")
+    modCompileOnly("dev.engine-room.flywheel:flywheel-neoforge-api-${mcVer}:1.0.6")
+    modRuntimeOnly("dev.engine-room.flywheel:flywheel-neoforge-${mcVer}:1.0.6")
+    modImplementation("com.tterrag.registrate:Registrate:MC1.21-1.3.0+67")
+
+    // MixinExtras — NeoForge variant.
+    implementation("io.github.llamalad7:mixinextras-neoforge:0.4.1")
     compileOnly("io.github.llamalad7:mixinextras-common:0.4.1")
     annotationProcessor("io.github.llamalad7:mixinextras-common:0.4.1")
-    // Mixin annotation processor — generates the refmap entries the legacyForge
-    // plugin then remaps to SRG names at jar time. Without this, our @Mixin
-    // class would silently fail to apply in production.
-    annotationProcessor("org.spongepowered:mixin:0.8.5:processor")
 
-    // JEI — recipe viewer (compile API + runtime impl)
-    modCompileOnly("mezz.jei:jei-1.20.1-forge-api:15.20.0.129")
-    modCompileOnly("mezz.jei:jei-1.20.1-common-api:15.20.0.129")
-    modRuntimeOnly("mezz.jei:jei-1.20.1-forge:15.20.0.129")
+    // JEI — recipe viewer (NeoForge variant for 1.21.1)
+    modCompileOnly("mezz.jei:jei-${mcVer}-neoforge-api:19.21.0.247")
+    modCompileOnly("mezz.jei:jei-${mcVer}-common-api:19.21.0.247")
+    modRuntimeOnly("mezz.jei:jei-${mcVer}-neoforge:19.21.0.247")
 
-    // EMI — alternative recipe viewer. compileOnly + runtimeOnly = we get
-    // the API at compile time (for our EMI plugin) without forcing EMI onto
-    // production users; ModDev unpacks both into the dev launch classpath.
-    modCompileOnly("dev.emi:emi-forge:1.1.22+1.20.1")
-    modRuntimeOnly("dev.emi:emi-forge:1.1.22+1.20.1")
+    // EMI — NeoForge variant for 1.21.1
+    modCompileOnly("dev.emi:emi-neoforge:1.1.18+${mcVer}")
+    modRuntimeOnly("dev.emi:emi-neoforge:1.1.18+${mcVer}")
 
-    // --- Compose UI framework ---
-    // compose-runtime: tree composition + recomposition only (no Skiko, no compose.ui).
-    // Excludes strip transitive Kotlin/kotlinx; KFF 4.11.0 already bundles kotlin-stdlib
-    // and kotlinx-coroutines-core 1.8.1 at runtime, and we re-add coroutines below for
-    // dev/test scope only.
-    // Like yoga: needs both `implementation` (compile) and `additionalRuntimeClasspath`
-    // (dev runtime) because ModDev isolates non-mod library classpaths.
-    // Compile-only: compose-runtime classes are SHADED into our jar at runtime
-    // (see `extractShadedLibs` task above). compileOnly avoids them being on the
-    // classpath twice.
+    // --- Compose UI framework (unchanged) ---
     compileOnly("org.jetbrains.compose.runtime:runtime:1.7.0") {
         exclude(group = "org.jetbrains.kotlin")
         exclude(group = "org.jetbrains.kotlinx")
     }
-    // Coroutines: compileOnly because KFF 4.11.0 bundles 1.8.1 at runtime; adding it
-    // as `implementation` would put two copies on Forge's classpath. Tests need it
-    // explicitly since KFF isn't on the test classpath.
     compileOnly("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0")
 
-    // Flexbox layout — pure Java, no native code. Vendored locally because the
-    // Maven Central release of org.appliedenergistics.yoga:yoga:1.0.0 ships Java 21
-    // bytecode and we're on Java 17. The jar in libs/ is built from the same upstream
-    // (https://github.com/AppliedEnergistics/yoga, master @ v1.0.0) with the toolchain
-    // patched to JavaLanguageVersion.of(17); no source changes (records compile fine
-    // under Java 17). Build steps in docs/superpowers/notes/2026-05-13-yoga-rebuild.md.
-    // Yoga: `implementation` for compile classpath, `additionalRuntimeClasspath` for
-    // dev runs (ModDev isolates the mod's runtime classpath), `jarJar` for embedding
-    // into the built jar so it's available in production. All three are needed for
-    // local jars on ModDev legacyforge — see ModDevGradle README.
-    // Yoga: compile-only because classes are SHADED into the mod jar via
-    // `extractShadedLibs` (see top of this file). No `additionalRuntimeClasspath`
-    // or `jarJar` needed.
+    // Yoga — locally vendored. NOTE: NeoForge 1.21.1 runs on Java 21, so
+    // the j17 rebuild is no longer required — the upstream Java-21 jar
+    // would work. We keep libs/yoga-1.0.0-j17.jar for now to minimize
+    // simultaneous changes; can switch to the upstream artifact later.
     compileOnly(files("libs/yoga-1.0.0-j17.jar"))
 
-    // Unit testing (Phase 1 smoke test for Yoga).
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
-// Make Minecraft classes available to unit tests. The legacyForge plugin
-// adds the MC artifact to `compileClasspath` only — graph-model tests use
-// NBT classes (CompoundTag, ListTag) and ResourceLocation, all of which are
-// plain Java that doesn't need a full MC bootstrap to instantiate.
+// Make Minecraft classes available to unit tests (same trick as on Forge).
 configurations.named("testCompileClasspath").configure {
     extendsFrom(configurations.compileClasspath.get())
 }
@@ -247,14 +191,13 @@ tasks.named<ProcessResources>("processResources") {
         "mod_authors" to modAuthors,
         "mod_description" to modDescription,
         "minecraft_version_range" to project.property("minecraft_version_range") as String,
-        "forge_version_range" to project.property("forge_version_range") as String,
+        "neoforge_version_range" to project.property("neoforge_version_range") as String,
         "loader_version_range" to project.property("loader_version_range") as String,
         "kff_version_range" to project.property("kff_version_range") as String,
-        "vs_version_range" to project.property("vs_version_range") as String,
         "create_version_range" to project.property("create_version_range") as String,
     )
     inputs.properties(replacements)
-    filesMatching(listOf("META-INF/mods.toml", "pack.mcmeta")) {
+    filesMatching(listOf("META-INF/neoforge.mods.toml", "pack.mcmeta")) {
         expand(replacements)
     }
 }
