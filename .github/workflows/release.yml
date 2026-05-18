@@ -31,10 +31,19 @@ jobs:
       - name: Build (no tests)
         run: ./gradlew build -x test --no-daemon --stacktrace
 
+      - name: Generate dependency table
+        run: |
+          chmod +x .github/scripts/build-deps-table.sh
+          .github/scripts/build-deps-table.sh > deps-table.md
+          echo "--- deps-table.md ---"
+          cat deps-table.md
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: ${{ github.ref_name }}
           generate_release_notes: true
+          append_body: true
+          body_path: deps-table.md
           files: |
             build/libs/*.jar
