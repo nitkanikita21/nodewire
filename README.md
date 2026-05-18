@@ -41,8 +41,10 @@
 
 ```bash
 ./gradlew build      # compile + reobf, ~30s incremental
-./gradlew test       # unit tests
+./gradlew test       # unit tests — run locally; CI skips them (see note below)
 ```
+
+> **CI note:** GitHub Actions runs `./gradlew build -x test` only. ModDevGradle's Forge-class remap (SRG → Mojang names) doesn't refresh the SHA-384 digests in `META-INF/MANIFEST.MF`, and JarVerifier on a fresh CI cache rejects test discovery. Locally this is a non-issue — the cache stays in a known-good state. Run `./gradlew test` before pushing.
 
 ModDevGradle generates IDE run configurations automatically on Gradle sync — re-import the project in IntelliJ after editing `build.gradle.kts`. No manual `genIntellijRuns`.
 
