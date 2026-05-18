@@ -685,64 +685,7 @@ object NodeConfigContent {
         }
     }
 
-    /**
-     * ControllerInput: channel Select (all 19 channels grouped via order),
-     * outputMode Select (filtered to category-valid options), optional
-     * deadzone FloatField + invert checkbox shown depending on category/mode.
-     */
-    val ControllerInput: @Composable (Node) -> Unit = { node ->
-        val editor = LocalEditorState.current
-        var channel by remember(node.id) {
-            mutableStateOf(node.config.getString("channel").ifEmpty {
-                dev.nitka.nodewire.integration.tweakedcontroller.ControllerChannel.LEFT_STICK.name
-            })
-        }
-        var mode by remember(node.id) {
-            mutableStateOf(node.config.getString("outputMode").ifEmpty {
-                dev.nitka.nodewire.integration.tweakedcontroller.ControllerOutputMode.VEC2_RAW.name
-            })
-        }
-        val ch = dev.nitka.nodewire.integration.tweakedcontroller.ControllerChannel.fromName(channel)
-        val cat = ch.category
-        val modeOptions = dev.nitka.nodewire.integration.tweakedcontroller.allowedOutputModes(cat)
-
-        Column(verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2)) {
-            LabeledRow("Channel") {
-                Select(
-                    options = dev.nitka.nodewire.integration.tweakedcontroller.ControllerChannel.entries.toList(),
-                    selected = ch,
-                    onSelect = { next ->
-                        channel = next.name
-                        // mode resets to category default — handled by mutator
-                        mode = dev.nitka.nodewire.integration.tweakedcontroller
-                            .allowedOutputModes(next.category).first().name
-                        editor?.changeControllerChannel(node.id, next.name)
-                    },
-                    label = { it.displayName },
-                )
-            }
-            LabeledRow("Output") {
-                Select(
-                    options = modeOptions,
-                    selected = dev.nitka.nodewire.integration.tweakedcontroller.ControllerOutputMode
-                        .entries.firstOrNull { it.name == mode } ?: modeOptions.first(),
-                    onSelect = { next ->
-                        mode = next.name
-                        editor?.changeControllerOutputMode(node.id, next.name)
-                    },
-                    label = { it.name.lowercase().replace('_', ' ') },
-                )
-            }
-            // Deadzone applies whenever the channel produces a continuous
-            // value (composite stick, axis half, or trigger). Buttons
-            // skip the deadzone row.
-            val showDeadzone = cat != dev.nitka.nodewire.integration.tweakedcontroller
-                .ControllerChannelCategory.BUTTON
-            if (showDeadzone) {
-                FloatField(node, "deadzone", "Deadzone", editor)
-            }
-        }
-    }
+    // TODO(post-port): ControllerInput config UI removed — TC has no 1.21.1 build
 
     /** VecSplit: same Select as VecMake; output pins reshape. */
     val VecSplit: @Composable (Node) -> Unit = { node ->

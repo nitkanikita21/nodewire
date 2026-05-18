@@ -88,46 +88,6 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
         l.sendBlockUpdated(blockPos, blockState, blockState, 3)
     }
 
-    // --- Tweaked Controller incoming state (push from Mixin) ----------
-
-    /**
-     * Latest [dev.nitka.nodewire.integration.tweakedcontroller.ControllerState]
-     * applied to this block. Driven by [receiveControllerButtonStates] /
-     * [receiveControllerAxisStates] which the TC packet mixins call after
-     * decoding each incoming wire packet. Never persisted — purely runtime.
-     */
-    @Volatile
-    var receivedControllerState: dev.nitka.nodewire.integration.tweakedcontroller.ControllerState? = null
-        private set
-
-    /** Wall-clock ms of the last state update, for staleness UI. */
-    @Volatile
-    var lastControllerStateAtMs: Long = 0L
-        private set
-
-    /**
-     * Apply a decoded button array (TC's [Boolean[15]] unboxed) — bit i
-     * is the GLFW gamepad button at index i. Merges with current state
-     * so axes stay live between button packets.
-     */
-    fun receiveControllerButtonStates(buttons: BooleanArray) {
-        val prev = receivedControllerState ?: dev.nitka.nodewire.integration.tweakedcontroller.ControllerState.ZERO
-        receivedControllerState = prev.withButtonArray(buttons)
-        lastControllerStateAtMs = net.minecraft.Util.getMillis()
-    }
-
-    /**
-     * Apply a decoded axis byte array (TC's [Byte[6]] unboxed: sticks
-     * 0..3 with sign-bit and 4-bit magnitude, triggers 4..5 with 4-bit
-     * magnitude only). When [fullAxis] is non-null and length ≥ 6, the
-     * receiver prefers those higher-precision floats.
-     */
-    fun receiveControllerAxisStates(axisBytes: ByteArray, fullAxis: FloatArray?) {
-        val prev = receivedControllerState ?: dev.nitka.nodewire.integration.tweakedcontroller.ControllerState.ZERO
-        receivedControllerState = prev.withAxisArray(axisBytes, fullAxis)
-        lastControllerStateAtMs = net.minecraft.Util.getMillis()
-    }
-
     /**
      * Values pushed in from other BEs' [ChannelOutput] nodes via their
      * bindings. Keyed by THIS BE's channel-input name. Read at the start
@@ -412,14 +372,7 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
             }
         }
 
-        val tcNode = dev.nitka.nodewire.integration.tweakedcontroller.ControllerInputNode
-        val prevState = tcNode.currentState.get()
-        tcNode.currentState.set(receivedControllerState)
-        val result = try {
-            eval.tick(external)
-        } finally {
-            tcNode.currentState.set(prevState)
-        }
+        val result = eval.tick(external)
 
         if (ModList.get().isLoaded("create")) {
             syncRedstoneLinkables(level, result)

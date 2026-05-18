@@ -315,7 +315,7 @@ object StockNodeTypes {
             RANDOM_BOOL, RANDOM_INT, PULSE,
         ).forEach(NodeTypeRegistry::register)
         VectorNodeTypes.all().forEach(NodeTypeRegistry::register)
-        NodeTypeRegistry.register(dev.nitka.nodewire.integration.tweakedcontroller.ControllerInputNode.CONTROLLER_INPUT)
+        // TODO(post-port): register controller_input once Tweaked Controllers has a 1.21.1 build
     }
 
     private fun nodeType(

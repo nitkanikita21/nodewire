@@ -565,58 +565,7 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         else -> ""
     }
 
-    /**
-     * controller_input: write `config.channel` and reshape output pins
-     * based on the new channel's category default outputMode. Edges on
-     * removed/typed-changed pins drop.
-     */
-    fun changeControllerChannel(
-        id: dev.nitka.nodewire.graph.NodeId,
-        channelName: String,
-    ) {
-        val channel = dev.nitka.nodewire.integration.tweakedcontroller.ControllerChannel.fromName(channelName)
-        val modeList = dev.nitka.nodewire.integration.tweakedcontroller.allowedOutputModes(channel.category)
-        val newMode = modeList.first()
-        mutateGraph(mergeable = false) {
-            _updateNodeInternal(id) { n ->
-                val outs = dev.nitka.nodewire.integration.tweakedcontroller
-                    .pinsForControllerInput(channel, newMode)
-                val newConfig = n.config.copy().apply {
-                    putString("channel", channel.name)
-                    putString("outputMode", newMode.name)
-                }
-                n.copy(outputs = outs, config = newConfig)
-            }
-            _disconnectAllEdgesInternal(id)
-        }
-    }
-
-    /**
-     * controller_input: write `config.outputMode` and reshape output
-     * pins. Channel stays put.
-     */
-    fun changeControllerOutputMode(
-        id: dev.nitka.nodewire.graph.NodeId,
-        modeName: String,
-    ) {
-        mutateGraph(mergeable = false) {
-            _updateNodeInternal(id) { n ->
-                val channel = dev.nitka.nodewire.integration.tweakedcontroller
-                    .ControllerChannel.fromName(n.config.getString("channel"))
-                val mode = dev.nitka.nodewire.integration.tweakedcontroller
-                    .ControllerOutputMode.entries.firstOrNull { it.name == modeName }
-                    ?: dev.nitka.nodewire.integration.tweakedcontroller
-                        .allowedOutputModes(channel.category).first()
-                val outs = dev.nitka.nodewire.integration.tweakedcontroller
-                    .pinsForControllerInput(channel, mode)
-                val newConfig = n.config.copy().apply {
-                    putString("outputMode", mode.name)
-                }
-                n.copy(outputs = outs, config = newConfig)
-            }
-            _disconnectAllEdgesInternal(id)
-        }
-    }
+    // TODO(post-port): changeControllerChannel / changeControllerOutputMode removed — TC has no 1.21.1 build
 
     /**
      * VecOp node: rebuild the input/output pin list from (op, dim) and
