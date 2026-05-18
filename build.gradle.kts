@@ -123,21 +123,24 @@ dependencies {
     // Create Aeronautics and by Nodewire's SableSubLevelBackend (Phase 6).
     // NOTE: confirm exact maven coord on first build — see
     //   https://maven.ryanhcode.dev/releases  for current group/artifact.
-    modImplementation("dev.ryanhcode.sable:sable-neoforge:1.2.2+mc1.21.1")
+    // NOTE: NeoForge mod jars are pre-Mojang-mapped — use standard
+    // implementation / compileOnly / runtimeOnly (no modImplementation,
+    // that was a legacyForge-only DSL to trigger SRG → Mojang remap).
+    implementation("dev.ryanhcode.sable:sable-neoforge:1.2.2+mc1.21.1")
 
     // --- Create Aeronautics 1.2.1 (via Curse Maven) ---
     // No independent maven — Curse Maven uses the file id from CurseForge.
     // 1.2.1 NeoForge for mc1.21.1 = curse file id 8003941.
-    modCompileOnly("curse.maven:create-aeronautics-676721:8003941")
-    modRuntimeOnly("curse.maven:create-aeronautics-676721:8003941")
+    compileOnly("curse.maven:create-aeronautics-676721:8003941")
+    runtimeOnly("curse.maven:create-aeronautics-676721:8003941")
 
     // --- Create 6.0.10 for NeoForge 1.21.1 + transitive deps ---
     // :slim excludes nested JarInJar mods so we control versions explicitly.
-    modImplementation("com.simibubi.create:create-${mcVer}:6.0.10-280:slim")
-    modImplementation("net.createmod.ponder:ponder-neoforge:1.0.82+mc${mcVer}")
-    modCompileOnly("dev.engine-room.flywheel:flywheel-neoforge-api-${mcVer}:1.0.6")
-    modRuntimeOnly("dev.engine-room.flywheel:flywheel-neoforge-${mcVer}:1.0.6")
-    modImplementation("com.tterrag.registrate:Registrate:MC1.21-1.3.0+67")
+    implementation("com.simibubi.create:create-${mcVer}:6.0.10-280:slim")
+    implementation("net.createmod.ponder:ponder-neoforge:1.0.82+mc${mcVer}")
+    compileOnly("dev.engine-room.flywheel:flywheel-neoforge-api-${mcVer}:1.0.6")
+    runtimeOnly("dev.engine-room.flywheel:flywheel-neoforge-${mcVer}:1.0.6")
+    implementation("com.tterrag.registrate:Registrate:MC1.21-1.3.0+67")
 
     // MixinExtras — NeoForge variant.
     implementation("io.github.llamalad7:mixinextras-neoforge:0.4.1")
@@ -145,13 +148,13 @@ dependencies {
     annotationProcessor("io.github.llamalad7:mixinextras-common:0.4.1")
 
     // JEI — recipe viewer (NeoForge variant for 1.21.1)
-    modCompileOnly("mezz.jei:jei-${mcVer}-neoforge-api:19.21.0.247")
-    modCompileOnly("mezz.jei:jei-${mcVer}-common-api:19.21.0.247")
-    modRuntimeOnly("mezz.jei:jei-${mcVer}-neoforge:19.21.0.247")
+    compileOnly("mezz.jei:jei-${mcVer}-neoforge-api:19.21.0.247")
+    compileOnly("mezz.jei:jei-${mcVer}-common-api:19.21.0.247")
+    runtimeOnly("mezz.jei:jei-${mcVer}-neoforge:19.21.0.247")
 
     // EMI — NeoForge variant for 1.21.1
-    modCompileOnly("dev.emi:emi-neoforge:1.1.18+${mcVer}")
-    modRuntimeOnly("dev.emi:emi-neoforge:1.1.18+${mcVer}")
+    compileOnly("dev.emi:emi-neoforge:1.1.18+${mcVer}")
+    runtimeOnly("dev.emi:emi-neoforge:1.1.18+${mcVer}")
 
     // --- Compose UI framework (unchanged) ---
     compileOnly("org.jetbrains.compose.runtime:runtime:1.7.0") {
