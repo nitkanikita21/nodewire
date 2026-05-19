@@ -21,12 +21,12 @@ Branch: `port/neoforge-1.21.1`. **This branch does not compile yet** — porting
   - `ChannelLinkToolItem.kt` + `PinValue.kt` constant-of-ItemStack: NBT → `DataComponents.CUSTOM_DATA` (`CustomData` wrapper).
   - `CreateRedstoneLink.kt` + `RedstoneLinkSlotPicker.kt`: `ItemStack.of` → registry-aware `ItemStack.parse(RegistryAccess, Tag)`. `frequencyOf(Level, ...)` for the new Create 6.0.10 signature.
 - [x] **Phase 9 — Tests green.** `./gradlew test` passes: **338 tests, 0 failures** (337 from parity-with-master after TC reinstate + 1 new `SableSubLevelBackendCodecTest`). `StockNodeTypesTest` count back to 24.
+- [x] **Phase 7 — Create Aeronautics on classpath.** `maven.modrinth:create-aeronautics:1.2.1+mc1.21.1` on `compileOnly + runtimeOnly`. Curse Maven 403's the project (monetized status on CurseForge), so we pulled from Modrinth instead. Aircraft built by Aeronautics ARE Sable sub-levels — claimed transparently by `SableSubLevelBackend`, so no extra integration code is needed for wires-on-aircraft. Aeronautics-specific node types (signal sources on aircraft, propeller channels, etc.) can be added later when a concrete use case emerges.
 - [x] **Phase 6 — Sable sub-level backend.** Built on **Sable Companion** (`dev.ryanhcode.sable-companion:sable-companion-common-1.21.1:1.6.0`), a companion lib with safe no-op defaults that Sable replaces via Gradle capability resolution when installed — so we can compile/run against Companion unconditionally without any `ModList.isLoaded` gate. `integration/sable/SableSubLevelBackend.kt` implements `EndpointBackend` with payload `(UUID subLevelId, BlockPos)`. Sub-levels live as plot regions inside the parent `Level`, so `resolveBlockEntity` resolves the stored BlockPos through the parent level directly; `worldCenter`/`worldDirection` apply `SubLevelAccess.logicalPose()` server-side and `ClientSubLevelAccess.renderPose()` client-side (smooth partial-tick); `claims(level, worldPos)` consults `SableCompanion.INSTANCE.getContaining`. Registered in `Nodewire.init` BEFORE `WorldBackend` so the world remains the final fallback. Round-trip codec test: `SableSubLevelBackendCodecTest`.
 - [x] **Create deps fix-up.** `dependencySubstitution` for Create 6.0.10-280's typo'd Architectury POM coord (`13d.0.8` → `13.0.8`). `isTransitive = false` on Create slim variant to skip POM-declared optional deps (CC:Tweaked etc.). Added `maven.architectury.dev` repo.
 
 ## What's pending
 
-- [ ] **Phase 7 (Aeronautics part) — Create Aeronautics integration.** Re-enable the Curse Maven dep (`curse.maven:create-aeronautics-676721:8003941`, currently commented out). Decide what nodes / hooks the mod exposes that Nodewire should integrate (signal sources on aircraft, etc.).
 - [ ] **Post-port TODO sweep.** All `// TODO(post-port)` markers from Phase 5+7 strip were cleared in Phase 7-TC reinstate. Re-check with:
   ```
   grep -rn "TODO(post-port)" src/main/kotlin/
@@ -47,7 +47,7 @@ Branch: `port/neoforge-1.21.1`. **This branch does not compile yet** — porting
 | Flywheel | `1.0.6` |
 | Registrate | `MC1.21-1.3.0+67` |
 | Sable Companion | `sable-companion-common-1.21.1:1.6.0` (replaces VS2; safe defaults without Sable) |
-| Create Aeronautics | `1.2.1` (Curse Maven file `8003941`) |
+| Create Aeronautics | `1.2.1+mc1.21.1` (Modrinth maven — Curse Maven 403's monetized projects) |
 | MixinExtras | `0.4.1` |
 | JEI | `19.21.0.247` |
 | EMI | `1.1.18+1.21.1` |

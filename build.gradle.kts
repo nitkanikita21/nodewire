@@ -151,11 +151,16 @@ dependencies {
     // Artifact ID embeds the MC version. 1.21.1 → -common-1.21.1, latest 1.6.0.
     implementation("dev.ryanhcode.sable-companion:sable-companion-common-1.21.1:1.6.0")
 
-    // --- Create Aeronautics 1.2.1 (via Curse Maven) ---
-    // TODO(phase-7): re-enable when verified. Curse file id 8003941 is the
-    // 1.2.1 NeoForge mc1.21.1 build per the CurseForge file page.
-    // compileOnly("curse.maven:create-aeronautics-676721:8003941")
-    // runtimeOnly("curse.maven:create-aeronautics-676721:8003941")
+    // --- Create Aeronautics 1.2.1 (via Modrinth maven) ---
+    // Curse Maven rejects this project with 403 (monetized status on
+    // CurseForge), so we pull from Modrinth instead. Aircraft built by
+    // Aeronautics ARE Sable sub-levels, so they're already claimed
+    // transparently by SableSubLevelBackend — no additional backend code
+    // needed for v1. The dep is kept compileOnly + runtimeOnly so we can
+    // call into Aeronautics-specific APIs later (signal sources on
+    // aircraft, propeller hooks, etc.) without making it a hard dep.
+    compileOnly("maven.modrinth:create-aeronautics:1.2.1+mc1.21.1")
+    runtimeOnly("maven.modrinth:create-aeronautics:1.2.1+mc1.21.1")
 
     // --- Create: Tweaked Controllers 1.2.7 (NeoForge 1.21.1) ---
     // Project id 898849, file id 7958165 (Apr 20 2026 NeoForge build).
