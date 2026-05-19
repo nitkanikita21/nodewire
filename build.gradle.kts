@@ -143,13 +143,17 @@ dependencies {
     // implementation / compileOnly / runtimeOnly (no modImplementation,
     // that was a legacyForge-only DSL to trigger SRG → Mojang remap).
 
-    // --- Sable Companion — safe-default API stubs that Sable replaces at runtime ---
-    // The companion artifact provides the SableCompanion.INSTANCE singleton with
-    // no-op defaults when Sable itself isn't installed; when Sable is present, it
-    // overrides the impl via service-loader. Compiling/running against Companion
-    // alone is sufficient for both the modded-with-Sable and vanilla-NeoForge case.
-    // Artifact ID embeds the MC version. 1.21.1 → -common-1.21.1, latest 1.6.0.
-    implementation("dev.ryanhcode.sable-companion:sable-companion-common-1.21.1:1.6.0")
+    // --- Sable Companion — compile-time API + safe no-op defaults ---
+    // Artifact ID embeds the MC version: -common-1.21.1, latest 1.6.0. Without
+    // Sable installed, SableCompanion.INSTANCE returns no-op stubs.
+    compileOnly("dev.ryanhcode.sable-companion:sable-companion-common-1.21.1:1.6.0")
+
+    // --- Sable itself — runtime, required by Create Aeronautics anyway ---
+    // Aeronautics declares Sable as a hard dependency, so the dev runtime has to
+    // ship Sable; pinning 1.2.2 (latest 1.21.1 NeoForge build). Sable replaces
+    // the Companion impl via Gradle capability resolution, so live sub-level
+    // queries actually return real data at runtime.
+    runtimeOnly("maven.modrinth:sable:1.2.2+mc1.21.1")
 
     // --- Create Aeronautics 1.2.1 (via Modrinth maven) ---
     // Curse Maven rejects this project with 403 (monetized status on
