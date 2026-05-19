@@ -19,6 +19,9 @@ object Nodewire {
     private val LOG: Logger = LogUtils.getLogger()
 
     init {
+        // Open kotlin.stdlib -> kotlinx.coroutines.core reads edge BEFORE any
+        // coroutine launches anywhere in the mod (NwUiOwner.start, etc.).
+        JpmsBridge.openCoroutinesDebugBridge()
         Registry.register(MOD_BUS)
         StockNodeTypes.registerAll()
         // NodewireNetwork is an @EventBusSubscriber — registration happens

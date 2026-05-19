@@ -74,13 +74,15 @@ neoForge {
             client()
             systemProperty("forge.logging.markers", "REGISTRIES")
             systemProperty("forge.logging.console.level", "debug")
-            // JPMS isolates kotlin.stdlib (bundled by KFF) from kotlinx.coroutines.core
-            // (separate module). The stdlib's DebugProbesKt.probeCoroutineCreated does a
-            // direct call into kotlinx.coroutines.debug.internal.DebugProbesImpl on every
-            // `launch {}` — IllegalAccessError at JVM module-resolution time, not at
-            // runtime opt-in. --add-reads explicitly grants stdlib read access to
-            // coroutines so the bridge resolves.
-            jvmArguments.add("--add-reads=kotlin.stdlib=kotlinx.coroutines.core")
+            // KFF's plugin layer loads kotlin.stdlib and kotlinx.coroutines.core as
+            // distinct modules. The stdlib's DebugProbesKt.probeCoroutineCreated hardcodes
+            // a call into kotlinx.coroutines.debug.internal.DebugProbesImpl that needs a
+            // `reads` edge the stdlib's module-info doesn't declare → IllegalAccessError
+            // on every `launch {}`. A JVM `--add-reads` flag would work on the boot layer
+            // but doesn't reach KFF's child layer; we add the edge programmatically via
+            // Module.implAddReads in JpmsBridge instead, which needs java.base/java.lang
+            // open for setAccessible to succeed.
+            jvmArguments.add("--add-opens=java.base/java.lang=ALL-UNNAMED")
         }
         register("server") {
             server()
