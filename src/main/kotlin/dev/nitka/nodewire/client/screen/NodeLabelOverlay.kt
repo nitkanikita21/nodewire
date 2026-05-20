@@ -15,7 +15,8 @@ import dev.nitka.nodewire.ui.modifier.layout.width
 /**
  * Inline rename popup for the node currently in `editor.renamingNode`.
  * Lives inside the NodeCanvas so it pans/zooms with the world — sits
- * over the node card's header.
+ * over the node card's header. Transparent so the underlying label/title
+ * stays visible while editing; autofocused so typing works immediately.
  */
 @Composable
 fun NodeLabelOverlay() {
@@ -25,7 +26,9 @@ fun NodeLabelOverlay() {
     val node by flow.collectAsState()
     val x = node.pos.x.toInt() + 4
     val y = node.pos.y.toInt() + 2
-    var text by remember(nodeId) { mutableStateOf(node.label ?: "") }
+    // Re-key on (nodeId, node.label) so a save → reopen for the same node
+    // seeds the field with the just-saved value, not stale in-progress text.
+    var text by remember(nodeId, node.label) { mutableStateOf(node.label ?: "") }
     Box(
         modifier = Modifier
             .absolutePosition(x, y)
@@ -34,6 +37,8 @@ fun NodeLabelOverlay() {
         TextInput(
             value = text,
             placeholder = "label",
+            transparent = true,
+            autoFocus = true,
             onValueChange = { text = it },
             onSubmit = {
                 editor.setNodeLabel(nodeId, text)
