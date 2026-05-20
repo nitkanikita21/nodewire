@@ -1,16 +1,24 @@
 package dev.nitka.nodewire.item
 
 import dev.nitka.nodewire.block.LogicBlockEntity
+import dev.nitka.nodewire.client.screen.AeroChannelPickerScreen
+import dev.nitka.nodewire.client.screen.AeroTargetPickerScreen
 import dev.nitka.nodewire.client.screen.ChannelPickerScreen
+import dev.nitka.nodewire.endpoint.EndpointRef
 import dev.nitka.nodewire.graph.PinType
+import dev.nitka.nodewire.integration.aeronautics.AeroBlockKind
+import dev.nitka.nodewire.integration.aeronautics.AeroChannel
+import dev.nitka.nodewire.net.BindAeroSourcePacket
 import dev.nitka.nodewire.net.BindChannelPacket
 import dev.nitka.nodewire.net.BindSideChannelPacket
+import net.neoforged.fml.ModList
 import net.neoforged.neoforge.network.PacketDistributor
 import net.minecraft.ChatFormatting
 import net.minecraft.client.Minecraft
 import net.minecraft.core.BlockPos
 import net.minecraft.core.component.DataComponents
 import net.minecraft.nbt.CompoundTag
+import net.minecraft.nbt.NbtOps
 import net.minecraft.nbt.NbtUtils
 import net.minecraft.network.chat.Component
 import net.minecraft.world.item.component.CustomData
@@ -57,10 +65,49 @@ class ChannelLinkToolItem(props: Properties) : Item(props) {
         if (be != null) {
             // Logic block: source-set / target-pick UX as before.
             if (level.isClientSide) {
-                if (player.isShiftKeyDown) openSourcePicker(stack, be)
-                else openTargetPicker(stack, be)
+                if (player.isShiftKeyDown) {
+                    openSourcePicker(stack, be)
+                } else {
+                    // Branch 2: Aero target-bind — check BEFORE the classic source check.
+                    val tag = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag()
+                    if (tag.contains(NBT_AERO_SOURCE)) {
+                        openAeroTargetPicker(stack, be, tag.getCompound(NBT_AERO_SOURCE))
+                    } else {
+                        openTargetPicker(stack, be)
+                    }
+                }
             }
             return InteractionResult.sidedSuccess(level.isClientSide)
+        }
+
+        // Branch 1: Aero source-set — sneak + RMB on a supported Aero block.
+        if (level.isClientSide && player.isShiftKeyDown &&
+            ModList.get().isLoaded("aeronautics")
+        ) {
+            val anyBe = level.getBlockEntity(pos)
+            val kind = if (anyBe != null) AeroBlockKind.fromBE(anyBe) else null
+            if (kind != null) {
+                val endpoint = EndpointRef.from(level, pos)
+                Minecraft.getInstance().setScreen(
+                    AeroChannelPickerScreen(kind, endpoint) { ep, k, ch ->
+                        val newTag = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag()
+                        val aeroTag = CompoundTag()
+                        val endpointNbt = EndpointRef.CODEC
+                            .encodeStart(NbtOps.INSTANCE, ep)
+                            .result().orElse(null) as? CompoundTag
+                        if (endpointNbt != null) aeroTag.put("endpoint", endpointNbt)
+                        aeroTag.putString("blockKind", k.name)
+                        aeroTag.putString("channel", ch.name)
+                        newTag.put(NBT_AERO_SOURCE, aeroTag)
+                        // Mutual exclusion: clear the classic source if set.
+                        newTag.remove(NBT_SOURCE_POS)
+                        newTag.remove(NBT_SOURCE_NAME)
+                        stack.set(DataComponents.CUSTOM_DATA, CustomData.of(newTag))
+                        actionBar("Aero source: ${k.displayName} / ${ch.displayName}", false)
+                    },
+                )
+                return InteractionResult.SUCCESS
+            }
         }
 
         // Non-logic target — only valid as the "target" of an already-set
@@ -70,6 +117,42 @@ class ChannelLinkToolItem(props: Properties) : Item(props) {
             handleNonLogicTarget(stack, ctx)
         }
         return InteractionResult.sidedSuccess(level.isClientSide)
+    }
+
+    private fun openAeroTargetPicker(stack: ItemStack, be: LogicBlockEntity, aeroTag: CompoundTag) {
+        val channelName = aeroTag.getString("channel")
+        val channel = AeroChannel.fromName(channelName)
+        if (channel == null) {
+            actionBar("Unknown aero channel '$channelName' in stack", true)
+            return
+        }
+        val mc = Minecraft.getInstance()
+        mc.setScreen(
+            AeroTargetPickerScreen(be, channel.pinType) { nodeId ->
+                val endpointTag = aeroTag.getCompound("endpoint")
+                val endpoint = EndpointRef.CODEC
+                    .parse(NbtOps.INSTANCE, endpointTag)
+                    .result().orElse(null)
+                if (endpoint == null) {
+                    actionBar("Failed to parse aero source endpoint", true)
+                    return@AeroTargetPickerScreen
+                }
+                PacketDistributor.sendToServer(
+                    BindAeroSourcePacket(
+                        targetPos = be.blockPos,
+                        nodeId = nodeId,
+                        endpoint = endpoint,
+                        blockKind = aeroTag.getString("blockKind"),
+                        channel = channelName,
+                    ),
+                )
+                // Clear aeroSource from stack.
+                val newTag = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag()
+                newTag.remove(NBT_AERO_SOURCE)
+                stack.set(DataComponents.CUSTOM_DATA, CustomData.of(newTag))
+                actionBar("Aero bound → ${be.blockPos}", false)
+            },
+        )
     }
 
     /**
@@ -205,5 +288,6 @@ class ChannelLinkToolItem(props: Properties) : Item(props) {
     companion object {
         private const val NBT_SOURCE_POS = "source_pos"
         private const val NBT_SOURCE_NAME = "source_name"
+        private const val NBT_AERO_SOURCE = "aeroSource"
     }
 }
