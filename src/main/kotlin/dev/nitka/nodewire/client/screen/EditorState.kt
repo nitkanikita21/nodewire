@@ -238,6 +238,9 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
             graph.edges[idx] = current.copy(label = sanitized)
             _edges.value = graph.edges.toList()
         }
+        // Sync to the server BE so the label survives a reload — without
+        // this, label edits live only in the client editor's RAM.
+        requestSave?.invoke()
     }
 
     private val _renamingNode = mutableStateOf<NodeId?>(null)
@@ -271,6 +274,7 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
             graph.nodes[id] = updated
             nodeFlows[id]?.value = updated
         }
+        requestSave?.invoke()
     }
 
     /**
@@ -287,6 +291,7 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
             graph.groups[idx] = graph.groups[idx].copy(name = sanitized)
             syncGroupsFlow()
         }
+        requestSave?.invoke()
     }
 
     /** What context menu (if any) is currently open. Null = closed. */
