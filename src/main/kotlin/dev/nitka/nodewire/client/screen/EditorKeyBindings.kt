@@ -55,7 +55,6 @@ object EditorKeyBindings {
             when {
                 e.renamingNode != null -> { e.renamingNode = null; true }
                 e.renamingGroup != null -> { e.renamingGroup = null; true }
-                e.renamingEdge != null -> { e.renamingEdge = null; true }
                 e.contextMenu != null -> { e.closeContextMenu(); true }
                 e.selectedNodes.isNotEmpty() -> { e.clearSelection(); true }
                 else -> false

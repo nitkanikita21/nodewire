@@ -265,7 +265,6 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
                         CommentLayer()
                         GroupFramesLayer()
                         WireLayer()
-                        WireLabelOverlay()
                         GroupCollapsedLayer()
                         val groupsValue by editor.groups.collectAsState()
                         val hidden = remember(nodeIds, groupsValue) { hiddenNodesFor(editor) }

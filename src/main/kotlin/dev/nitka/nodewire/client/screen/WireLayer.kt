@@ -57,9 +57,6 @@ fun WireLayer() {
             PinType.QUAT to c.pinQuat,
         )
     }
-    val labelBg = NwTheme.colors.surface
-    val labelBorder = NwTheme.colors.border
-    val labelText = NwTheme.colors.onSurface
     val edges by editor.edges.collectAsState()
     // Nodes hidden because they belong to a currently-collapsed group.
     // Re-computed on every change to the groups flow.
@@ -67,8 +64,8 @@ fun WireLayer() {
     val hidden = remember(groupsValue) {
         if (groupsValue.isEmpty()) emptySet() else hiddenNodesFor(editor)
     }
-    val renderer = remember(editor, pinColors, labelBg, labelBorder, labelText) {
-        WireRenderer(editor, pinColors, labelBg, labelBorder, labelText)
+    val renderer = remember(editor, pinColors) {
+        WireRenderer(editor, pinColors)
     }
     renderer.edges = edges
     renderer.hiddenNodes = hidden
@@ -76,90 +73,11 @@ fun WireLayer() {
         modifier = Modifier.absolutePosition(0, 0).fillMaxSize(),
         renderer = renderer,
     )
-    // Transparent hit overlay. Pressing within HIT_RADIUS world units of
-    // any edge's midpoint sets `renamingEdge` — the overlay UI then
-    // shows an inline TextInput.
-    val edgesState = edges  // already captured via collectAsState above
-    Layout(
-        modifier = Modifier
-            .absolutePosition(0, 0)
-            .fillMaxSize()
-            .pointerInput { ev, x, y ->
-                if (ev !is dev.nitka.nodewire.ui.input.PointerEvent.Press) return@pointerInput false
-                if (ev.button != 0) return@pointerInput false  // LMB only
-                val positions = editor.pinPositions
-                val cx = x.toFloat()
-                val cy = y.toFloat()
-                for (e in edgesState) {
-                    // Same skip as the renderer: a wire fully internal to a
-                    // collapsed group has no visible midpoint, so picking
-                    // it from a stale pinPosition would let the user "label
-                    // a wire" that doesn't appear on screen.
-                    if (e.from.node in hidden && e.to.node in hidden) continue
-                    val from = positions.get(PinKey(e.from.node, e.from.pin, PinSide.Output)) ?: continue
-                    val to = positions.get(PinKey(e.to.node, e.to.pin, PinSide.Input)) ?: continue
-                    // Sample several points along the wire (straight-line
-                    // approximation of the cubic bezier — close enough for
-                    // hit-testing) so short curvy wires between adjacent
-                    // group members can still be clicked anywhere along
-                    // their visible path, not just exactly at the geometric
-                    // midpoint. Wider radius matches the slack a user
-                    // expects when aiming at a 2-px wire.
-                    if (nearWire(cx, cy, from.first, from.second, to.first, to.second)) {
-                        editor.renamingEdge = e
-                        return@pointerInput true
-                    }
-                }
-                false
-            },
-        renderer = NoopRenderer,
-    )
-}
-
-private const val HIT_RADIUS = 14f
-private const val HIT_RADIUS_SQ = HIT_RADIUS * HIT_RADIUS
-
-/**
- * Is `(cx, cy)` close enough to the straight-line segment between
- * `(x0, y0)` and `(x1, y1)` to count as a wire click? We approximate the
- * cubic bezier with the straight line because the bezier's deviation
- * from the chord is bounded by the handle offset, and the chord is
- * always inside that envelope.
- */
-private fun nearWire(
-    cx: Float, cy: Float,
-    x0: Float, y0: Float,
-    x1: Float, y1: Float,
-): Boolean {
-    val dx = x1 - x0
-    val dy = y1 - y0
-    val len2 = dx * dx + dy * dy
-    if (len2 < 0.001f) {
-        val ex = cx - x0
-        val ey = cy - y0
-        return ex * ex + ey * ey < HIT_RADIUS_SQ
-    }
-    // Project (cx,cy) onto the segment, clamp t to [0,1].
-    var t = ((cx - x0) * dx + (cy - y0) * dy) / len2
-    if (t < 0f) t = 0f
-    if (t > 1f) t = 1f
-    val px = x0 + t * dx
-    val py = y0 + t * dy
-    val ex = cx - px
-    val ey = cy - py
-    return ex * ex + ey * ey < HIT_RADIUS_SQ
-}
-
-private object NoopRenderer : dev.nitka.nodewire.ui.render.Renderer {
-    override fun dev.nitka.nodewire.ui.render.NwCanvas.render(node: dev.nitka.nodewire.ui.core.UiNode) { /* invisible */ }
 }
 
 private class WireRenderer(
     private val editor: EditorState,
     private val pinColors: Map<PinType, Color>,
-    private val labelBg: Color,
-    private val labelBorder: Color,
-    private val labelText: Color,
 ) : Renderer {
 
     var edges: List<dev.nitka.nodewire.graph.Edge> = emptyList()
@@ -196,15 +114,6 @@ private class WireRenderer(
             val pinType = fromNode.outputs.firstOrNull { it.id == edge.from.pin }?.type ?: continue
             val color = pinColors[pinType] ?: continue
             drawBezier(from.first, from.second, to.first, to.second, color)
-            val label = edge.label
-            if (!label.isNullOrBlank()) {
-                val midX = ((from.first + to.first) * 0.5f).toInt()
-                val midY = ((from.second + to.second) * 0.5f).toInt()
-                val textW = font.width(label)
-                // No background fill / border — text floats above the wire,
-                // tight to its own width.
-                drawText(label, midX - textW / 2, midY - font.lineHeight / 2, labelText)
-            }
         }
         // Rubber-band wire: shown while a wire drag is in progress, from
         // either an output or an input pin. Drawn last so it stays on top

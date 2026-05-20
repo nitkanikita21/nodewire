@@ -213,35 +213,10 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         return copy
     }
 
-    /** Edge currently being labelled via the inline overlay (null = idle). */
-    var renamingEdge: dev.nitka.nodewire.graph.Edge? by mutableStateOf(null)
-
-    /**
-     * Update an edge's label (empty / blank → clear). Picks the edge by
-     * value equality on (from, to, label) which is stable as long as the
-     * caller passes the actual edge instance from `edges.value`.
-     */
-    fun setEdgeLabel(edge: dev.nitka.nodewire.graph.Edge, label: String?) {
-        mutateGraph(mergeable = true) {
-            val sanitized = label?.takeIf { it.isNotBlank() }
-            // Match by (from, to) only — Edge is a data class with `label`
-            // in equals(), so a plain indexOf(edge) stops finding the row
-            // after the first label save, which silently breaks subsequent
-            // edits. Two edges can't share the same (from, to) so this is
-            // unambiguous.
-            val idx = graph.edges.indexOfFirst {
-                it.from == edge.from && it.to == edge.to
-            }
-            if (idx < 0) return@mutateGraph
-            val current = graph.edges[idx]
-            if (current.label == sanitized) return@mutateGraph
-            graph.edges[idx] = current.copy(label = sanitized)
-            _edges.value = graph.edges.toList()
-        }
-        // Sync to the server BE so the label survives a reload — without
-        // this, label edits live only in the client editor's RAM.
-        requestSave?.invoke()
-    }
+    // Wire-label UI was removed — Edge.label still exists in the model
+    // (preserved by the codec and used by GroupProxyPins as a fallback
+    // label for proxy pins), but there's no longer a renamingEdge state
+    // or setEdgeLabel mutator. Re-add if/when wire labelling lands again.
 
     private val _renamingNode = mutableStateOf<NodeId?>(null)
     private val _renamingGroup = mutableStateOf<GroupId?>(null)
