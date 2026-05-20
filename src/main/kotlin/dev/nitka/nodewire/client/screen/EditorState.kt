@@ -675,6 +675,37 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
     }
 
     /**
+     * Switch an `aeronautics_input` node's channel selection. Mirrors
+     * [changeVecOp]: reshape the node's pin layout via [AeroInputNode.pinsFor],
+     * update the config, and disconnect all edges so we never leave a
+     * type-mismatched wire dangling.
+     *
+     * Passing a [channel] whose [AeroChannel.kind] differs from [blockKind]
+     * is a programming error — the picker should never offer such a pair.
+     */
+    fun changeAeroChannel(
+        id: dev.nitka.nodewire.graph.NodeId,
+        blockKind: dev.nitka.nodewire.integration.aeronautics.AeroBlockKind,
+        channel: dev.nitka.nodewire.integration.aeronautics.AeroChannel,
+    ) {
+        require(channel.kind == blockKind) {
+            "channel ${channel.name} belongs to ${channel.kind}, not $blockKind"
+        }
+        mutateGraph(mergeable = false) {
+            _updateNodeInternal(id) { n ->
+                val (ins, outs) = dev.nitka.nodewire.integration.aeronautics
+                    .AeroInputNode.pinsFor(channel)
+                val newConfig = n.config.copy().apply {
+                    putString("blockKind", blockKind.name)
+                    putString("channel", channel.name)
+                }
+                n.copy(inputs = ins, outputs = outs, config = newConfig)
+            }
+            _disconnectAllEdgesInternal(id)
+        }
+    }
+
+    /**
      * For a (op, dim), return the canonical (effectiveDim, inputs, outputs)
      * triple. Op categories:
      *   * Vec→Vec binary: a, b ∈ V → out:V
