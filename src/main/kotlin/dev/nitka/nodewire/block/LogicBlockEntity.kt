@@ -411,13 +411,24 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
             }
         }
 
-        val tcNode = dev.nitka.nodewire.integration.tweakedcontroller.ControllerInputNode
-        val prevTcState = tcNode.currentState.get()
-        tcNode.currentState.set(receivedControllerState)
+        val aeroSnap = dev.nitka.nodewire.integration.aeronautics.AeroStatePipeline
+            .snapshot(level, graph)
+        val prevAero = dev.nitka.nodewire.integration.aeronautics.AeroStatePipeline
+            .currentValues.get()
+        dev.nitka.nodewire.integration.aeronautics.AeroStatePipeline
+            .currentValues.set(aeroSnap)
         val result = try {
-            eval.tick(external)
+            val tcNode = dev.nitka.nodewire.integration.tweakedcontroller.ControllerInputNode
+            val prevTcState = tcNode.currentState.get()
+            tcNode.currentState.set(receivedControllerState)
+            try {
+                eval.tick(external)
+            } finally {
+                tcNode.currentState.set(prevTcState)
+            }
         } finally {
-            tcNode.currentState.set(prevTcState)
+            dev.nitka.nodewire.integration.aeronautics.AeroStatePipeline
+                .currentValues.set(prevAero)
         }
 
         if (ModList.get().isLoaded("create")) {
