@@ -670,6 +670,25 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
         return srcType != tgtType
     }
 
+    // ── CC: Tweaked attached-peripheral tracking ──────────────────────────
+    // Stored as Any so the BE class doesn't reference CC API types
+    // directly — that way it loads cleanly when CC: Tweaked is absent.
+    // Cast back to NodewirePeripheral happens only behind a ModList gate
+    // (see serverTick wiring in Task 9). Mutated only from the server
+    // thread; CC dispatches on its own executor but trampolines via
+    // Capabilities → server tick task queue.
+    @Transient
+    private val nwAttachedPeripherals: MutableSet<Any> = HashSet()
+
+    /** Called from `NodewirePeripheral.attach`. Idempotent. */
+    fun nwAttachPeripheral(p: Any) { nwAttachedPeripherals.add(p) }
+
+    /** Called from `NodewirePeripheral.detach` when the last computer leaves. */
+    fun nwDetachPeripheral(p: Any) { nwAttachedPeripherals.remove(p) }
+
+    /** Read-only view used by [serverTick]'s CC dispatch step (added in T9). */
+    internal fun nwAttachedPeripheralsView(): Set<Any> = nwAttachedPeripherals
+
     companion object {
         private const val MAX_NAME_LENGTH = 64
         private val DIRECTIONS_BY_NAME = Direction.entries.associateBy { it.name.lowercase() }
