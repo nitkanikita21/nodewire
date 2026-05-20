@@ -1,7 +1,7 @@
 package dev.nitka.nodewire.integration.tweakedcontroller
 
 import net.minecraft.world.item.ItemStack
-import net.minecraftforge.fml.ModList
+import net.neoforged.fml.ModList
 
 /**
  * Soft-dependency wrapper for the Create: Tweaked Controllers mod

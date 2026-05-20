@@ -37,13 +37,16 @@ fun CommentCard(comment: Comment) {
     val editor = LocalEditorState.current ?: return
     val canvas = LocalCanvasState.current
     var editing by remember(comment.id) { mutableStateOf(false) }
+    val selected = editor.isCommentSelected(comment.id)
+    val borderColor = if (selected) NwTheme.colors.accent else NwTheme.colors.border
+    val borderWidth = if (selected) 2 else 1
 
     Box(
         modifier = Modifier
             .absolutePosition(comment.pos.x.toInt(), comment.pos.y.toInt())
             .size(comment.width, comment.height)
             .background(NwTheme.colors.surfaceHover, NwTheme.shapes.medium)
-            .border(BorderStroke(1, NwTheme.colors.border), NwTheme.shapes.medium),
+            .border(BorderStroke(borderWidth, borderColor), NwTheme.shapes.medium),
     ) {
         // Header strip — drag handle + right-click menu.
         // Plain Box (not Surface) so the click area matches the visual size
@@ -58,16 +61,34 @@ fun CommentCard(comment: Comment) {
                     when (ev) {
                         is PointerEvent.Drag -> {
                             val zoom = canvas?.zoom ?: 1f
-                            editor.moveComment(comment.id, ev.deltaX / zoom, ev.deltaY / zoom)
+                            val dxW = ev.deltaX / zoom
+                            val dyW = ev.deltaY / zoom
+                            if (editor.isCommentSelected(comment.id)) {
+                                editor.moveSelected(dxW, dyW)
+                            } else {
+                                editor.moveComment(comment.id, dxW, dyW)
+                            }
                             true
                         }
                         is PointerEvent.Press -> {
-                            if (ev.button == RIGHT_BUTTON && canvas != null) {
-                                val worldX = comment.pos.x + x
-                                val worldY = comment.pos.y + y
-                                val sx = ((worldX + canvas.panX) * canvas.zoom).toInt()
-                                val sy = ((worldY + canvas.panY) * canvas.zoom).toInt()
-                                editor.openCommentMenu(sx, sy, comment.id)
+                            when (ev.button) {
+                                LEFT_BUTTON -> {
+                                    val shift = net.minecraft.client.gui.screens.Screen
+                                        .hasShiftDown()
+                                    if (shift) {
+                                        editor.toggleCommentSelection(comment.id)
+                                    } else if (!editor.isCommentSelected(comment.id)) {
+                                        editor.clearSelection()
+                                        editor.toggleCommentSelection(comment.id)
+                                    }
+                                }
+                                RIGHT_BUTTON -> if (canvas != null) {
+                                    val worldX = comment.pos.x + x
+                                    val worldY = comment.pos.y + y
+                                    val sx = ((worldX + canvas.panX) * canvas.zoom).toInt()
+                                    val sy = ((worldY + canvas.panY) * canvas.zoom).toInt()
+                                    editor.openCommentMenu(sx, sy, comment.id)
+                                }
                             }
                             true
                         }

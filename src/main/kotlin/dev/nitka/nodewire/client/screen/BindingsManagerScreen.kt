@@ -9,7 +9,6 @@ import androidx.compose.runtime.setValue
 import dev.nitka.nodewire.block.LogicBlockEntity
 import dev.nitka.nodewire.endpoint.EndpointRef
 import dev.nitka.nodewire.graph.PinType
-import dev.nitka.nodewire.net.NodewireNetwork
 import dev.nitka.nodewire.net.RemoveBindingPacket
 import dev.nitka.nodewire.net.SetSideBindingNamePacket
 import dev.nitka.nodewire.ui.components.Button
@@ -45,7 +44,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import net.minecraft.client.Minecraft
 import net.minecraft.network.chat.Component
-import net.minecraftforge.network.PacketDistributor
+import net.neoforged.neoforge.network.PacketDistributor
 
 /**
  * Modal opened by Shift + right-click on a logic block with the Channel
@@ -144,7 +143,7 @@ class BindingsManagerScreen(
                                             kindChip = "ch",
                                             target = b.target,
                                             onRemove = {
-                                                NodewireNetwork.CHANNEL.sendToServer(
+                                                PacketDistributor.sendToServer(
                                                     RemoveBindingPacket(
                                                         sourcePos = sourceBe.blockPos,
                                                         sourceChannelName = b.sourceChannelName,
@@ -164,8 +163,7 @@ class BindingsManagerScreen(
                                             target = sb.target,
                                             bindingName = sb.name,
                                             onRename = { newName ->
-                                                NodewireNetwork.CHANNEL.send(
-                                                    PacketDistributor.SERVER.noArg(),
+                                                PacketDistributor.sendToServer(
                                                     SetSideBindingNamePacket(
                                                         sourcePos = sourceBe.blockPos,
                                                         sourceChannelName = sb.sourceChannelName,
@@ -177,7 +175,7 @@ class BindingsManagerScreen(
                                                 version++
                                             },
                                             onRemove = {
-                                                NodewireNetwork.CHANNEL.sendToServer(
+                                                PacketDistributor.sendToServer(
                                                     RemoveBindingPacket(
                                                         sourcePos = sourceBe.blockPos,
                                                         sourceChannelName = sb.sourceChannelName,

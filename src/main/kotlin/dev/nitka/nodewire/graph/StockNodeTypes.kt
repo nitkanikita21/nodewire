@@ -35,7 +35,7 @@ object StockNodeTypes {
 
     val SIDE_INPUT = nodeType(
         id = "side_input",
-        displayName = "Side Input",
+        displayName = "🔌 Side Input",
         category = NodeCategory.IO,
         outputs = listOf(Pin("out", "Signal", PinType.REDSTONE)),
         defaultConfig = { CompoundTag().apply { putString("face", "north") } },
@@ -45,7 +45,7 @@ object StockNodeTypes {
 
     val SIDE_OUTPUT = nodeType(
         id = "side_output",
-        displayName = "Side Output",
+        displayName = "⚡ Side Output",
         category = NodeCategory.IO,
         inputs = listOf(Pin("in", "Signal", PinType.REDSTONE)),
         defaultConfig = { CompoundTag().apply { putString("face", "north") } },
@@ -55,7 +55,7 @@ object StockNodeTypes {
 
     val CHANNEL_INPUT = nodeType(
         id = "channel_input",
-        displayName = "Channel Input",
+        displayName = "📥 Channel Input",
         category = NodeCategory.IO,
         outputs = listOf(Pin("out", "Value", PinType.BOOL)),
         defaultConfig = {
@@ -70,7 +70,7 @@ object StockNodeTypes {
 
     val CHANNEL_OUTPUT = nodeType(
         id = "channel_output",
-        displayName = "Channel Output",
+        displayName = "📤 Channel Output",
         category = NodeCategory.IO,
         inputs = listOf(Pin("in", "Value", PinType.BOOL)),
         defaultConfig = {
@@ -85,7 +85,7 @@ object StockNodeTypes {
 
     val REDSTONE_LINK_INPUT = nodeType(
         id = "redstone_link_input",
-        displayName = "Redstone Link Input",
+        displayName = "📡 Redstone Link Input",
         category = NodeCategory.IO,
         outputs = listOf(Pin("out", "Signal", PinType.REDSTONE)),
         defaultConfig = {
@@ -101,7 +101,7 @@ object StockNodeTypes {
 
     val REDSTONE_LINK_OUTPUT = nodeType(
         id = "redstone_link_output",
-        displayName = "Redstone Link Output",
+        displayName = "📡 Redstone Link Output",
         category = NodeCategory.IO,
         inputs = listOf(Pin("in", "Signal", PinType.REDSTONE)),
         defaultConfig = {
@@ -117,7 +117,7 @@ object StockNodeTypes {
 
     val LOGIC_GATE = nodeType(
         id = "logic_gate",
-        displayName = "Logic Gate",
+        displayName = "🧮 Logic Gate",
         category = NodeCategory.LOGIC,
         inputs = listOf(Pin("a", "A", PinType.BOOL), Pin("b", "B", PinType.BOOL)),
         outputs = listOf(Pin("out", "Out", PinType.BOOL)),
@@ -128,7 +128,7 @@ object StockNodeTypes {
 
     val CONSTANT = nodeType(
         id = "constant",
-        displayName = "Constant",
+        displayName = "🔢 Constant",
         category = NodeCategory.CONSTANTS,
         outputs = listOf(Pin("out", "Value", PinType.BOOL)),
         defaultConfig = {
@@ -148,7 +148,7 @@ object StockNodeTypes {
 
     val TIMER = nodeType(
         id = "timer",
-        displayName = "Timer",
+        displayName = "⏱ Timer",
         category = NodeCategory.CONSTANTS,
         // No `period` input pin — value comes from config; the node ticks
         // a counter on the server and toggles `out` every config.period.
@@ -161,7 +161,7 @@ object StockNodeTypes {
 
     val MATH = nodeType(
         id = "math",
-        displayName = "Math",
+        displayName = "➗ Math",
         category = NodeCategory.MATH,
         inputs = listOf(Pin("a", "A", PinType.INT), Pin("b", "B", PinType.INT)),
         outputs = listOf(Pin("out", "Out", PinType.INT)),
@@ -177,7 +177,7 @@ object StockNodeTypes {
 
     val COMPARE = nodeType(
         id = "compare",
-        displayName = "Compare",
+        displayName = "⚖ Compare",
         category = NodeCategory.MATH,
         inputs = listOf(Pin("a", "A", PinType.INT), Pin("b", "B", PinType.INT)),
         outputs = listOf(
@@ -194,7 +194,7 @@ object StockNodeTypes {
 
     val CONVERT = nodeType(
         id = "convert",
-        displayName = "Convert",
+        displayName = "🔄 Convert",
         category = NodeCategory.CONVERSION,
         inputs = listOf(Pin("in", "In", PinType.INT)),
         outputs = listOf(Pin("out", "Out", PinType.FLOAT)),
@@ -219,7 +219,7 @@ object StockNodeTypes {
     // --- Flow ----------------------------------------------------------
 
     val SELECT_BOOL = nodeType(
-        id = "select_bool", displayName = "Select Bool", category = NodeCategory.FLOW,
+        id = "select_bool", displayName = "🔀 Select Bool", category = NodeCategory.FLOW,
         inputs = listOf(
             Pin("pred", "If", PinType.BOOL),
             Pin("a", "Then", PinType.BOOL),
@@ -230,21 +230,21 @@ object StockNodeTypes {
     )
 
     val EDGE_RISING = nodeType(
-        id = "edge_rising", displayName = "Rising Edge", category = NodeCategory.FLOW,
+        id = "edge_rising", displayName = "📈 Rising Edge", category = NodeCategory.FLOW,
         inputs = listOf(Pin("in", "In", PinType.BOOL)),
         outputs = listOf(Pin("out", "Pulse", PinType.BOOL)),
         tickEvaluator = StockEvaluators.EdgeRisingTick,
     )
 
     val TOGGLE = nodeType(
-        id = "toggle", displayName = "Toggle", category = NodeCategory.FLOW,
+        id = "toggle", displayName = "🔁 Toggle", category = NodeCategory.FLOW,
         inputs = listOf(Pin("in", "Pulse", PinType.BOOL)),
         outputs = listOf(Pin("out", "State", PinType.BOOL)),
         tickEvaluator = StockEvaluators.ToggleTick,
     )
 
     val COUNTER = nodeType(
-        id = "counter", displayName = "Counter", category = NodeCategory.FLOW,
+        id = "counter", displayName = "🧮 Counter", category = NodeCategory.FLOW,
         inputs = listOf(
             Pin("in", "Pulse", PinType.BOOL),
             Pin("reset", "Reset", PinType.BOOL),
@@ -254,7 +254,7 @@ object StockNodeTypes {
     )
 
     val DELAY = nodeType(
-        id = "delay", displayName = "Delay", category = NodeCategory.FLOW,
+        id = "delay", displayName = "⏳ Delay", category = NodeCategory.FLOW,
         inputs = listOf(Pin("in", "In", PinType.BOOL)),
         outputs = listOf(Pin("out", "Delayed", PinType.BOOL)),
         defaultConfig = { CompoundTag().apply { putInt("delay", 5) } },
@@ -266,7 +266,7 @@ object StockNodeTypes {
 
     val RANDOM_BOOL = nodeType(
         id = "random_bool",
-        displayName = "Random Bool",
+        displayName = "🎲 Random Bool",
         category = NodeCategory.CONSTANTS,
         outputs = listOf(Pin("out", "Value", PinType.BOOL)),
         defaultConfig = { CompoundTag().apply { putInt("probability", 50) } },
@@ -276,7 +276,7 @@ object StockNodeTypes {
 
     val RANDOM_INT = nodeType(
         id = "random_int",
-        displayName = "Random Int",
+        displayName = "🎲 Random Int",
         category = NodeCategory.CONSTANTS,
         outputs = listOf(Pin("out", "Value", PinType.INT)),
         defaultConfig = { CompoundTag().apply { putInt("min", 0); putInt("max", 15) } },
@@ -286,7 +286,7 @@ object StockNodeTypes {
 
     val PULSE = nodeType(
         id = "pulse",
-        displayName = "Pulse",
+        displayName = "💓 Pulse",
         category = NodeCategory.CONSTANTS,
         outputs = listOf(Pin("out", "Pulse", PinType.BOOL)),
         defaultConfig = { CompoundTag().apply { putInt("period", 20) } },
@@ -315,7 +315,12 @@ object StockNodeTypes {
             RANDOM_BOOL, RANDOM_INT, PULSE,
         ).forEach(NodeTypeRegistry::register)
         VectorNodeTypes.all().forEach(NodeTypeRegistry::register)
-        NodeTypeRegistry.register(dev.nitka.nodewire.integration.tweakedcontroller.ControllerInputNode.CONTROLLER_INPUT)
+        NodeTypeRegistry.register(
+            dev.nitka.nodewire.integration.tweakedcontroller.ControllerInputNode.CONTROLLER_INPUT,
+        )
+        NodeTypeRegistry.register(
+            dev.nitka.nodewire.integration.aeronautics.AeroInputNode.AERONAUTICS_INPUT,
+        )
     }
 
     private fun nodeType(
@@ -329,7 +334,7 @@ object StockNodeTypes {
         evaluate: NodeEvaluator? = null,
         tickEvaluator: TickEvaluator? = null,
     ) = NodeType(
-        id = ResourceLocation(Nodewire.ID, id),
+        id = ResourceLocation.fromNamespaceAndPath(Nodewire.ID, id),
         displayName = displayName,
         category = category,
         inputs = inputs,

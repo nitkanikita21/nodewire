@@ -23,11 +23,17 @@ object GroupMembership {
         resolve: (String) -> GroupTemplate?,
     ): Boolean {
         if (rootFile == null) return false
-        if (rootFile == insertedTemplate) return true
-        // BFS from inserted template; if we ever encounter rootFile, cycle.
+        // BFS from inserted template's CHILDREN — `insertedTemplate` itself
+        // being named the same as `rootFile` is not a cycle on its own;
+        // only a DESCENDANT reference back to `rootFile` (or to
+        // `insertedTemplate` itself, when called with rootFile=safe to
+        // self-check) is. Without this, dropping two independent
+        // instances of the same template onto one graph would be falsely
+        // rejected as a cycle.
+        val start = resolve(insertedTemplate) ?: return false
         val seen = HashSet<String>()
         val queue = ArrayDeque<String>()
-        queue.addLast(insertedTemplate)
+        for (g in start.groups) g.templateFile?.let { queue.addLast(it) }
         while (queue.isNotEmpty()) {
             val cur = queue.removeFirst()
             if (!seen.add(cur)) continue

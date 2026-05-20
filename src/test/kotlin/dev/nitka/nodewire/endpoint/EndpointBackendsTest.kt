@@ -23,18 +23,18 @@ class EndpointBackendsTest {
     @BeforeEach fun reset() { EndpointBackends.clearForTests() }
 
     @Test fun `register and get round-trip`() {
-        val a = FakeBackend(ResourceLocation("test", "a"))
+        val a = FakeBackend(ResourceLocation.fromNamespaceAndPath("test", "a"))
         EndpointBackends.register(a)
-        assertSame(a, EndpointBackends.get(ResourceLocation("test", "a")))
+        assertSame(a, EndpointBackends.get(ResourceLocation.fromNamespaceAndPath("test", "a")))
     }
 
     @Test fun `unknown id returns null`() {
-        assertNull(EndpointBackends.get(ResourceLocation("test", "x")))
+        assertNull(EndpointBackends.get(ResourceLocation.fromNamespaceAndPath("test", "x")))
     }
 
     @Test fun `all preserves insertion order`() {
-        val a = FakeBackend(ResourceLocation("test", "a"))
-        val b = FakeBackend(ResourceLocation("test", "b"))
+        val a = FakeBackend(ResourceLocation.fromNamespaceAndPath("test", "a"))
+        val b = FakeBackend(ResourceLocation.fromNamespaceAndPath("test", "b"))
         EndpointBackends.register(a)
         EndpointBackends.register(b)
         assertEquals(listOf(a, b), EndpointBackends.all().toList())
@@ -49,6 +49,6 @@ class EndpointBackendsTest {
         assertNotNull(payload)
         assertEquals(BlockPos(7, 8, 9), payload.blockPos)
         // Verify the backend is actually registered under its id.
-        assertSame(WorldBackend, EndpointBackends.get(ResourceLocation("nodewire", "world")))
+        assertSame(WorldBackend, EndpointBackends.get(ResourceLocation.fromNamespaceAndPath("nodewire", "world")))
     }
 }

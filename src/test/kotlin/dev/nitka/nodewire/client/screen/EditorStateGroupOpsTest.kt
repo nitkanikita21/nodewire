@@ -18,7 +18,7 @@ class EditorStateGroupOpsTest {
 
     private fun node(id: UUID, x: Float = 0f, y: Float = 0f) = Node(
         id = id,
-        typeKey = ResourceLocation("nodewire", "constant"),
+        typeKey = ResourceLocation.fromNamespaceAndPath("nodewire", "constant"),
         pos = CanvasPos(x, y),
         inputs = emptyList(),
         outputs = listOf(Pin("out", "Out", PinType.BOOL)),

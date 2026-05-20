@@ -46,7 +46,13 @@ fun Popup(
     val id = remember { Any() }
     var size by remember { mutableStateOf(IntSize.Zero) }
 
-    val (x, y) = resolveOffset(position, screen, size)
+    // Pre-measurement: render off-screen so the very first frame doesn't
+    // show the popup at the strategy's raw position (which for LeftOf /
+    // Above / etc. coincides with — or overlaps — the anchor). The next
+    // frame, with real size, computes the correct position. One frame
+    // invisible is preferable to one frame of visible overlap.
+    val (x, y) = if (size == IntSize.Zero) -10000 to -10000
+                 else resolveOffset(position, screen, size)
 
     // Push / update the entry every recomposition. The content lambda is
     // wrapped to measure itself via onSizeChanged — the wrapping Box has

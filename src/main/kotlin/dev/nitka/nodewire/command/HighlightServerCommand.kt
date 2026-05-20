@@ -4,11 +4,10 @@ import com.mojang.brigadier.arguments.IntegerArgumentType
 import com.mojang.logging.LogUtils
 import dev.nitka.nodewire.endpoint.EndpointRef
 import dev.nitka.nodewire.net.HighlightPacket
-import dev.nitka.nodewire.net.NodewireNetwork
 import net.minecraft.commands.Commands
 import net.minecraft.commands.arguments.coordinates.BlockPosArgument
-import net.minecraftforge.event.RegisterCommandsEvent
-import net.minecraftforge.network.PacketDistributor
+import net.neoforged.neoforge.event.RegisterCommandsEvent
+import net.neoforged.neoforge.network.PacketDistributor
 
 /**
  * Server-side mirror of [dev.nitka.nodewire.client.command.HighlightCommand].
@@ -37,10 +36,7 @@ object HighlightServerCommand {
                             val level = ctx.source.level
                             val player = ctx.source.playerOrException
                             val ref = EndpointRef.from(level, pos)
-                            NodewireNetwork.CHANNEL.send(
-                                PacketDistributor.PLAYER.with { player },
-                                HighlightPacket(ref, DEFAULT_DURATION_MS),
-                            )
+                            PacketDistributor.sendToPlayer(player, HighlightPacket(ref, DEFAULT_DURATION_MS))
                             1
                         }
                         .then(
@@ -51,10 +47,7 @@ object HighlightServerCommand {
                                     val level = ctx.source.level
                                     val player = ctx.source.playerOrException
                                     val ref = EndpointRef.from(level, pos)
-                                    NodewireNetwork.CHANNEL.send(
-                                        PacketDistributor.PLAYER.with { player },
-                                        HighlightPacket(ref, secs * 1000L),
-                                    )
+                                    PacketDistributor.sendToPlayer(player, HighlightPacket(ref, secs * 1000L))
                                     1
                                 },
                         ),

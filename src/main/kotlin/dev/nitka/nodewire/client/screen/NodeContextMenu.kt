@@ -26,7 +26,7 @@ fun NodeContextMenu(target: ContextMenuTarget, editor: EditorState) {
         is ContextMenuTarget.Node -> buildNodeItems(editor, target, toast)
         is ContextMenuTarget.Group -> buildGroupItems(editor, target, toast)
         is ContextMenuTarget.Comment -> listOf(
-            ContextMenuItem.Action("Delete comment") {
+            ContextMenuItem.Action("🗑 Delete comment") {
                 editor.removeComment(target.commentId)
                 toast?.info("Comment deleted")
             }
@@ -48,7 +48,7 @@ private fun buildCreateItems(
     val categorySubmenus = NodeCategory.entries.mapNotNull { category ->
         val types = grouped[category] ?: return@mapNotNull null
         ContextMenuItem.Submenu(
-            label = category.displayName,
+            label = "${categoryIcon(category)} ${category.displayName}",
             items = types.map { type ->
                 ContextMenuItem.Action(label = type.displayName) {
                     editor.addNode(type.newInstance(target.world))
@@ -57,39 +57,52 @@ private fun buildCreateItems(
             },
         )
     }
+    // Templates live as one extra "category" at the tail of the Add Node
+    // submenu list — same shape as node categories so the user navigates
+    // them through the same flow ("➕ Add Node → 📦 Templates → ...").
     val files = dev.nitka.nodewire.client.screen.GroupFiles.list()
-    val insertSubmenu: ContextMenuItem = if (files.isEmpty()) {
-        ContextMenuItem.Action("Insert group: (none saved)") {}
+    val templatesSubmenu: ContextMenuItem = if (files.isEmpty()) {
+        ContextMenuItem.Action("📦 Templates: (none saved)") {}
     } else {
         ContextMenuItem.Submenu(
-            label = "Insert group",
+            label = "📦 Templates",
             items = files.map { f ->
                 ContextMenuItem.Action(f) {
                     val id = editor.insertTemplate(f, target.world)
-                    if (id != null) toast?.success("Inserted $f") else toast?.warning("Insert refused (missing or cycle)")
+                    if (id != null) toast?.success("Inserted $f") else toast?.warning("Insert refused (cycle)")
                 }
             },
         )
     }
+    val addNodeItems = categorySubmenus + templatesSubmenu
     return listOf(
-        ContextMenuItem.Submenu(label = "Add Node", items = categorySubmenus),
+        ContextMenuItem.Submenu(label = "➕ Add Node", items = addNodeItems),
         ContextMenuItem.Separator,
-        ContextMenuItem.Action("Add Comment") {
+        ContextMenuItem.Action("💬 Add Comment") {
             editor.addComment(target.world)
             toast?.info("Comment added")
         },
         ContextMenuItem.Separator,
-        insertSubmenu,
-        ContextMenuItem.Action(label = "Export graph to file") {
+        ContextMenuItem.Action(label = "📤 Export graph to file") {
             val path = GraphExporter.exportToFile(editor.graph, editor.pos)
             if (path != null) toast?.success("Exported to $path")
             else toast?.warning("Export failed — see log")
         },
-        ContextMenuItem.Action(label = "Copy graph SNBT") {
+        ContextMenuItem.Action(label = "📋 Copy graph SNBT") {
             if (GraphExporter.copyToClipboard(editor.graph)) toast?.success("Copied SNBT to clipboard")
             else toast?.warning("Copy failed — see log")
         },
     )
+}
+
+private fun categoryIcon(c: NodeCategory): String = when (c) {
+    NodeCategory.IO -> "🔌"
+    NodeCategory.LOGIC -> "🧮"
+    NodeCategory.MATH -> "➗"
+    NodeCategory.VECTOR -> "➡"
+    NodeCategory.CONVERSION -> "🔄"
+    NodeCategory.FLOW -> "🌊"
+    NodeCategory.CONSTANTS -> "🔢"
 }
 
 private fun buildNodeItems(
@@ -97,16 +110,16 @@ private fun buildNodeItems(
     target: ContextMenuTarget.Node,
     toast: dev.nitka.nodewire.ui.feedback.ToastManager?,
 ): List<ContextMenuItem> = listOf(
-    ContextMenuItem.Action(label = "Rename") {
+    ContextMenuItem.Action(label = "✏ Rename") {
         editor.renamingNode = target.nodeId
     },
     ContextMenuItem.Separator,
-    ContextMenuItem.Action(label = "Duplicate") {
+    ContextMenuItem.Action(label = "📑 Duplicate") {
         editor.duplicateNode(target.nodeId)
         toast?.info("Duplicated")
     },
     ContextMenuItem.Separator,
-    ContextMenuItem.Action(label = "Delete") {
+    ContextMenuItem.Action(label = "🗑 Delete") {
         editor.removeNode(target.nodeId)
         toast?.info("Deleted")
     },
@@ -118,21 +131,22 @@ private fun buildGroupItems(
     toast: dev.nitka.nodewire.ui.feedback.ToastManager?,
 ): List<ContextMenuItem> {
     val g = editor.graph.groups.firstOrNull { it.id == target.groupId } ?: return emptyList()
-    val collapseLabel = if (g.collapsed) "Expand" else "Collapse"
+    val collapseLabel = if (g.collapsed) "🔼 Expand" else "🔽 Collapse"
     val items = mutableListOf<ContextMenuItem>(
+        ContextMenuItem.Action("✏ Rename") { editor.renamingGroup = target.groupId },
         ContextMenuItem.Action(collapseLabel) { editor.toggleCollapsed(target.groupId) },
     )
     if (g.templateFile == null) {
-        items.add(ContextMenuItem.Action("Save as template…") {
+        items.add(ContextMenuItem.Action("💾 Save as template…") {
             editor.pendingSaveTemplateForGroup = target.groupId
         })
     } else {
-        items.add(ContextMenuItem.Action("Unlink (template: ${g.templateFile})") {
+        items.add(ContextMenuItem.Action("🔗 Unlink (template: ${g.templateFile})") {
             editor.unlinkGroup(target.groupId); toast?.info("Unlinked")
         })
     }
     items.add(ContextMenuItem.Separator)
-    items.add(ContextMenuItem.Action("Ungroup") {
+    items.add(ContextMenuItem.Action("✂ Ungroup") {
         editor.ungroup(target.groupId); toast?.info("Ungrouped")
     })
     return items

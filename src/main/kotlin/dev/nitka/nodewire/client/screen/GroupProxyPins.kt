@@ -52,26 +52,42 @@ object GroupProxyPins {
         )
 
         val candidates = mutableListOf<Candidate>()
-        val seen = HashSet<Triple<NodeId, String, PinSide>>()
 
-        for (e in graph.edges) {
-            val fromInside = e.from.node in memberClosure
-            val toInside = e.to.node in memberClosure
-            if (fromInside == toInside) continue
-
-            val side = if (fromInside) PinSide.Output else PinSide.Input
-            val node = if (fromInside) graph.nodes[e.from.node] else graph.nodes[e.to.node]
-            if (node == null) continue
-            val pinId = if (fromInside) e.from.pin else e.to.pin
-            val pin = if (fromInside) node.outputs.firstOrNull { it.id == pinId }
-                      else node.inputs.firstOrNull { it.id == pinId }
-            if (pin == null) continue
-
-            val key = Triple(node.id, pin.id, side)
-            if (!seen.add(key)) continue
-
+        // Walk every member node's pins. Expose a pin as a proxy unless
+        // it's exclusively connected to OTHER members (i.e. a purely
+        // internal wire). Unconnected pins are exposed too so the user
+        // can wire to them after collapse without having to expand.
+        for (nodeId in memberClosure) {
+            val node = graph.nodes[nodeId] ?: continue
             val typeDn = NodeTypeRegistry.get(node.typeKey)?.displayName ?: node.typeKey.path
-            candidates.add(Candidate(side, node.id, pin.id, pin.type, pin.name, typeDn, e.label))
+
+            for (input in node.inputs) {
+                val incoming = graph.edges.filter {
+                    it.to.node == nodeId && it.to.pin == input.id
+                }
+                val hasExternal = incoming.any { it.from.node !in memberClosure }
+                val allInternal = incoming.isNotEmpty() && !hasExternal
+                if (allInternal) continue
+                val edgeLabel = incoming.firstOrNull { it.from.node !in memberClosure }?.label
+                candidates.add(Candidate(
+                    PinSide.Input, nodeId, input.id, input.type,
+                    input.name, typeDn, edgeLabel,
+                ))
+            }
+
+            for (output in node.outputs) {
+                val outgoing = graph.edges.filter {
+                    it.from.node == nodeId && it.from.pin == output.id
+                }
+                val hasExternal = outgoing.any { it.to.node !in memberClosure }
+                val allInternal = outgoing.isNotEmpty() && !hasExternal
+                if (allInternal) continue
+                val edgeLabel = outgoing.firstOrNull { it.to.node !in memberClosure }?.label
+                candidates.add(Candidate(
+                    PinSide.Output, nodeId, output.id, output.type,
+                    output.name, typeDn, edgeLabel,
+                ))
+            }
         }
 
         // Pass 2: pick base label for each candidate.

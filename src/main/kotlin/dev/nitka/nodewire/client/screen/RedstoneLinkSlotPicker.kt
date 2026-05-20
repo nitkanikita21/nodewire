@@ -69,7 +69,11 @@ private fun FrequencySlot(node: Node, editor: EditorState?, slotKey: String) {
     var anchor by remember { mutableStateOf<LayoutCoordinates?>(null) }
     var hovered by remember { mutableStateOf(false) }
     val canvas = LocalCanvasState.current
-    val currentStack = ItemStack.of(node.config.getCompound(slotKey))
+    val currentStack = run {
+        val ra = net.minecraft.client.Minecraft.getInstance().level?.registryAccess()
+            ?: return@run ItemStack.EMPTY
+        ItemStack.parse(ra, node.config.getCompound(slotKey)).orElse(ItemStack.EMPTY)
+    }
 
     Box(
         modifier = Modifier
@@ -183,9 +187,10 @@ private fun ItemSlotIcon(stack: ItemStack) {
 }
 
 private fun setSlot(node: Node, editor: EditorState?, slotKey: String, stack: ItemStack) {
+    val ra = net.minecraft.client.Minecraft.getInstance().level?.registryAccess() ?: return
     editor?.updateNode(node.id) { n ->
         n.copy(config = n.config.copy().apply {
-            put(slotKey, stack.save(CompoundTag()))
+            put(slotKey, stack.save(ra))
         })
     }
 }

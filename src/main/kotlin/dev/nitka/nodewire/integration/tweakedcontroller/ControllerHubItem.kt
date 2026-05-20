@@ -1,8 +1,10 @@
 package dev.nitka.nodewire.integration.tweakedcontroller
 
 import net.minecraft.core.BlockPos
+import net.minecraft.core.component.DataComponents
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.world.item.ItemStack
+import net.minecraft.world.item.component.CustomData
 
 /**
  * The Tweaked Controller item's "hub" binding lives directly in its NBT.
@@ -23,20 +25,23 @@ object ControllerHubItem {
 
     fun putHub(stack: ItemStack, pos: BlockPos) {
         if (stack.isEmpty) return
-        val tag: CompoundTag = stack.orCreateTag
+        val tag = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag()
         tag.putLong(NW_HUB_POS_KEY, pos.asLong())
+        stack.set(DataComponents.CUSTOM_DATA, CustomData.of(tag))
     }
 
     fun getHub(stack: ItemStack): BlockPos? {
         if (stack.isEmpty) return null
-        val tag = stack.tag ?: return null
+        val tag = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag()
         if (!tag.contains(NW_HUB_POS_KEY)) return null
         return BlockPos.of(tag.getLong(NW_HUB_POS_KEY))
     }
 
     fun clearHub(stack: ItemStack) {
         if (stack.isEmpty) return
-        val tag = stack.tag ?: return
+        val tag = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag()
+        if (!tag.contains(NW_HUB_POS_KEY)) return
         tag.remove(NW_HUB_POS_KEY)
+        stack.set(DataComponents.CUSTOM_DATA, CustomData.of(tag))
     }
 }

@@ -3,7 +3,12 @@ name: Release
 on:
   push:
     tags:
+      # Stable: v1.2.3
       - "v*"
+      # Dev/test build for the in-flight port (e.g. dev-v0.1.0-neoforge-1.21.1).
+      # Both patterns flow through the same job; prerelease is detected from
+      # the tag name so dev pushes don't promote to "latest".
+      - "dev-v*"
 
 permissions:
   contents: write
@@ -16,11 +21,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          java-version: 21
 
       - name: Set up Gradle (with cache)
         uses: gradle/actions/setup-gradle@v4
@@ -38,10 +43,25 @@ jobs:
           echo "--- deps-table.md ---"
           cat deps-table.md
 
+      # Tag like `dev-v...`, `v...-dev...`, `-rc...`, `-alpha...`, `-beta...`
+      # → prerelease. Anything else → stable.
+      - name: Decide prerelease flag
+        id: prerel
+        run: |
+          tag="${{ github.ref_name }}"
+          if [[ "$tag" == dev-* || "$tag" == *-dev* || "$tag" == *-rc* || "$tag" == *-alpha* || "$tag" == *-beta* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "Detected prerelease tag: $tag"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "Detected stable tag: $tag"
+          fi
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: ${{ github.ref_name }}
+          prerelease: ${{ steps.prerel.outputs.prerelease }}
           generate_release_notes: true
           append_body: true
           body_path: deps-table.md

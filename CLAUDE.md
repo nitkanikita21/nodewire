@@ -2,24 +2,26 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> **Branch note.** `master` is the working **Forge 1.20.1** build (v0.1.x). The active branch `port/neoforge-1.21.1` is a **NeoForge 1.21.1** port (v0.2.0-dev). This document describes the port branch — for the 1.20.1 build, check out master.
+
 ## Project
 
-**Nodewire** — Minecraft Forge 1.20.1 Kotlin mod that replaces redstone with a node-based logic system. Designed to work across ship boundaries (Valkyrien Skies) and interoperate with Create. Uses a custom Jetpack Compose-based UI framework (no Skiko/AWT) for the in-world node editor.
+**Nodewire** — Minecraft NeoForge 1.21.1 Kotlin mod that replaces redstone with a node-based logic system. Designed to work across ship boundaries (via **Sable** sub-levels) and interoperate with **Create** + **Create Aeronautics**. Uses a custom Jetpack Compose-based UI framework (no Skiko/AWT) for the in-world node editor.
 
 ## Stack
 
-- **Minecraft** 1.20.1 + **Forge** 47.4.10 + **Kotlin** 2.0.20 + **KFF** 4.11.0 (KFF 4.12 requires Kotlin 2.2)
-- **Build plugin:** **`net.neoforged.moddev.legacyforge` 2.0.141** (NOT ForgeGradle 6). Migrated 2026-05-13 because FG6 + non-MCP mappings + Mixin 0.8.5 fails to remap 3rd-party SRG refmaps (Ponder/EMI crash on load). ModDevGradle replaces all of that, plus uses `parchment` mappings via its own block.
-- **Java toolchain:** 17 (Forge requirement). Yoga jar in `libs/` is rebuilt locally to Java 17 bytecode — upstream Maven release ships Java 21.
-- **Compose runtime** 1.7.0 — `compose.runtime` ONLY (composition + recomposition). No `compose.ui`, no Skiko, no AWT. Both compose-runtime and yoga are **shaded into the mod jar** via `extractShadedLibs` task — declared `compileOnly` only. JPMS in ModDev isolates the mod's module from KFF's, so external libs with kotlin deps can't reach `kotlin.*` exports across module boundaries. Shading puts everything in our module's classes output, side-stepping the issue entirely.
-- **Yoga** (AppliedEnergistics fork) — pure-Java flexbox for layout. Rebuild instructions in `docs/superpowers/notes/2026-05-13-yoga-rebuild.md`.
-- **Integrations:** Valkyrien Skies 2, Create 6.0.8 + Ponder + Flywheel + Registrate, JEI, EMI — declared via `modImplementation`/`modCompileOnly`/`modRuntimeOnly` (ModDev auto-remaps SRG → Mojang).
+- **Minecraft** 1.21.1 + **NeoForge** 21.1.230 + **Kotlin** 2.0.20 + **KFF (kotlinforforge-neoforge)** 5.5.0.
+- **Build plugin:** **`net.neoforged.moddev` 2.0.141** (non-legacy variant — no Forge-isms, no `legacyForge` block). ModDevGradle owns mappings (parchment), runs generation, and source-set wiring.
+- **Java toolchain:** **21** (NeoForge requirement). Yoga jar in `libs/` is on Java 21 bytecode now.
+- **Compose runtime** 1.7.0 — `compose.runtime` ONLY (composition + recomposition). No `compose.ui`, no Skiko, no AWT. compose-runtime + yoga are **shaded into the mod jar** via `extractShadedLibs` task — declared `compileOnly` only. JPMS in NeoForge isolates our module from KFF's; shading puts everything in our module's classes output.
+- **Yoga** (AppliedEnergistics fork) — pure-Java flexbox for layout. Rebuild instructions in `docs/yoga-rebuild.md`.
+- **Integrations:** **Sable Companion** 1.6.0 (no-op shim — Sable replaces it via Gradle capability resolution when installed), **Sable** 1.2.2+ (runtime), **Create** 6.0.10-280 + Ponder 1.0.82 + Flywheel 1.0.6 + Registrate 1.3.0+67, **Create Aeronautics** 1.2.1+ (Modrinth — Curse Maven 403s its monetized listing), **Tweaked Controllers** 1.2.7, JEI 19.21.x, EMI 1.1.18. All declared via `compileOnly`/`runtimeOnly` (ModDev auto-handles remapping).
 
 ## Commands
 
 ```bash
 ./gradlew build           # compile + reobf, ~30s incremental
-./gradlew test            # JUnit 5 — Yoga/Compose smoke tests
+./gradlew test            # JUnit 5 — Yoga/Compose smoke tests + codec roundtrips
 ./gradlew test --tests "<FQCN>"  # single test class
 ./gradlew dependencies    # debug classpath conflicts (Kotlin/coroutines/Compose)
 ```
@@ -28,14 +30,15 @@ ModDevGradle generates IDE runs automatically on Gradle sync; no `genIntellijRun
 
 **Do NOT run `./gradlew runClient` yourself** — the user runs it manually and reports results. `runServer`, `build`, `test`, `dependencies` are fine.
 
-In-game testing: launch client, enter a world, press **N** to open the dev UI demo screen (`DemoScreen` bound via `NodewireClient`).
+In-game testing: launch client, place a Nodewire block, right-click to open the editor.
 
 ## Architecture
 
 ### Mod entrypoint
 - `dev.nitka.nodewire.Nodewire` — `@Mod` class, common-side init.
-- `dev.nitka.nodewire.Registry` — DeferredRegister setup for blocks/items/BEs.
-- `dev.nitka.nodewire.client.NodewireClient` — `@Mod.EventBusSubscriber(value = [Dist.CLIENT])`, registers the `N` keybind via `RegisterKeyMappingsEvent` + listens to `TickEvent.ClientTickEvent` for `consumeClick()`.
+- `dev.nitka.nodewire.Registry` — DeferredRegister setup for blocks/items/BEs (NeoForge `DeferredRegister.Blocks/Items`, `DeferredBlock`/`DeferredItem`/`DeferredHolder`).
+- `dev.nitka.nodewire.client.NodewireClient` — `@EventBusSubscriber(value = [Dist.CLIENT])`, listens to `ClientTickEvent.Post`.
+- `dev.nitka.nodewire.net.NodewireNetwork` — `@EventBusSubscriber` on the MOD bus, registers `CustomPacketPayload` types in `RegisterPayloadHandlersEvent`. Send sites use `PacketDistributor.sendToServer` / `sendToPlayer`.
 
 ### UI framework (`dev.nitka.nodewire.ui`)
 Custom Compose backend pinned to the MC client thread. Three-layer architecture:
@@ -51,7 +54,7 @@ Custom Compose backend pinned to the MC client thread. Three-layer architecture:
    - `InputModifierElement` → collected for hit-testing
    - `core/YogaReset.kt` resets all touched Yoga properties between recompositions.
 
-3. **Render** — `render/NwCanvas.kt` wraps `GuiGraphics + Font` with an offset stack. `render/PaintWalk.kt` (`UiNode.renderWalk(canvas)`) walks the tree with `try/finally` around `popOffset`. `core/NwComposeScreen.kt` is the abstract `Screen` subclass — does NOT call `super.render()` (Compose owns layout). `isPauseScreen = false`.
+3. **Render** — `render/NwCanvas.kt` wraps `GuiGraphics + Font` with an offset stack. `render/PaintWalk.kt` walks the tree with `try/finally` around `popOffset`. `core/NwComposeScreen.kt` is the abstract `Screen` subclass — does NOT call `super.render()` (Compose owns layout). `isPauseScreen = false`. `mouseScrolled` has the NeoForge 4-arg signature (`scrollX`/`scrollY`).
 
 ### Modifier chain compilation
 A `Modifier` is a linked list of `Element`s. `UiNode.modifier =` triggers a single `foldIn`:
@@ -68,26 +71,55 @@ value.foldIn(Unit) { _, element ->
 
 This means new modifiers are added by implementing one of the three marker interfaces — never by switching on type elsewhere.
 
-### Implementation status
-Phases 1–5 of the UI framework are complete (build setup → value types → applier/yoga → canvas → owner/screen). The framework can mount a real Compose composition into an MC `Screen`. Phase 6+ adds `Layout` primitive + `Box`/`Spacer`/`Row`/`Column`/`Text` composables, the theme system, input handling, and finally `Surface`/`Button`. The node editor itself is rebuilt on top of the framework after Phase 12.
+### Node editor — unified selection model
+`EditorState` keeps **three** selection sets (`selectedNodes`, `selectedGroups`, `selectedComments`) — UUIDs of different element kinds would collide in a single set. All three element renderers (`NodeCard`, `GroupFrame` + `GroupCollapsedTile`, `CommentCard`) share the same press/drag/marquee logic:
 
-Current plan: `docs/superpowers/plans/2026-05-13-compose-ui-framework.md`.
+- LMB on an *unselected* item → `clearSelection() + select(this)`.
+- LMB on an *already selected* item → no-op (so drag that follows moves the whole selection).
+- Shift+LMB → toggle.
+- Marquee (drag on empty canvas) → AABB-tests all three kinds; Shift makes it additive.
+- Drag on a selected item → `moveSelected(dx, dy)`, which moves directly-selected nodes + the closure of every selected group (recursive sub-groups too) + every selected comment, deduped, in one undoable step.
+- `Del` deletes everything in the union.
+- `Ctrl+C/X/D` flatten selected groups into their member-node closure (groups become a flat set of nodes on clipboard / on duplicate).
+- Accent-border highlight (2 px) consistent across the three element types.
+
+`GroupBbox` + `GroupProxyPins.memberClosure` are shared helpers — marquee hit-testing for groups uses the same recipe as `GroupFrame`'s bbox calculation.
+
+### Endpoint backends (`integration/<mod>/*Backend.kt`)
+`EndpointBackend` resolves an `EndpointRef` (`(BackendId, payloadNbt)`) to a server-side `BlockEntity` + world-space pose. Order at registration in `Nodewire.init` matters — first registered wins on `claims(level, pos)`:
+
+1. `SableSubLevelBackend` — payload `(UUID subLevelId, BlockPos)`. Resolves through the parent `Level` directly (sub-levels live as plot regions in the parent). `worldCenter`/`worldDirection` apply `SubLevelAccess.logicalPose()` server-side and `ClientSubLevelAccess.renderPose()` client-side for smooth partial-tick rendering. `claims` consults `SableCompanion.INSTANCE.getContaining`.
+2. `WorldBackend` — fallback. Vanilla `Level.getBlockEntity(pos)` + identity pose.
+
+### Aeronautics integration (`integration/aeronautics/`)
+Aircraft built by Aeronautics ARE Sable sub-levels — the wire layer is transparent. On top of that, individual Aeronautics blocks expose state through `AeroChannel`s (`SMART_PROPELLER.rpm`, `HOT_AIR_BURNER.signal`, etc.). Pipeline:
+
+- `AeroBlockKind` — enum of the 7 supported BE types, matches via reflection (`fqn` + hierarchy walk, ModList-guarded).
+- `AeroChannel` — catalog (~33 channels, 7 kinds), each with a `read(be) -> PinValue` reflection accessor + a `writable: Boolean` flag.
+- `AeroStatePipeline` — per-server-tick snapshot keyed by `AeroBindingKey(endpoint, kind, channel)`. ThreadLocal so node evaluators read in O(1). ModList-gated → no snapshot work when Aeronautics is absent.
+- `AeroInputNode` — single typed-pin `NodeType` whose pin reshapes from `config.channel`. Evaluator looks up the snapshot.
+- Bind UX: held `ChannelLinkToolItem` + sneak+RMB on Aero block → `AeroChannelPickerScreen` → packs binding into `BindAeroSourcePacket` → server replaces the target node's config via `LogicBlockEntity.replaceNodeConfig`.
+
+### Sub-skill workflow
+Specs → plans → execution under `docs/superpowers/`:
+- `docs/superpowers/specs/` — design docs (one per slice, dated)
+- `docs/superpowers/plans/` — implementation plans (phase-based task lists with checkboxes)
+- `docs/yoga-rebuild.md`, `docs/usage.md` — reference material at the docs root (not under `superpowers/`)
+
+Plans are executed via `superpowers:subagent-driven-development` (preferred) or inline.
 
 ## Critical gotchas
 
-- **`InputConstants`** — use `com.mojang.blaze3d.platform.InputConstants` (NOT `net.minecraft.client.util.InputConstants`, which doesn't exist in 1.20.1).
+- **`InputConstants`** — use `com.mojang.blaze3d.platform.InputConstants`.
 - **Yoga API quirks** — `setWidth(Float)` doesn't exist; use `StyleSizeLength.points(f)`. `removeChildAt`/`getChildAt` don't exist; use `removeChild(int)`/`getChild(int)`. To detach for re-attach use `removeChildAndInvalidate(YogaNode)`.
-- **Event bus mismatch** — `@Mod.EventBusSubscriber` defaults to FORGE bus. `RegisterKeyMappingsEvent` fires on MOD bus, so a keymapping handler annotated alongside a tick handler in one Kotlin `object` silently never fires. Register MOD-bus handlers explicitly via KFF `MOD_BUS.addListener` from `Nodewire.init`.
-- **legacyForge DSL** — inside `enable { ... }` block, use Groovy-style assignment `forgeVersion = "..."` (NOT `.set("...")`). Local `val forgeVersion: String by project` shadows the API — use a different name (we use `forgeVer`).
-- **`google()` maven** is required — Compose runtime transitively pulls `androidx.annotation`.
-
-## Docs layout
-
-- `docs/superpowers/specs/` — design docs (one per slice, dated)
-- `docs/superpowers/plans/` — implementation plans (one per spec, dated, phased)
-- `docs/superpowers/notes/` — reference material (build recipes, API examples)
-
-Plans use phase-based task lists with checkboxes; each phase ends in a commit. Spec → plan → execute (via `superpowers:subagent-driven-development` or inline) is the standard workflow.
+- **JPMS module reads** — NeoForge runs in a multi-module layer; `kotlin.stdlib` doesn't read `kotlinx.coroutines.core` by default, so `launch{}` from a coroutine-using mod throws `IllegalAccessError`. Fixed via `JpmsBridge.kt` + `JpmsBridgeHelper.java`: helper class is loaded into an anonymous ClassLoader's *unnamed* module (where `--add-opens=java.base/java.lang=ALL-UNNAMED` actually applies), then calls `Module.implAddReads(kotlin.stdlib, kotlinx.coroutines.core)` via reflection. The run task also passes `--add-reads=kotlin.stdlib=kotlinx.coroutines.core` as a belt-and-braces.
+- **`mods.toml` → `neoforge.mods.toml`** — schema is different. Use `[[mixins]]` blocks (not `mixins = [...]` array), drop Forge-only fields.
+- **Network rewrite (Phase 4)** — packets are `CustomPacketPayload` data classes with static `TYPE` + `STREAM_CODEC`. Register in `RegisterPayloadHandlersEvent`, not the old `SimpleChannel` API. Server→client packets drop `DistExecutor`.
+- **`ItemStack` NBT** — replaced by data components. `stack.tag` → `DataComponents.CUSTOM_DATA` (`CustomData` wrapper). `ItemStack.of(tag)` → `ItemStack.parse(RegistryAccess, Tag)`.
+- **Block.use vs useWithoutItem** — vanilla split the methods. Use `useWithoutItem` when ignoring the held item.
+- **BE save/load signatures** — `save(HolderLookup.Provider, CompoundTag)` and `loadAdditional(HolderLookup.Provider, CompoundTag)`. `getUpdateTag(Provider)`. `onDataPacket` removed — vanilla calls `loadCustomOnly`.
+- **Aeronautics deps** — Modrinth maven only. The Curse Maven 403s on monetized listings. Aero classes are inside a jarjar wrapper (no top-level `.class` files) → integration uses qualified-name reflection, not direct compile-time references.
+- **Compose ComposableSingletons stale cache** — incremental Kotlin/Compose compile occasionally drops a `ComposableSingleton$lambda-N` → `NoSuchMethodError` at runtime. Fix: `./gradlew clean :compileKotlin`.
 
 ## Communication
 

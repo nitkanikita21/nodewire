@@ -40,6 +40,15 @@ import kotlinx.coroutines.flow.asStateFlow
 class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = net.minecraft.core.BlockPos.ZERO) {
     val pinPositions = PinPositions()
 
+    /**
+     * Wired by [dev.nitka.nodewire.client.screen.NodeEditorScreen] to send a
+     * SaveGraphPacket on demand. Operations whose state would be lost if the
+     * world unloads without a clean `removed()` (e.g. toggling collapse)
+     * fire this immediately so the server-side BE has the up-to-date graph
+     * even when the editor closes via crash / world unload / disconnect.
+     */
+    var requestSave: (() -> Unit)? = null
+
     private val undoController = GraphUndoController { net.minecraft.Util.getMillis() }
 
     /**
@@ -172,6 +181,10 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
             nodeFlows.remove(id)
             _nodes.value = _nodes.value - id
             _edges.value = _edges.value.filter { it.from.node != id && it.to.node != id }
+            // Drop the node's pin positions — otherwise the wire renderer
+            // can still resolve a stale (last-frame) endpoint for newly
+            // dangling edges in flight to the same recomposition.
+            pinPositions.removeNode(id)
             syncGroupsFlow()
         }
     }
@@ -218,8 +231,24 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         }
     }
 
+    private val _renamingNode = mutableStateOf<NodeId?>(null)
+    private val _renamingGroup = mutableStateOf<GroupId?>(null)
+
     /** Node currently being labelled via the inline overlay (null = idle). */
-    var renamingNode: NodeId? by mutableStateOf(null)
+    var renamingNode: NodeId?
+        get() = _renamingNode.value
+        set(value) {
+            _renamingNode.value = value
+            if (value != null) _renamingGroup.value = null
+        }
+
+    /** Group currently being renamed via the inline overlay (null = idle). */
+    var renamingGroup: GroupId?
+        get() = _renamingGroup.value
+        set(value) {
+            _renamingGroup.value = value
+            if (value != null) _renamingNode.value = null
+        }
 
     /**
      * Update a node's label. Blank or null clears it (stored as null so
@@ -232,6 +261,22 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
             val updated = node.copy(label = sanitized)
             graph.nodes[id] = updated
             nodeFlows[id]?.value = updated
+        }
+    }
+
+    /**
+     * Update a group's display name. Group name is non-null in the codec
+     * (`Codec.STRING.fieldOf("name")`), so blank input falls back to the
+     * literal "Group" — intentionally asymmetric with [setNodeLabel] where
+     * blank clears the optional sub-label.
+     */
+    fun setGroupName(id: GroupId, name: String) {
+        mutateGraph(mergeable = false) {
+            val sanitized = name.takeIf { it.isNotBlank() } ?: "Group"
+            val idx = graph.groups.indexOfFirst { it.id == id }
+            if (idx < 0) return@mutateGraph
+            graph.groups[idx] = graph.groups[idx].copy(name = sanitized)
+            syncGroupsFlow()
         }
     }
 
@@ -643,6 +688,37 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
     }
 
     /**
+     * Switch an `aeronautics_input` node's channel selection. Mirrors
+     * [changeVecOp]: reshape the node's pin layout via [AeroInputNode.pinsFor],
+     * update the config, and disconnect all edges so we never leave a
+     * type-mismatched wire dangling.
+     *
+     * Passing a [channel] whose [AeroChannel.kind] differs from [blockKind]
+     * is a programming error — the picker should never offer such a pair.
+     */
+    fun changeAeroChannel(
+        id: dev.nitka.nodewire.graph.NodeId,
+        blockKind: dev.nitka.nodewire.integration.aeronautics.AeroBlockKind,
+        channel: dev.nitka.nodewire.integration.aeronautics.AeroChannel,
+    ) {
+        require(channel.kind == blockKind) {
+            "channel ${channel.name} belongs to ${channel.kind}, not $blockKind"
+        }
+        mutateGraph(mergeable = false) {
+            _updateNodeInternal(id) { n ->
+                val (ins, outs) = dev.nitka.nodewire.integration.aeronautics
+                    .AeroInputNode.pinsFor(channel)
+                val newConfig = n.config.copy().apply {
+                    putString("blockKind", blockKind.name)
+                    putString("channel", channel.name)
+                }
+                n.copy(inputs = ins, outputs = outs, config = newConfig)
+            }
+            _disconnectAllEdgesInternal(id)
+        }
+    }
+
+    /**
      * For a (op, dim), return the canonical (effectiveDim, inputs, outputs)
      * triple. Op categories:
      *   * Vec→Vec binary: a, b ∈ V → out:V
@@ -814,6 +890,36 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         private set
 
     /**
+     * Selected groups (currently distinct from [selectedNodes] — a single
+     * selection model would conflate node ids with group ids since both
+     * are UUIDs). Used by [createGroupFromSelection] to wrap groups as
+     * [MemberRef.Sub] children of a newly-created outer group.
+     */
+    var selectedGroups: Set<GroupId> by mutableStateOf(emptySet())
+        private set
+
+    fun toggleGroupSelection(id: GroupId) {
+        selectedGroups = if (id in selectedGroups) selectedGroups - id else selectedGroups + id
+    }
+
+    fun isGroupSelected(id: GroupId): Boolean = id in selectedGroups
+
+    /**
+     * Selected comments — kept in a separate set for the same reason as
+     * [selectedGroups]: ids are UUIDs and would collide with node ids in a
+     * single set. Box-select and Delete operate on it uniformly with nodes
+     * and groups.
+     */
+    var selectedComments: Set<CommentId> by mutableStateOf(emptySet())
+        private set
+
+    fun toggleCommentSelection(id: CommentId) {
+        selectedComments = if (id in selectedComments) selectedComments - id else selectedComments + id
+    }
+
+    fun isCommentSelected(id: CommentId): Boolean = id in selectedComments
+
+    /**
      * Measured card sizes in world units (pre-zoom). Updated by NodeCard
      * via onSizeChanged so rubber-band hit tests use real bounds — using a
      * constant height guess made the AABB extend below the card and
@@ -829,7 +935,11 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
 
     fun isSelected(id: dev.nitka.nodewire.graph.NodeId): Boolean = id in selectedNodes
 
-    fun clearSelection() { if (selectedNodes.isNotEmpty()) selectedNodes = emptySet() }
+    fun clearSelection() {
+        if (selectedNodes.isNotEmpty()) selectedNodes = emptySet()
+        if (selectedGroups.isNotEmpty()) selectedGroups = emptySet()
+        if (selectedComments.isNotEmpty()) selectedComments = emptySet()
+    }
 
     /** Replace the selection with this one node. */
     fun selectOnly(id: dev.nitka.nodewire.graph.NodeId) { selectedNodes = setOf(id) }
@@ -850,10 +960,51 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
      * [Node.pos] which we mutate here.
      */
     fun moveSelected(dxWorld: Float, dyWorld: Float) {
-        if (selectedNodes.isEmpty()) return
+        if (selectedNodes.isEmpty() && selectedGroups.isEmpty() && selectedComments.isEmpty()) return
         mutateGraph(mergeable = true) {
-            for (id in selectedNodes) {
-                _updateNodeInternal(id) { n -> n.copy(pos = CanvasPos(n.pos.x + dxWorld, n.pos.y + dyWorld)) }
+            val allById = graph.groups.associateBy { it.id }
+            // Union of node ids to move: directly-selected nodes + closure
+            // of every selected group. Dedup so a node selected both
+            // directly and via a selected group is moved once.
+            val nodeIds = HashSet<NodeId>()
+            nodeIds.addAll(selectedNodes)
+            for (gid in selectedGroups) {
+                val g = allById[gid] ?: continue
+                nodeIds.addAll(GroupProxyPins.memberClosure(g, allById))
+            }
+            for (id in nodeIds) {
+                _updateNodeInternal(id) { n ->
+                    n.copy(pos = CanvasPos(n.pos.x + dxWorld, n.pos.y + dyWorld))
+                }
+            }
+            // Shift anchors of every selected group AND their nested
+            // sub-groups so collapsed tiles + frames track the move.
+            if (selectedGroups.isNotEmpty()) {
+                val anchorMap = graph.groups.associate { it.id to it.pos }.toMutableMap()
+                val touched = HashSet<GroupId>()
+                val stack = ArrayDeque<Group>()
+                for (gid in selectedGroups) allById[gid]?.let(stack::addLast)
+                while (stack.isNotEmpty()) {
+                    val cur = stack.removeLast()
+                    if (!touched.add(cur.id)) continue
+                    anchorMap[cur.id] = CanvasPos(cur.pos.x + dxWorld, cur.pos.y + dyWorld)
+                    for (m in cur.members) if (m is MemberRef.Sub) allById[m.id]?.let(stack::addLast)
+                }
+                val rebuilt = graph.groups.map { gg -> gg.copy(pos = anchorMap[gg.id] ?: gg.pos) }
+                graph.groups.clear()
+                graph.groups.addAll(rebuilt)
+                syncGroupsFlow()
+            }
+            if (selectedComments.isNotEmpty()) {
+                for (i in graph.comments.indices) {
+                    val c = graph.comments[i]
+                    if (c.id in selectedComments) {
+                        graph.comments[i] = c.copy(
+                            pos = CanvasPos(c.pos.x + dxWorld, c.pos.y + dyWorld),
+                        )
+                    }
+                }
+                syncCommentsFlow()
             }
         }
     }
@@ -902,7 +1053,7 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         val maxX = maxOf(s.x, e.x)
         val minY = minOf(s.y, e.y)
         val maxY = maxOf(s.y, e.y)
-        val hits = graph.nodes.values.filter { n ->
+        val nodeHits = graph.nodes.values.filter { n ->
             // Use measured size if we have one; fall back to a conservative
             // small guess so a card whose onSizeChanged hasn't fired yet
             // doesn't over-include.
@@ -915,7 +1066,50 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
             val bottom = top + h
             !(right < minX || left > maxX || bottom < minY || top > maxY)
         }.map { it.id }
-        selectedNodes = if (additive) selectedNodes + hits else hits.toSet()
+
+        // Groups: collapsed → use group.pos + measured collapsed tile size
+        // (falls back to NODE_CARD_* if not yet measured). Expanded → bbox
+        // over member-closure card rects, same recipe as GroupFrame.
+        val groupsById = graph.groups.associateBy { it.id }
+        val groupHits = graph.groups.mapNotNull { g ->
+            val gMinX: Float
+            val gMinY: Float
+            val gMaxX: Float
+            val gMaxY: Float
+            if (g.collapsed) {
+                val size = cardSizes[g.id]
+                val w = size?.first?.toFloat() ?: NODE_CARD_WIDTH
+                val h = size?.second?.toFloat() ?: NODE_CARD_HEIGHT_FALLBACK
+                gMinX = g.pos.x; gMinY = g.pos.y
+                gMaxX = g.pos.x + w; gMaxY = g.pos.y + h
+            } else {
+                val closure = dev.nitka.nodewire.client.screen.GroupProxyPins
+                    .memberClosure(g, groupsById)
+                val rects = closure.mapNotNull { id ->
+                    val n = graph.nodes[id] ?: return@mapNotNull null
+                    val size = cardSizes[id]
+                    val w = size?.first ?: NODE_CARD_WIDTH.toInt()
+                    val h = size?.second ?: NODE_CARD_HEIGHT_FALLBACK.toInt()
+                    n.pos to (w to h)
+                }
+                val bbox = dev.nitka.nodewire.graph.GroupBbox.compute(g.pos, rects)
+                gMinX = bbox.minX; gMinY = bbox.minY
+                gMaxX = bbox.maxX; gMaxY = bbox.maxY
+            }
+            if (gMaxX < minX || gMinX > maxX || gMaxY < minY || gMinY > maxY) null else g.id
+        }
+
+        val commentHits = graph.comments.filter { c ->
+            val left = c.pos.x
+            val top = c.pos.y
+            val right = left + c.width.toFloat()
+            val bottom = top + c.height.toFloat()
+            !(right < minX || left > maxX || bottom < minY || top > maxY)
+        }.map { it.id }
+
+        selectedNodes = if (additive) selectedNodes + nodeHits else nodeHits.toSet()
+        selectedGroups = if (additive) selectedGroups + groupHits else groupHits.toSet()
+        selectedComments = if (additive) selectedComments + commentHits else commentHits.toSet()
     }
 
     fun cancelSelectionDrag() {
@@ -939,23 +1133,57 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
     }
 
     fun deleteSelected() {
-        if (selectedNodes.isEmpty()) return
-        val ids = selectedNodes.toList()
+        if (selectedNodes.isEmpty() && selectedGroups.isEmpty() && selectedComments.isEmpty()) return
+        val nodeIds = selectedNodes.toList()
+        val groupIds = selectedGroups.toList()
+        val commentIds = selectedComments.toList()
         mutateGraph {
-            for (id in ids) {
+            for (id in nodeIds) {
                 graph.nodes.remove(id)
                 nodeFlows.remove(id)
             }
-            graph.edges.removeAll { it.from.node in ids || it.to.node in ids }
+            graph.edges.removeAll { it.from.node in nodeIds || it.to.node in nodeIds }
+            // Group rows in the model — Delete on a selected group treats
+            // the group "as a node": the group entry goes away; member
+            // nodes survive at their current positions (matches Ungroup).
+            // Any parent group that referenced this one as a Sub also has
+            // the dangling MemberRef.Sub removed so a future Ctrl+Z keeps
+            // the graph well-formed.
+            for (gid in groupIds) {
+                graph.groups.removeAll { it.id == gid }
+                for (i in graph.groups.indices) {
+                    val g = graph.groups[i]
+                    val cleaned = g.members.filterNot { m ->
+                        m is dev.nitka.nodewire.graph.MemberRef.Sub && m.id == gid
+                    }
+                    if (cleaned.size != g.members.size) {
+                        graph.groups[i] = g.copy(members = cleaned)
+                    }
+                }
+            }
+            if (commentIds.isNotEmpty()) {
+                graph.comments.removeAll { it.id in commentIds }
+            }
             _nodes.value = graph.nodes.keys.toList()
             _edges.value = graph.edges.toList()
+            if (groupIds.isNotEmpty()) syncGroupsFlow()
+            if (commentIds.isNotEmpty()) syncCommentsFlow()
         }
         clearSelection()
     }
 
     fun duplicateSelected() {
-        if (selectedNodes.isEmpty()) return
-        val sources = selectedNodes.mapNotNull { graph.nodes[it] }
+        if (selectedNodes.isEmpty() && selectedGroups.isEmpty()) return
+        // Mirror copy/paste flattening: groups in the selection contribute
+        // their member-closure nodes. The duplicate result is plain nodes
+        // (no group entry copied) — user can re-group via Ctrl+G.
+        val byId = graph.groups.associateBy { it.id }
+        val expanded = selectedGroups.flatMap { gid ->
+            byId[gid]?.let { dev.nitka.nodewire.client.screen.GroupProxyPins.memberClosure(it, byId) }
+                ?: emptySet()
+        }.toSet()
+        val sourceIds = selectedNodes + expanded
+        val sources = sourceIds.mapNotNull { graph.nodes[it] }
         if (sources.isEmpty()) return
         val newIds = mutableListOf<NodeId>()
         mutateGraph {
@@ -978,11 +1206,22 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
     }
 
     fun copySelectedToClipboard() {
-        if (selectedNodes.isEmpty()) return
+        if (selectedNodes.isEmpty() && selectedGroups.isEmpty()) return
+        // Flatten selected groups (and their nested sub-groups) into their
+        // constituent node ids, then union with directly-selected nodes.
+        // Group identity itself is NOT preserved on clipboard — pasted
+        // graph is plain nodes + edges; the user can re-group after paste.
+        val byId = graph.groups.associateBy { it.id }
+        val groupExpanded = selectedGroups.flatMap { gid ->
+            byId[gid]?.let { dev.nitka.nodewire.client.screen.GroupProxyPins.memberClosure(it, byId) }
+                ?: emptySet()
+        }.toSet()
+        val nodeIds = selectedNodes + groupExpanded
+        if (nodeIds.isEmpty()) return
         val sub = NodeGraph().apply {
-            for (n in graph.nodes.values) if (n.id in selectedNodes) add(n)
+            for (n in graph.nodes.values) if (n.id in nodeIds) add(n)
             for (e in graph.edges) {
-                if (e.from.node in selectedNodes && e.to.node in selectedNodes) edges.add(e)
+                if (e.from.node in nodeIds && e.to.node in nodeIds) edges.add(e)
             }
         }
         net.minecraft.client.Minecraft.getInstance().keyboardHandler.clipboard =
@@ -1096,18 +1335,30 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         return g
     }
 
-    /** Create an inline group containing the current selection. */
+    /**
+     * Create an inline group containing the current selection. Both
+     * [selectedNodes] and [selectedGroups] become members: nodes via
+     * [MemberRef.Node], existing groups via [MemberRef.Sub] for proper
+     * nesting (move-group + member-closure walk through Sub refs).
+     */
     fun createGroupFromSelection(name: String): GroupId? {
-        if (selectedNodes.isEmpty()) return null
-        val ids = selectedNodes.toList()
-        val xs = ids.mapNotNull { graph.nodes[it]?.pos?.x }
-        val ys = ids.mapNotNull { graph.nodes[it]?.pos?.y }
+        if (selectedNodes.isEmpty() && selectedGroups.isEmpty()) return null
+        val nodeIds = selectedNodes.toList()
+        val subIds = selectedGroups.toList()
+        val members = nodeIds.map { MemberRef.Node(it) } +
+            subIds.map { MemberRef.Sub(it) }
+        // Anchor at top-left of the union of all chosen positions —
+        // selected nodes' own pos, plus selected groups' pos.
+        val xs = nodeIds.mapNotNull { graph.nodes[it]?.pos?.x } +
+            subIds.mapNotNull { gid -> graph.groups.firstOrNull { it.id == gid }?.pos?.x }
+        val ys = nodeIds.mapNotNull { graph.nodes[it]?.pos?.y } +
+            subIds.mapNotNull { gid -> graph.groups.firstOrNull { it.id == gid }?.pos?.y }
         val anchor = if (xs.isEmpty()) CanvasPos.Zero
         else CanvasPos(xs.min(), ys.min())
         val g = Group(
             id = Group.newId(),
             name = name,
-            members = ids.map { MemberRef.Node(it) },
+            members = members,
             templateFile = null,
             templateIdMap = null,
             collapsed = false,
@@ -1138,9 +1389,36 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         mutateGraph {
             val i = graph.groups.indexOfFirst { it.id == id }
             if (i < 0) return@mutateGraph
-            graph.groups[i] = graph.groups[i].copy(collapsed = !graph.groups[i].collapsed)
+            val cur = graph.groups[i]
+            val collapsing = !cur.collapsed
+            // On collapse, re-center the group: place the collapsed tile
+            // horizontally at the bbox center, vertically at the bbox top.
+            // Without this, the tile would snap to whatever group.pos was
+            // set to at creation — usually the top-left corner.
+            val newPos = if (collapsing) {
+                val byId = graph.groups.associateBy { it.id }
+                val closure = dev.nitka.nodewire.client.screen.GroupProxyPins
+                    .memberClosure(cur, byId)
+                val rects = closure.mapNotNull { mid ->
+                    val n = graph.nodes[mid] ?: return@mapNotNull null
+                    val sz = cardSize(mid) ?: (200 to 60)
+                    n.pos to sz
+                }
+                if (rects.isEmpty()) cur.pos
+                else {
+                    val bbox = dev.nitka.nodewire.graph.GroupBbox.compute(cur.pos, rects)
+                    val centerX = (bbox.minX + bbox.maxX) / 2f
+                    val tileW = cur.collapsedSize?.first
+                        ?: dev.nitka.nodewire.client.screen.TILE_WIDTH
+                    dev.nitka.nodewire.graph.CanvasPos(centerX - tileW / 2f, bbox.minY)
+                }
+            } else cur.pos
+            graph.groups[i] = cur.copy(collapsed = collapsing, pos = newPos)
             syncGroupsFlow()
         }
+        // Persist immediately — losing collapsed state to a missed close
+        // would be more annoying than the cost of one extra packet.
+        requestSave?.invoke()
     }
 
     fun unlinkGroup(id: GroupId) {
@@ -1324,13 +1602,14 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         if (safe.isEmpty()) return null
         val template = GroupFiles.load(safe) ?: return null
 
-        // Cycle guard: refuse if any group on this graph that's linked to
-        // a file is reachable from `safe`.
-        val rootFiles = graph.groups.mapNotNull { it.templateFile }.toSet()
+        // A LogicBlock graph itself is never a template, so two independent
+        // instances of the same template on this graph are not a cycle —
+        // only `safe` recursively containing itself would be. Cycle check
+        // is therefore against `safe` as its own root, not against every
+        // existing template-linked group (which incorrectly rejected
+        // duplicate inserts).
         val resolveFor: (String) -> dev.nitka.nodewire.graph.GroupTemplate? = { name -> GroupFiles.load(name) }
-        for (root in rootFiles) {
-            if (dev.nitka.nodewire.graph.GroupMembership.wouldCycle(root, safe, resolveFor)) return null
-        }
+        if (dev.nitka.nodewire.graph.GroupMembership.wouldCycle(safe, safe, resolveFor)) return null
 
         var gid: GroupId? = null
         mutateGraph {

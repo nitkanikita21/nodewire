@@ -135,7 +135,7 @@ fun NodeCard(
                     // to single-node move; bump graphVersion so the card
                     // recomposes with the new pos (we no longer cache pos
                     // in a local mutableState).
-                    if (editor != null && editor.isSelected(nodeId) && editor.selectedNodes.size > 1) {
+                    if (editor != null && editor.isSelected(nodeId)) {
                         editor.moveSelected(dxWorld, dyWorld)
                     } else {
                         editor?.updateNode(nodeId) {
@@ -214,7 +214,10 @@ private fun TitleBar(
                 }
             },
     ) {
-        val label = node.label
+        // takeUnless { blank } so an empty-but-non-null label (e.g. legacy
+        // graph loaded from before setNodeLabel sanitised) renders as just
+        // the title instead of a hollow caption row.
+        val label = node.label?.takeUnless { it.isBlank() }
         if (label != null) {
             Column {
                 Text(

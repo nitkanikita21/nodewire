@@ -11,7 +11,7 @@ class GroupProxyPinsLabelingTest {
 
     private fun node(id: UUID, typePath: String) = Node(
         id = id,
-        typeKey = ResourceLocation("nodewire", typePath),
+        typeKey = ResourceLocation.fromNamespaceAndPath("nodewire", typePath),
         pos = CanvasPos.Zero,
         inputs = listOf(Pin("a", "A", PinType.BOOL), Pin("b", "B", PinType.BOOL)),
         outputs = listOf(Pin("out", "Out", PinType.BOOL)),

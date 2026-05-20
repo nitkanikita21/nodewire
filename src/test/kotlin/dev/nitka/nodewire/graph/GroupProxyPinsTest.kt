@@ -12,7 +12,7 @@ class GroupProxyPinsTest {
 
     private fun node(id: UUID, name: String) = Node(
         id = id,
-        typeKey = ResourceLocation("nodewire", name),
+        typeKey = ResourceLocation.fromNamespaceAndPath("nodewire", name),
         pos = CanvasPos.Zero,
         inputs = listOf(Pin("a", "A", PinType.BOOL)),
         outputs = listOf(Pin("out", "Out", PinType.BOOL)),

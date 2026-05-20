@@ -11,7 +11,7 @@ class RedstoneLinkNodeTypesTest {
     }
 
     @Test fun `redstone_link_input is registered with REDSTONE output`() {
-        val t = NodeTypeRegistry.get(net.minecraft.resources.ResourceLocation("nodewire", "redstone_link_input"))
+        val t = NodeTypeRegistry.get(net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("nodewire", "redstone_link_input"))
         assertNotNull(t)
         assertEquals(0, t!!.inputs.size)
         assertEquals(1, t.outputs.size)
@@ -19,7 +19,7 @@ class RedstoneLinkNodeTypesTest {
     }
 
     @Test fun `redstone_link_output is registered with REDSTONE input`() {
-        val t = NodeTypeRegistry.get(net.minecraft.resources.ResourceLocation("nodewire", "redstone_link_output"))
+        val t = NodeTypeRegistry.get(net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("nodewire", "redstone_link_output"))
         assertNotNull(t)
         assertEquals(1, t!!.inputs.size)
         assertEquals(0, t.outputs.size)
@@ -27,7 +27,7 @@ class RedstoneLinkNodeTypesTest {
     }
 
     @Test fun `default config has empty freq1 and freq2 compounds`() {
-        val t = NodeTypeRegistry.get(net.minecraft.resources.ResourceLocation("nodewire", "redstone_link_input"))!!
+        val t = NodeTypeRegistry.get(net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("nodewire", "redstone_link_input"))!!
         val cfg = t.defaultConfig()
         assertTrue(cfg.contains("freq1"))
         assertTrue(cfg.contains("freq2"))

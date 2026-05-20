@@ -4,8 +4,8 @@ import dev.nitka.nodewire.block.LogicBlock
 import net.minecraft.ChatFormatting
 import net.minecraft.network.chat.Component
 import net.minecraft.world.InteractionResult
-import net.minecraftforge.event.entity.player.PlayerInteractEvent
-import net.minecraftforge.eventbus.api.SubscribeEvent
+import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent
+import net.neoforged.bus.api.SubscribeEvent
 import org.apache.logging.log4j.LogManager
 
 /**

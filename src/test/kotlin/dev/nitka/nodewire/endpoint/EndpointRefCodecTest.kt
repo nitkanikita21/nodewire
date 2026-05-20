@@ -15,7 +15,7 @@ class EndpointRefCodecTest {
     data class FakePayload(override val blockPos: BlockPos) : EndpointPayload
 
     object FakeBackend : EndpointBackend {
-        override val id = ResourceLocation("test", "fake")
+        override val id = ResourceLocation.fromNamespaceAndPath("test", "fake")
         override val payloadCodec: Codec<out EndpointPayload> =
             BlockPos.CODEC.xmap(::FakePayload) { it.blockPos }
         override fun resolveBlockEntity(level: Level, payload: EndpointPayload) = null
@@ -41,7 +41,7 @@ class EndpointRefCodecTest {
         val raw = """{"backend":"test:missing","payload":{"foo":"bar"}}"""
         val json = com.google.gson.JsonParser.parseString(raw)
         val ref = EndpointRef.CODEC.parse(JsonOps.INSTANCE, json).result().orElseThrow()
-        assertEquals(ResourceLocation("test", "missing"), ref.backendId)
+        assertEquals(ResourceLocation.fromNamespaceAndPath("test", "missing"), ref.backendId)
         assertTrue(ref.payload is UnknownPayload)
 
         // Verify wrapper bytes survive a round-trip when backend isn't registered

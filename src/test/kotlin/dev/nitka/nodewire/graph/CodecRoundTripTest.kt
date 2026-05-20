@@ -83,7 +83,7 @@ class CodecRoundTripTest {
         val cfg = net.minecraft.nbt.CompoundTag().apply { putInt("period", 20) }
         val n = Node(
             id = nodeA,
-            typeKey = net.minecraft.resources.ResourceLocation("nodewire", "timer"),
+            typeKey = net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("nodewire", "timer"),
             pos = CanvasPos(10f, 20f),
             inputs = emptyList(),
             outputs = listOf(Pin("out", "Pulse", PinType.BOOL)),
@@ -96,7 +96,7 @@ class CodecRoundTripTest {
         val cfg = net.minecraft.nbt.CompoundTag().apply { putString("name", "speed"); putString("type", "INT") }
         val n = Node(
             id = nodeB,
-            typeKey = net.minecraft.resources.ResourceLocation("nodewire", "channel_output"),
+            typeKey = net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("nodewire", "channel_output"),
             pos = CanvasPos(-50f, 5f),
             inputs = listOf(Pin("in", "Value", PinType.INT)),
             outputs = emptyList(),
@@ -109,14 +109,14 @@ class CodecRoundTripTest {
         val g = NodeGraph()
         g.add(Node(
             id = nodeA,
-            typeKey = net.minecraft.resources.ResourceLocation("nodewire", "timer"),
+            typeKey = net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("nodewire", "timer"),
             pos = CanvasPos(0f, 0f),
             inputs = emptyList(),
             outputs = listOf(Pin("out", "Pulse", PinType.BOOL)),
         ))
         g.add(Node(
             id = nodeB,
-            typeKey = net.minecraft.resources.ResourceLocation("nodewire", "not"),
+            typeKey = net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("nodewire", "not"),
             pos = CanvasPos(50f, 0f),
             inputs = listOf(Pin("in", "In", PinType.BOOL)),
             outputs = listOf(Pin("out", "Out", PinType.BOOL)),
@@ -145,7 +145,7 @@ class CodecRoundTripTest {
         }
         val n = Node(
             id = nodeC,
-            typeKey = net.minecraft.resources.ResourceLocation("nodewire", "constant"),
+            typeKey = net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("nodewire", "constant"),
             pos = CanvasPos(0f, 0f),
             inputs = emptyList(),
             outputs = listOf(Pin("out", "Value", PinType.STRING)),
@@ -158,7 +158,7 @@ class CodecRoundTripTest {
         val cfg = net.minecraft.nbt.CompoundTag().apply { putString("op", "XOR") }
         val n = Node(
             id = nodeC,
-            typeKey = net.minecraft.resources.ResourceLocation("nodewire", "logic_gate"),
+            typeKey = net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("nodewire", "logic_gate"),
             pos = CanvasPos(10f, 10f),
             inputs = listOf(Pin("a", "A", PinType.BOOL), Pin("b", "B", PinType.BOOL)),
             outputs = listOf(Pin("out", "Out", PinType.BOOL)),
@@ -174,7 +174,7 @@ class CodecRoundTripTest {
         }
         val n = Node(
             id = nodeC,
-            typeKey = net.minecraft.resources.ResourceLocation("nodewire", "math"),
+            typeKey = net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("nodewire", "math"),
             pos = CanvasPos(20f, 0f),
             inputs = listOf(Pin("a", "A", PinType.FLOAT), Pin("b", "B", PinType.FLOAT)),
             outputs = listOf(Pin("out", "Out", PinType.FLOAT)),
@@ -187,7 +187,7 @@ class CodecRoundTripTest {
         val cfg = net.minecraft.nbt.CompoundTag().apply { putString("type", "FLOAT") }
         val n = Node(
             id = nodeC,
-            typeKey = net.minecraft.resources.ResourceLocation("nodewire", "compare"),
+            typeKey = net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("nodewire", "compare"),
             pos = CanvasPos(30f, 0f),
             inputs = listOf(Pin("a", "A", PinType.FLOAT), Pin("b", "B", PinType.FLOAT)),
             outputs = listOf(
@@ -207,7 +207,7 @@ class CodecRoundTripTest {
         }
         val n = Node(
             id = nodeC,
-            typeKey = net.minecraft.resources.ResourceLocation("nodewire", "convert"),
+            typeKey = net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("nodewire", "convert"),
             pos = CanvasPos(40f, 0f),
             inputs = listOf(Pin("in", "In", PinType.BOOL)),
             outputs = listOf(Pin("out", "Out", PinType.INT)),
@@ -226,7 +226,7 @@ class CodecRoundTripTest {
         }
         val n = Node(
             id = nodeC,
-            typeKey = net.minecraft.resources.ResourceLocation("nodewire", "convert"),
+            typeKey = net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("nodewire", "convert"),
             pos = CanvasPos(50f, 0f),
             inputs = listOf(Pin("in", "In", PinType.INT)),
             outputs = listOf(Pin("out", "Out", PinType.REDSTONE)),
@@ -243,7 +243,7 @@ class CodecRoundTripTest {
         }
         val n = Node(
             id = nodeC,
-            typeKey = net.minecraft.resources.ResourceLocation("nodewire", "convert"),
+            typeKey = net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("nodewire", "convert"),
             pos = CanvasPos(60f, 0f),
             inputs = listOf(Pin("in", "In", PinType.REDSTONE)),
             outputs = listOf(Pin("out", "Out", PinType.FLOAT)),
@@ -291,7 +291,7 @@ class CodecRoundTripTest {
     @Test fun nodeWithLabelNbt() {
         val n = Node(
             id = Node.newId(),
-            typeKey = net.minecraft.resources.ResourceLocation("nodewire", "logic_gate"),
+            typeKey = net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("nodewire", "logic_gate"),
             pos = CanvasPos(0f, 0f),
             inputs = emptyList(),
             outputs = emptyList(),
@@ -303,7 +303,7 @@ class CodecRoundTripTest {
     @Test fun nodeWithNullLabelNbt() {
         val n = Node(
             id = Node.newId(),
-            typeKey = net.minecraft.resources.ResourceLocation("nodewire", "logic_gate"),
+            typeKey = net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("nodewire", "logic_gate"),
             pos = CanvasPos(0f, 0f),
             inputs = emptyList(),
             outputs = emptyList(),

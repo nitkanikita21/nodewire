@@ -4,7 +4,7 @@ import dev.nitka.nodewire.graph.NodeGraph
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.NbtOps
 import net.minecraft.nbt.TagParser
-import net.minecraftforge.fml.loading.FMLPaths
+import net.neoforged.fml.loading.FMLPaths
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.io.path.extension

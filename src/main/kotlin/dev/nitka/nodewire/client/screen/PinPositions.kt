@@ -34,5 +34,17 @@ class PinPositions {
 
     /** Snapshot for the renderer — iterating the live map under recomposition is fine. */
     fun all(): Map<PinKey, Pair<Float, Float>> = map
+
+    /**
+     * Drop every pin position belonging to [node]. Called from
+     * [EditorState.removeNode] so the wire renderer doesn't keep drawing
+     * to a stale position after a node is gone. Without this, a node's
+     * pin positions linger from the last frame it rendered — wires would
+     * still resolve `positions.get(...)` and paint phantom endpoints.
+     */
+    fun removeNode(node: NodeId) {
+        val toRemove = map.keys.filter { it.node == node }
+        for (k in toRemove) map.remove(k)
+    }
 }
 

@@ -3,6 +3,7 @@ package dev.nitka.nodewire.block
 import dev.nitka.nodewire.Registry
 import dev.nitka.nodewire.endpoint.EndpointRef
 import dev.nitka.nodewire.graph.NodeGraph
+import dev.nitka.nodewire.graph.NodeId
 import dev.nitka.nodewire.graph.PinType
 import dev.nitka.nodewire.graph.PinValue
 import dev.nitka.nodewire.graph.StatefulGraphEvaluator
@@ -10,14 +11,13 @@ import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.nbt.NbtOps
-import net.minecraft.network.Connection
 import net.minecraft.network.protocol.Packet
 import net.minecraft.network.protocol.game.ClientGamePacketListener
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.state.BlockState
-import net.minecraftforge.fml.ModList
+import net.neoforged.fml.ModList
 
 /**
  * Stores the editable [NodeGraph] for one logic block, drives per-tick
@@ -212,6 +212,22 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
         targetChannelName: String,
     ): Boolean = tryAddBinding(sourceChannelName, target, targetChannelName) is BindResult.Ok
 
+    /**
+     * Server-side mutator: replace a node's config blob. Used by
+     * [dev.nitka.nodewire.net.BindAeroSourcePacket.Companion.handle] (and any future packet that wants to
+     * update a single node's config without a full graph sync). Returns
+     * true if the node was found and updated.
+     *
+     * Caller is responsible for any neighbour-update / block-update
+     * broadcast — this method only mutates state + setChanged().
+     */
+    fun replaceNodeConfig(nodeId: NodeId, newConfig: CompoundTag): Boolean {
+        val existing = graph.nodes[nodeId] ?: return false
+        graph.nodes[nodeId] = existing.copy(config = newConfig)
+        setChanged()
+        return true
+    }
+
     fun bindingsSnapshot(): List<ChannelBinding> = bindings.toList()
     fun sideBindingsSnapshot(): List<SideBinding> = sideBindings.toList()
 
@@ -342,7 +358,7 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
                 else -> continue
             }
             seen.add(node.id)
-            val desiredFreq = CR.frequencyOf(node.config)
+            val desiredFreq = CR.frequencyOf(node.config, level)
             val existing = linkables[node.id]
             val linkable = if (existing == null) {
                 val l = dev.nitka.nodewire.integration.create.CreateRedstoneLink.NodeLinkable(this, desiredFreq, listening)
@@ -412,13 +428,24 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
             }
         }
 
-        val tcNode = dev.nitka.nodewire.integration.tweakedcontroller.ControllerInputNode
-        val prevState = tcNode.currentState.get()
-        tcNode.currentState.set(receivedControllerState)
+        val aeroSnap = dev.nitka.nodewire.integration.aeronautics.AeroStatePipeline
+            .snapshot(level, graph)
+        val prevAero = dev.nitka.nodewire.integration.aeronautics.AeroStatePipeline
+            .currentValues.get()
+        dev.nitka.nodewire.integration.aeronautics.AeroStatePipeline
+            .currentValues.set(aeroSnap)
         val result = try {
-            eval.tick(external)
+            val tcNode = dev.nitka.nodewire.integration.tweakedcontroller.ControllerInputNode
+            val prevTcState = tcNode.currentState.get()
+            tcNode.currentState.set(receivedControllerState)
+            try {
+                eval.tick(external)
+            } finally {
+                tcNode.currentState.set(prevTcState)
+            }
         } finally {
-            tcNode.currentState.set(prevState)
+            dev.nitka.nodewire.integration.aeronautics.AeroStatePipeline
+                .currentValues.set(prevAero)
         }
 
         if (ModList.get().isLoaded("create")) {
@@ -546,8 +573,8 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
         super.setRemoved()
     }
 
-    override fun saveAdditional(tag: CompoundTag) {
-        super.saveAdditional(tag)
+    override fun saveAdditional(tag: CompoundTag, registries: net.minecraft.core.HolderLookup.Provider) {
+        super.saveAdditional(tag, registries)
         tag.put(
             "graph",
             dev.nitka.nodewire.graph.NodeGraph.CODEC
@@ -576,8 +603,8 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
         controllerId?.let { tag.putUUID("controllerId", it) }
     }
 
-    override fun load(tag: CompoundTag) {
-        super.load(tag)
+    override fun loadAdditional(tag: CompoundTag, registries: net.minecraft.core.HolderLookup.Provider) {
+        super.loadAdditional(tag, registries)
         blockName = tag.getString("name")  // returns "" if missing
         controllerId = if (tag.hasUUID("controllerId")) tag.getUUID("controllerId") else null
         graph = if (tag.contains("graph")) {
@@ -604,14 +631,10 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
         invalidateEvaluator()
     }
 
-    override fun getUpdateTag(): CompoundTag = saveWithoutMetadata()
+    override fun getUpdateTag(registries: net.minecraft.core.HolderLookup.Provider): CompoundTag = saveWithoutMetadata(registries)
 
     override fun getUpdatePacket(): Packet<ClientGamePacketListener>? =
         ClientboundBlockEntityDataPacket.create(this)
-
-    override fun onDataPacket(net: Connection, pkt: ClientboundBlockEntityDataPacket) {
-        pkt.tag?.let { load(it) }
-    }
 
     private fun isSideStale(sb: SideBinding, level: Level): Boolean {
         // Source channel must still exist on this BE.

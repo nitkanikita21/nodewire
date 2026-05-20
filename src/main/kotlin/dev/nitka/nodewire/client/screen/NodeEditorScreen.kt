@@ -5,6 +5,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -19,9 +20,8 @@ import dev.nitka.nodewire.graph.PinRef
 import dev.nitka.nodewire.graph.StatefulGraphEvaluator
 import dev.nitka.nodewire.graph.StockNodeTypes
 import kotlinx.coroutines.delay
-import dev.nitka.nodewire.net.NodewireNetwork
 import dev.nitka.nodewire.net.SaveGraphPacket
-import net.minecraftforge.network.PacketDistributor
+import net.neoforged.neoforge.network.PacketDistributor
 import dev.nitka.nodewire.ui.canvas.NodeCanvas
 import dev.nitka.nodewire.ui.canvas.rememberCanvasState
 import dev.nitka.nodewire.ui.core.Modifier
@@ -54,7 +54,7 @@ import net.minecraft.network.chat.Component
 class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
     NwComposeScreen(Component.literal("Node Editor @ ${pos.toShortString()}")) {
 
-    private val graph: NodeGraph = initialGraph.also { seedIfEmpty(it) }
+    private val graph: NodeGraph = initialGraph
 
     /** Set on first composition. Read from [keyPressed] so ESC can talk to the editor. */
     private var editorRef: EditorState? = null
@@ -105,10 +105,7 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
     override fun removed() {
         val editor = editorRef
         val snapshot = editor?.snapshotGraph() ?: graph
-        NodewireNetwork.CHANNEL.send(
-            PacketDistributor.SERVER.noArg(),
-            SaveGraphPacket(pos, snapshot),
-        )
+        PacketDistributor.sendToServer(SaveGraphPacket(pos, snapshot))
         super.removed()
     }
 
@@ -122,6 +119,9 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
                     val be = net.minecraft.client.Minecraft.getInstance().level
                         ?.getBlockEntity(pos) as? dev.nitka.nodewire.block.LogicBlockEntity
                     e.setBlockName(be?.getBlockName() ?: "")
+                    e.requestSave = {
+                        PacketDistributor.sendToServer(SaveGraphPacket(pos, e.snapshotGraph()))
+                    }
                 }
             }
             editor.canvasState = canvas
@@ -271,9 +271,16 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
                         val hidden = remember(nodeIds, groupsValue) { hiddenNodesFor(editor) }
                         for (id in nodeIds) {
                             if (id in hidden) continue
-                            NodeCard(nodeId = id)
+                            // key() gives each NodeCard a stable composition
+                            // identity. Without it, Compose reuses slots by
+                            // index — when a group collapse hides some ids,
+                            // subsequent NodeCards inherit the UiNode + state
+                            // of a different node and render as invisible /
+                            // stuck-at-wrong-position.
+                            key(id) { NodeCard(nodeId = id) }
                         }
                         NodeLabelOverlay()
+                        GroupLabelOverlay()
                         // Rubber-band rect on top of everything inside the
                         // canvas pose, so it pans/zooms with the world.
                         SelectionRect()
@@ -300,36 +307,10 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
         }
     }
 
-    /**
-     * Seed an empty BE with a small starter set of nodes so the editor
-     * never opens to a blank canvas. Skipped if the graph already has any
-     * content — the user's own work is never overwritten.
-     */
     private companion object {
         private const val LEFT_BUTTON = 0
         private const val RIGHT_BUTTON = 1
         /** MC's game tick is 50 ms (20 Hz). Match it so Timer pulses align with the server's tick rate. */
         private const val TICK_INTERVAL_MS = 50L
-    }
-
-    private fun seedIfEmpty(g: NodeGraph) {
-        if (g.nodes.isNotEmpty()) return
-        val bool1 = StockNodeTypes.CONSTANT.newInstance(CanvasPos(40f, 40f))
-        val int1 = StockNodeTypes.CONSTANT.newInstance(CanvasPos(40f, 140f)).also {
-            it.config.putString("type", "INT")
-        }
-        val sideIn = StockNodeTypes.SIDE_INPUT.newInstance(CanvasPos(40f, 240f))
-        val and = StockNodeTypes.LOGIC_GATE.newInstance(CanvasPos(260f, 40f)) // default op=AND
-        val toRs = StockNodeTypes.CONVERT.newInstance(CanvasPos(260f, 160f)).also {
-            it.config.putString("sourceType", "INT")
-            it.config.putString("targetType", "REDSTONE")
-            it.config.putString("mode", "clamp")
-        }
-        val sideOut = StockNodeTypes.SIDE_OUTPUT.newInstance(CanvasPos(500f, 160f))
-        g.add(bool1); g.add(int1); g.add(sideIn); g.add(and); g.add(toRs); g.add(sideOut)
-        // bool_const → AND.a; int_const → Convert(INT→REDSTONE) → SideOutput
-        g.addEdge(Edge(PinRef(bool1.id, "out"), PinRef(and.id, "a")))
-        g.addEdge(Edge(PinRef(int1.id, "out"), PinRef(toRs.id, "in")))
-        g.addEdge(Edge(PinRef(toRs.id, "out"), PinRef(sideOut.id, "in")))
     }
 }

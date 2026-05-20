@@ -54,7 +54,7 @@ abstract class NwComposeScreen(title: Component) : Screen(title) {
         super.init()
         val mc = Minecraft.getInstance()
         if (mc.level != null && !blurActive) {
-            mc.gameRenderer.loadEffect(ResourceLocation("shaders/post/blur.json"))
+            mc.gameRenderer.loadEffect(ResourceLocation.parse("shaders/post/blur.json"))
             blurActive = true
         }
         // Provide the screen-size CompositionLocal at the very top of the
@@ -71,7 +71,7 @@ abstract class NwComposeScreen(title: Component) : Screen(title) {
     }
 
     override fun render(gfx: GuiGraphics, mouseX: Int, mouseY: Int, partialTick: Float) {
-        renderBackground(gfx)
+        renderBackground(gfx, mouseX, mouseY, partialTick)
         val canvas = NwCanvas(gfx, Minecraft.getInstance().font)
         owner.frame(canvas, this.width, this.height)
         // No super.render — we don't want MC's default widget rendering.
@@ -114,9 +114,9 @@ abstract class NwComposeScreen(title: Component) : Screen(title) {
         super.mouseMoved(x, y)
     }
 
-    override fun mouseScrolled(x: Double, y: Double, delta: Double): Boolean {
-        if (owner.dispatchPointer(PointerEvent.Scroll(x.toInt(), y.toInt(), delta.toFloat()))) return true
-        return super.mouseScrolled(x, y, delta)
+    override fun mouseScrolled(x: Double, y: Double, scrollX: Double, scrollY: Double): Boolean {
+        if (owner.dispatchPointer(PointerEvent.Scroll(x.toInt(), y.toInt(), scrollY.toFloat()))) return true
+        return super.mouseScrolled(x, y, scrollX, scrollY)
     }
 
     // --- Keyboard input bridge ---

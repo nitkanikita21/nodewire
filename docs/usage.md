@@ -24,9 +24,9 @@ Active when the editor is focused **and** no text field has focus.
 
 | Shortcut             | Action                                  |
 | -------------------- | --------------------------------------- |
-| `Del` / `Backspace`  | Delete selected nodes / comments        |
+| `Del` / `Backspace`  | Delete selected nodes / groups / comments |
 | `Ctrl+A`             | Select all                              |
-| `Ctrl+D`             | Duplicate selection                     |
+| `Ctrl+D`             | Duplicate selection (groups flatten to member-nodes) |
 | `Ctrl+C` / `Ctrl+X`  | Copy / cut selection                    |
 | `Ctrl+V`             | Paste at cursor                         |
 | `Ctrl+Z`             | Undo                                    |
@@ -36,6 +36,8 @@ Active when the editor is focused **and** no text field has focus.
 | `Ctrl+G`             | Group selection                         |
 | `Ctrl+Shift+G`       | Ungroup containing group                |
 | `Esc`                | Cancel rename → close menu → clear selection |
+| Double-LMB on header | Rename node / group inline              |
+| Drag on empty canvas | Marquee — selects nodes + groups + comments (Shift = additive) |
 
 Open `N` (outside the editor) opens the demo screen.
 
@@ -57,9 +59,25 @@ Right-clicking an existing node / group / comment / wire opens its own context m
 
 All integrations are mod-gated — Nodewire works without any of them, and unlocks extra nodes / features when the corresponding mod is present.
 
-### Valkyrien Skies 2
+### Sable
 
-Nodewire blocks placed on a VS ship continue to evaluate across the ship/world boundary. `Side Input` / `Side Output` resolve through VS's `Level.getBlockEntity` hook, so ship-local positions stay correct as the ship moves and rotates. Endpoint references that point to a block on a moving ship use a `(shipId, ship-local BlockPos)` payload and survive ship motion.
+> `master` (Forge 1.20.1) integrates with **Valkyrien Skies 2** instead. The Sable backend below is the NeoForge 1.21.1 replacement on `port/neoforge-1.21.1`.
+
+Nodewire blocks placed on a Sable sub-level continue to evaluate across the sub-level/world boundary. `Side Input` / `Side Output` resolve through the parent `Level`'s `getBlockEntity` (sub-levels live as plot regions in the parent level), so positions stay correct as the sub-level rotates / translates. Endpoint references that point to a block in a sub-level use a `(subLevelId, BlockPos)` payload and survive motion. World-space center / direction queries apply `SubLevelAccess.logicalPose()` server-side and `ClientSubLevelAccess.renderPose()` client-side (smooth partial-tick).
+
+Sable Companion provides safe no-op defaults so Nodewire compiles and runs without Sable installed.
+
+### Create Aeronautics
+
+When Aeronautics is loaded, an **`Aeronautics Input`** node becomes available. Aircraft built by Aeronautics ARE Sable sub-levels, so wires across an aircraft "just work" through the Sable backend. On top of that, the Aeronautics Input node exposes per-block state — pick a block kind and a channel:
+
+- **Smart / Andesite / Wooden Propeller** — RPM, target RPM, signal, …
+- **Hot-Air Burner** — temperature, fuel, signal (writable).
+- **Steam Vent** — pressure, signal (writable).
+- **Mounted Potato Cannon** — yaw, pitch, charge, …
+- **Propeller Bearing** — angle, RPM, target RPM, …
+
+The output pin reshapes to the channel's type. Hold the Channel Link Tool and sneak+RMB the target Aero block, then pick a channel in the popup. ~33 channels across the 7 supported block kinds.
 
 ### Create
 

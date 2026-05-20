@@ -61,10 +61,17 @@ fun WireLayer() {
     val labelBorder = NwTheme.colors.border
     val labelText = NwTheme.colors.onSurface
     val edges by editor.edges.collectAsState()
+    // Nodes hidden because they belong to a currently-collapsed group.
+    // Re-computed on every change to the groups flow.
+    val groupsValue by editor.groups.collectAsState()
+    val hidden = remember(groupsValue) {
+        if (groupsValue.isEmpty()) emptySet() else hiddenNodesFor(editor)
+    }
     val renderer = remember(editor, pinColors, labelBg, labelBorder, labelText) {
         WireRenderer(editor, pinColors, labelBg, labelBorder, labelText)
     }
     renderer.edges = edges
+    renderer.hiddenNodes = hidden
     Layout(
         modifier = Modifier.absolutePosition(0, 0).fillMaxSize(),
         renderer = renderer,
@@ -115,26 +122,46 @@ private class WireRenderer(
 ) : Renderer {
 
     var edges: List<dev.nitka.nodewire.graph.Edge> = emptyList()
+    /**
+     * Nodes that belong to a currently-collapsed group and therefore have
+     * no rendered NodeCard. An edge where BOTH endpoints are hidden is
+     * fully internal to a collapsed group — no proxy pin can route it, so
+     * it must not paint at all (otherwise its stale last-frame positions
+     * draw an internal wire inside the collapsed tile).
+     */
+    var hiddenNodes: Set<dev.nitka.nodewire.graph.NodeId> = emptySet()
 
     override fun NwCanvas.render(node: UiNode) {
         val positions = editor.pinPositions
         for (edge in edges) {
+            // Skip edges whose endpoint nodes no longer exist — defensive
+            // against any path where _edges.value lags one frame behind
+            // _nodes.value during a deletion. Without this check the
+            // renderer would resolve a stale (last-frame) pin position
+            // and draw a phantom wire to where the node used to be.
+            val fromNode = editor.nodeFlow(edge.from.node)?.value ?: continue
+            val toNode = editor.nodeFlow(edge.to.node)?.value ?: continue
+            // Skip fully-internal edges of a collapsed group — both ends
+            // are hidden, no proxy pin exists, and the stale positions
+            // would otherwise paint a wire across the collapsed tile.
+            if (edge.from.node in hiddenNodes && edge.to.node in hiddenNodes) continue
             val from = positions.get(PinKey(edge.from.node, edge.from.pin, PinSide.Output)) ?: continue
             val to = positions.get(PinKey(edge.to.node, edge.to.pin, PinSide.Input)) ?: continue
-            val fromNode = editor.nodeFlow(edge.from.node)?.value ?: continue
+            // Also drop edges whose pin id no longer exists on the node —
+            // happens after a node's pins are reshaped (vec_op dim change,
+            // changeAeroChannel) and the edge wasn't yet cleaned up.
+            if (fromNode.outputs.none { it.id == edge.from.pin }) continue
+            if (toNode.inputs.none { it.id == edge.to.pin }) continue
             val pinType = fromNode.outputs.firstOrNull { it.id == edge.from.pin }?.type ?: continue
             val color = pinColors[pinType] ?: continue
             drawBezier(from.first, from.second, to.first, to.second, color)
             val label = edge.label
-            if (!label.isNullOrEmpty()) {
+            if (!label.isNullOrBlank()) {
                 val midX = ((from.first + to.first) * 0.5f).toInt()
                 val midY = ((from.second + to.second) * 0.5f).toInt()
                 val textW = font.width(label)
-                val padX = 3; val padY = 1
-                val boxW = textW + padX * 2
-                val boxH = font.lineHeight + padY * 2
-                fillRect(midX - boxW / 2, midY - boxH / 2, boxW, boxH, labelBg)
-                drawBorder(midX - boxW / 2, midY - boxH / 2, boxW, boxH, 1, labelBorder)
+                // No background fill / border — text floats above the wire,
+                // tight to its own width.
                 drawText(label, midX - textW / 2, midY - font.lineHeight / 2, labelText)
             }
         }
@@ -202,17 +229,32 @@ private class WireRenderer(
         val angle = atan2(dy, dx)
         val pose = gfx.pose()
         pose.pushPose()
-        // offsetX/offsetY are zero inside the canvas (PaintWalk resets the
-        // accumulator before entering the pose) but adding them explicitly
-        // keeps this safe if the renderer ever moves outside a canvas.
         pose.translate(offsetX + x0, offsetY + y0, 0f)
         pose.mulPose(Axis.ZP.rotation(angle))
-        // After rotation the +X axis points along the line and +Y is
-        // perpendicular. Draw a thin horizontal bar of length `len`,
-        // centered vertically on the line so the stroke is symmetric.
+        // After rotation +X is along the line and +Y is perpendicular.
+        // Draw a thin horizontal bar of length `len`, centered on the
+        // line. To anti-alias the (rotated) edge we sandwich the opaque
+        // core between two 1-px feather strips at reduced alpha — fakes
+        // GL_LINE_SMOOTH for `gfx.fill`-style hard-pixel quads.
         val w = ceil(len).toInt()
-        gfx.fill(0, -WIRE_HALF, w, WIRE_HALF + WIRE_THICKNESS % 2, color.argb)
+        val core = color.argb
+        val edge = fadeAlpha(core, EDGE_ALPHA)
+        // Top feather (1 px above core)
+        gfx.fill(0, -WIRE_HALF - 1, w, -WIRE_HALF, edge)
+        // Opaque core
+        gfx.fill(0, -WIRE_HALF, w, WIRE_HALF + WIRE_THICKNESS % 2, core)
+        // Bottom feather (1 px below core)
+        gfx.fill(0, WIRE_HALF + WIRE_THICKNESS % 2, w, WIRE_HALF + WIRE_THICKNESS % 2 + 1, edge)
         pose.popPose()
+    }
+
+    /** Replace the alpha channel of [argb] with [alpha] (0..255). */
+    private fun fadeAlpha(argb: Int, alpha: Int): Int {
+        val srcA = (argb ushr 24) and 0xFF
+        // Premultiply so a partially-transparent source wire still
+        // produces a strictly-fainter feather, never a brighter one.
+        val outA = (srcA * alpha) / 255
+        return (outA shl 24) or (argb and 0x00FFFFFF)
     }
 
     private fun cubicBezier(
@@ -236,6 +278,13 @@ private class WireRenderer(
         private const val WIRE_THICKNESS = 2
         private const val WIRE_HALF = WIRE_THICKNESS / 2
         private const val MIN_HANDLE_OFFSET = 30f
-        private const val CURVE_SEGMENTS = 32
+        // More segments → finer chord approximation. 32 was already
+        // smooth at typical zoom; bumping to 48 helps when the user
+        // zooms in and the under-sampling becomes visible as facets.
+        private const val CURVE_SEGMENTS = 48
+        // Feather strip alpha (0..255). 96 ≈ 38% — strong enough to
+        // soften the rotated edge, low enough not to read as a thicker
+        // wire at rest.
+        private const val EDGE_ALPHA = 96
     }
 }

@@ -6,8 +6,8 @@
   "refmap": "nodewire.refmap.json",
   "mixins": [
     "SignalGetterMixin",
-    "tc.MixinTweakedControllerButtonPacket",
-    "tc.MixinTweakedControllerAxisPacket"
+    "tc.MixinTweakedControllerAxisPacket",
+    "tc.MixinTweakedControllerButtonPacket"
   ],
   "client": [],
   "server": [],

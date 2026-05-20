@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test
 
 class GraphClipboardTest {
 
-    private val typeKey = ResourceLocation("nodewire", "constant")
+    private val typeKey = ResourceLocation.fromNamespaceAndPath("nodewire", "constant")
     private fun node(x: Float) = Node(
         id = Node.newId(),
         typeKey = typeKey,

@@ -14,7 +14,7 @@ class EditorStateLabelTest {
     private fun freshEditorWithOneNode(): Pair<EditorState, Node> {
         val node = Node(
             id = Node.newId(),
-            typeKey = ResourceLocation("nodewire", "logic_gate"),
+            typeKey = ResourceLocation.fromNamespaceAndPath("nodewire", "logic_gate"),
             pos = CanvasPos(0f, 0f),
             inputs = emptyList(),
             outputs = emptyList(),

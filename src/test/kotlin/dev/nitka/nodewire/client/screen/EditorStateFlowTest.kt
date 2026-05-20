@@ -19,7 +19,7 @@ class EditorStateFlowTest {
 
     private fun mkNode(name: String, x: Float = 0f, y: Float = 0f): Node = Node(
         id = Node.newId(),
-        typeKey = ResourceLocation("nodewire", "bool_const"),
+        typeKey = ResourceLocation.fromNamespaceAndPath("nodewire", "bool_const"),
         pos = CanvasPos(x, y),
         inputs = emptyList(),
         outputs = listOf(Pin("out", "Out", PinType.BOOL)),
@@ -79,7 +79,7 @@ class EditorStateFlowTest {
     fun changeChannelTypeProducesNewPinAndConfig() {
         val outputNode = Node(
             id = Node.newId(),
-            typeKey = ResourceLocation("nodewire", "channel_output"),
+            typeKey = ResourceLocation.fromNamespaceAndPath("nodewire", "channel_output"),
             pos = CanvasPos.Zero,
             inputs = listOf(Pin("in", "Value", PinType.BOOL)),
             outputs = emptyList(),

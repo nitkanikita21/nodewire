@@ -3,6 +3,7 @@ package dev.nitka.nodewire.client.screen
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 
 /**
  * Expanded-group frames only — drawn UNDER wires so the semi-transparent
@@ -12,7 +13,7 @@ import androidx.compose.runtime.getValue
 fun GroupFramesLayer() {
     val editor = LocalEditorState.current ?: return
     val groups by editor.groups.collectAsState()
-    for (g in groups) if (!g.collapsed) GroupFrame(g)
+    for (g in groups) if (!g.collapsed) key(g.id) { GroupFrame(g) }
 }
 
 /**
@@ -24,7 +25,7 @@ fun GroupFramesLayer() {
 fun GroupCollapsedLayer() {
     val editor = LocalEditorState.current ?: return
     val groups by editor.groups.collectAsState()
-    for (g in groups) if (g.collapsed) GroupCollapsedTile(g)
+    for (g in groups) if (g.collapsed) key(g.id) { GroupCollapsedTile(g) }
 }
 
 /** Set of node ids that the screen should NOT render as standalone cards. */

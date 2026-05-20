@@ -1,7 +1,7 @@
 modLoader="kotlinforforge"
 loaderVersion="${loader_version_range}"
-license="All Rights Reserved"
-issueTrackerURL="https://github.com/nitka/nodewire/issues"
+license="MIT"
+issueTrackerURL="https://github.com/nitkanikita21/nodewire/issues"
 
 [[mods]]
 modId="${mod_id}"
@@ -14,36 +14,43 @@ description='''${mod_description}'''
 config="nodewire.mixins.json"
 
 [[dependencies.${mod_id}]]
-modId="forge"
-mandatory=true
-versionRange="${forge_version_range}"
+modId="neoforge"
+type="required"
+versionRange="${neoforge_version_range}"
 ordering="NONE"
 side="BOTH"
 
 [[dependencies.${mod_id}]]
 modId="minecraft"
-mandatory=true
+type="required"
 versionRange="${minecraft_version_range}"
 ordering="NONE"
 side="BOTH"
 
 [[dependencies.${mod_id}]]
 modId="kotlinforforge"
-mandatory=true
+type="required"
 versionRange="${kff_version_range}"
 ordering="NONE"
 side="BOTH"
 
 [[dependencies.${mod_id}]]
-modId="valkyrienskies"
-mandatory=true
-versionRange="${vs_version_range}"
+modId="sable"
+type="optional"
+versionRange="[1.2.1,2)"
 ordering="AFTER"
 side="BOTH"
 
 [[dependencies.${mod_id}]]
 modId="create"
-mandatory=true
+type="optional"
 versionRange="${create_version_range}"
+ordering="AFTER"
+side="BOTH"
+
+[[dependencies.${mod_id}]]
+modId="create_aeronautics"
+type="optional"
+versionRange="[1.2.0,2)"
 ordering="AFTER"
 side="BOTH"

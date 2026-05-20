@@ -96,9 +96,14 @@ private fun ScrimBox(
             when (ev) {
                 is PointerEvent.Press -> {
                     if (dismissOnClickOutside) onDismissRequest?.invoke()
-                    true
+                    // Dim scrims (modals) consume the press so background
+                    // never sees it. Non-dim scrims (context-menu catchers)
+                    // dismiss AND let the press through, so RMB-on-another-
+                    // target dismisses the open menu and opens the new one
+                    // in a single gesture.
+                    dim
                 }
-                is PointerEvent.Release -> true
+                is PointerEvent.Release -> dim
                 else -> false
             }
         }

@@ -11,7 +11,7 @@ import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.client.renderer.RenderStateShard
 import net.minecraft.client.renderer.RenderType
 import net.minecraft.world.phys.Vec3
-import net.minecraftforge.client.event.RenderLevelStageEvent
+import net.neoforged.neoforge.client.event.RenderLevelStageEvent
 import org.joml.Matrix4f
 import kotlin.math.sqrt
 
@@ -350,9 +350,8 @@ object WireWorldRenderer {
         x: Double, y: Double, z: Double,
         r: Int, g: Int, b: Int, a: Int,
     ) {
-        builder.vertex(matrix, x.toFloat(), y.toFloat(), z.toFloat())
-            .color(r, g, b, a)
-            .endVertex()
+        builder.addVertex(matrix, x.toFloat(), y.toFloat(), z.toFloat())
+            .setColor(r, g, b, a)
     }
 
     private fun colorForBinding(source: LogicBlockEntity, channelName: String): Int {

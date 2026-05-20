@@ -27,8 +27,12 @@ import dev.nitka.nodewire.ui.modifier.layout.padding
 import dev.nitka.nodewire.ui.modifier.layout.size
 import dev.nitka.nodewire.ui.modifier.layout.width
 import dev.nitka.nodewire.ui.modifier.style.background
+import dev.nitka.nodewire.ui.modifier.style.border
+import dev.nitka.nodewire.ui.render.BorderStroke
 import dev.nitka.nodewire.ui.render.Color
 import dev.nitka.nodewire.ui.theme.NwTheme
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 
 /**
  * Single-tile rendering of a collapsed group. Proxy pin rows are derived
@@ -56,26 +60,57 @@ fun GroupCollapsedTile(group: Group) {
     val inputs = proxies.filter { it.side == PinSide.Input }
     val outputs = proxies.filter { it.side == PinSide.Output }
     val w = group.collapsedSize?.first ?: TILE_WIDTH
+    val selected = editor.isGroupSelected(group.id)
+    val borderColor = if (selected) NwTheme.colors.accent else NwTheme.colors.border
+    val borderWidth = if (selected) 2 else 1
+    var lastHeaderPressMillis by androidx.compose.runtime.remember { mutableStateOf(0L) }
 
     Box(
         modifier = Modifier
             .absolutePosition(group.pos.x.toInt(), group.pos.y.toInt())
             .width(w)
             .background(NwTheme.colors.surface)
+            .border(BorderStroke(borderWidth, borderColor), NwTheme.shapes.small)
             .pointerInput { ev, x, y ->
                 when (ev) {
                     is PointerEvent.Drag -> {
                         val zoom = canvas?.zoom ?: 1f
-                        editor.moveGroup(group.id, ev.deltaX / zoom, ev.deltaY / zoom)
+                        val dxW = ev.deltaX / zoom
+                        val dyW = ev.deltaY / zoom
+                        if (editor.isGroupSelected(group.id)) {
+                            editor.moveSelected(dxW, dyW)
+                        } else {
+                            editor.moveGroup(group.id, dxW, dyW)
+                        }
                         true
                     }
                     is PointerEvent.Press -> {
-                        if (ev.button == RIGHT_BUTTON && canvas != null) {
-                            val worldX = group.pos.x + x
-                            val worldY = group.pos.y + y
-                            val screenX = ((worldX + canvas.panX) * canvas.zoom).toInt()
-                            val screenY = ((worldY + canvas.panY) * canvas.zoom).toInt()
-                            editor.openGroupMenu(screenX, screenY, group.id)
+                        when (ev.button) {
+                            0 -> {
+                                val shift = net.minecraft.client.gui.screens.Screen
+                                    .hasShiftDown()
+                                val now = System.currentTimeMillis()
+                                val isDouble = now - lastHeaderPressMillis < 300L
+                                if (isDouble) {
+                                    editor.renamingGroup = group.id
+                                    lastHeaderPressMillis = 0L
+                                } else {
+                                    if (shift) {
+                                        editor.toggleGroupSelection(group.id)
+                                    } else if (!editor.isGroupSelected(group.id)) {
+                                        editor.clearSelection()
+                                        editor.toggleGroupSelection(group.id)
+                                    }
+                                    lastHeaderPressMillis = now
+                                }
+                            }
+                            RIGHT_BUTTON -> if (canvas != null) {
+                                val worldX = group.pos.x + x
+                                val worldY = group.pos.y + y
+                                val screenX = ((worldX + canvas.panX) * canvas.zoom).toInt()
+                                val screenY = ((worldY + canvas.panY) * canvas.zoom).toInt()
+                                editor.openGroupMenu(screenX, screenY, group.id)
+                            }
                         }
                         true
                     }
@@ -83,7 +118,7 @@ fun GroupCollapsedTile(group: Group) {
                 }
             },
     ) {
-        Column {
+        Column(verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2)) {
             // Header bar — same style as GroupFrame
             Surface(
                 modifier = Modifier.fillMaxWidth(),
@@ -98,16 +133,26 @@ fun GroupCollapsedTile(group: Group) {
                 ),
             ) {
                 Row(
+                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.Center,
-                    horizontalArrangement = Arrangement.spacedBy(NwTheme.dimens.space4),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    Text(group.name, style = NwTheme.typography.caption)
-                    if (group.templateFile != null) {
+                    Row(
+                        verticalAlignment = Alignment.Center,
+                        horizontalArrangement = Arrangement.spacedBy(NwTheme.dimens.space4),
+                    ) {
                         Text(
-                            "↪${group.templateFile}",
-                            style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceMuted),
+                            group.name.ifBlank { "Group" },
+                            style = NwTheme.typography.caption,
                         )
+                        if (group.templateFile != null) {
+                            Text(
+                                "↪${group.templateFile}",
+                                style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceMuted),
+                            )
+                        }
                     }
+                    CollapseToggleButton(group.id, "+")
                 }
             }
             // Pin rows — one row per slot, inputs left, outputs right
@@ -185,6 +230,6 @@ private fun proxyPinColor(type: PinType): Color = when (type) {
     PinType.QUAT -> NwTheme.colors.pinQuat
 }
 
-private const val TILE_WIDTH = 140
+internal const val TILE_WIDTH = 140
 private const val PIN_DOT_SIZE = 8
 private const val RIGHT_BUTTON = 1

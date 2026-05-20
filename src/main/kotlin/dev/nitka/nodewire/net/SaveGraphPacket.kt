@@ -3,16 +3,20 @@ package dev.nitka.nodewire.net
 import com.mojang.logging.LogUtils
 import com.mojang.serialization.Codec
 import com.mojang.serialization.codecs.RecordCodecBuilder
+import dev.nitka.nodewire.Nodewire
 import dev.nitka.nodewire.block.LogicBlockEntity
 import dev.nitka.nodewire.graph.NodeGraph
 import dev.nitka.nodewire.graph.NodeId
 import dev.nitka.nodewire.graph.PinRef
 import net.minecraft.core.BlockPos
-import net.minecraft.network.FriendlyByteBuf
+import net.minecraft.network.RegistryFriendlyByteBuf
+import net.minecraft.network.codec.ByteBufCodecs
+import net.minecraft.network.codec.StreamCodec
+import net.minecraft.network.protocol.common.custom.CustomPacketPayload
+import net.minecraft.resources.ResourceLocation
 import net.minecraft.world.level.block.Block
-import net.minecraftforge.network.NetworkEvent
+import net.neoforged.neoforge.network.handling.IPayloadContext
 import org.slf4j.Logger
-import java.util.function.Supplier
 
 /**
  * Client → server: persist the user's edited graph for the [LogicBlockEntity]
@@ -28,48 +32,19 @@ import java.util.function.Supplier
  * Failing any check drops the packet with a warning log — no exception
  * leaks back to the client, and the BE keeps its previous graph.
  */
-class SaveGraphPacket(val pos: BlockPos, val graph: NodeGraph) {
+data class SaveGraphPacket(val pos: BlockPos, val graph: NodeGraph) : CustomPacketPayload {
 
-    fun encode(buf: FriendlyByteBuf) {
-        buf.writeCodec(CODEC, this)
-    }
-
-    fun handle(ctx: Supplier<NetworkEvent.Context>): Boolean {
-        val c = ctx.get()
-        c.enqueueWork {
-            val player = c.sender ?: return@enqueueWork
-            val level = player.level()
-            val center = pos.center
-            if (player.distanceToSqr(center.x, center.y, center.z) > MAX_DISTANCE_SQR) {
-                LOG.warn("Rejecting SaveGraphPacket: {} too far from {}", player.gameProfile.name, pos)
-                return@enqueueWork
-            }
-            val be = level.getBlockEntity(pos) as? LogicBlockEntity ?: run {
-                LOG.warn("Rejecting SaveGraphPacket: no LogicBlockEntity at {}", pos)
-                return@enqueueWork
-            }
-            // Codec already parsed the graph during decode.
-            val reason = validate(graph)
-            if (reason != null) {
-                LOG.warn("Rejecting SaveGraphPacket from {}: {}", player.gameProfile.name, reason)
-                return@enqueueWork
-            }
-            be.graph = graph
-            // New graph means the cached server-side evaluator references
-            // stale node references — rebuild on next tick.
-            be.invalidateEvaluator()
-            be.setChanged()
-            level.sendBlockUpdated(pos, be.blockState, be.blockState, Block.UPDATE_CLIENTS)
-        }
-        c.packetHandled = true
-        return true
-    }
+    override fun type(): CustomPacketPayload.Type<SaveGraphPacket> = TYPE
 
     companion object {
         private val LOG: Logger = LogUtils.getLogger()
 
         // 8 blocks (squared) — same reach Minecraft uses for interactions.
         private const val MAX_DISTANCE_SQR = 8.0 * 8.0
+
+        val TYPE = CustomPacketPayload.Type<SaveGraphPacket>(
+            ResourceLocation.fromNamespaceAndPath(Nodewire.ID, "save_graph")
+        )
 
         val CODEC: Codec<SaveGraphPacket> = RecordCodecBuilder.create { i ->
             i.group(
@@ -78,7 +53,33 @@ class SaveGraphPacket(val pos: BlockPos, val graph: NodeGraph) {
             ).apply(i, ::SaveGraphPacket)
         }
 
-        fun decode(buf: FriendlyByteBuf): SaveGraphPacket = buf.readCodec(CODEC)
+        val STREAM_CODEC: StreamCodec<RegistryFriendlyByteBuf, SaveGraphPacket> =
+            ByteBufCodecs.fromCodecWithRegistries(CODEC).cast()
+
+        fun handle(packet: SaveGraphPacket, ctx: IPayloadContext) {
+            val player = ctx.player()
+            val level = player.level()
+            val center = packet.pos.center
+            if (player.distanceToSqr(center.x, center.y, center.z) > MAX_DISTANCE_SQR) {
+                LOG.warn("Rejecting SaveGraphPacket: {} too far from {}", player.gameProfile.name, packet.pos)
+                return
+            }
+            val be = level.getBlockEntity(packet.pos) as? LogicBlockEntity ?: run {
+                LOG.warn("Rejecting SaveGraphPacket: no LogicBlockEntity at {}", packet.pos)
+                return
+            }
+            val reason = validate(packet.graph)
+            if (reason != null) {
+                LOG.warn("Rejecting SaveGraphPacket from {}: {}", player.gameProfile.name, reason)
+                return
+            }
+            be.graph = packet.graph
+            // New graph means the cached server-side evaluator references
+            // stale node references — rebuild on next tick.
+            be.invalidateEvaluator()
+            be.setChanged()
+            level.sendBlockUpdated(packet.pos, be.blockState, be.blockState, Block.UPDATE_CLIENTS)
+        }
 
         /**
          * Returns `null` if the graph is valid, otherwise a short reason
