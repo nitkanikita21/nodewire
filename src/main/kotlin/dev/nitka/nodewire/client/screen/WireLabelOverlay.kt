@@ -31,10 +31,10 @@ fun WireLabelOverlay() {
     val positions = editor.pinPositions
     val from = positions.get(PinKey(edge.from.node, edge.from.pin, PinSide.Output)) ?: return
     val to = positions.get(PinKey(edge.to.node, edge.to.pin, PinSide.Input)) ?: return
-    // Re-key on the edge's full identity AND label so reopening a wire
-    // we just labelled seeds the field with the just-saved text, not
-    // stale in-progress text from another wire.
-    var text by remember(edge.from, edge.to, edge.label) {
+    // Re-key on (from, to) — these uniquely identify an edge, and the
+    // label is what we're editing right now, so including it would reset
+    // the field on every keystroke once we autosave.
+    var text by remember(edge.from, edge.to) {
         mutableStateOf(edge.label ?: "")
     }
     val font = Minecraft.getInstance().font
@@ -57,14 +57,11 @@ fun WireLabelOverlay() {
             placeholder = placeholder,
             transparent = true,
             autoFocus = true,
-            onValueChange = {
-                text = it
-                // Persist on every keystroke so switching wires (or
-                // simply dropping the overlay without Enter) doesn't
-                // lose the label.
-                editor.setEdgeLabel(edge, it)
+            onValueChange = { text = it },
+            onSubmit = {
+                editor.setEdgeLabel(edge, text)
+                editor.renamingEdge = null
             },
-            onSubmit = { editor.renamingEdge = null },
         )
     }
 }
