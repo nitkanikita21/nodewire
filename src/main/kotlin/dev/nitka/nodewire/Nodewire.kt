@@ -31,6 +31,9 @@ object Nodewire {
         // defaults make this no-op when Sable itself isn't loaded.
         SableSubLevelBackend.register()
         EndpointBackends.register(WorldBackend)
+        if (net.neoforged.fml.ModList.get().isLoaded("computercraft")) {
+            dev.nitka.nodewire.integration.cctweaked.NwPeripheralCapability.register(MOD_BUS)
+        }
         FORGE_BUS.addListener(HighlightServerCommand::register)
         FORGE_BUS.addListener(dev.nitka.nodewire.integration.tweakedcontroller.ControllerBindHandler::onRightClickItem)
         FORGE_BUS.addListener(dev.nitka.nodewire.integration.tweakedcontroller.ControllerBindHandler::onRightClickBlock)

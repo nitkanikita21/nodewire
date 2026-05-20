@@ -42,6 +42,7 @@ repositories {
     maven("https://maven.blamejared.com/")           // JEI
     maven("https://maven.terraformersmc.com/")       // EMI
     maven("https://maven.ryanhcode.dev/releases")    // Sable
+    maven("https://maven.squiddev.cc/")              // CC: Tweaked
     // JetBrains Compose dev maven (multiplatform compose-runtime, etc.)
     maven("https://maven.pkg.jetbrains.space/public/p/compose/dev")
     // Google maven — Compose runtime transitively needs androidx.annotation
@@ -175,14 +176,15 @@ dependencies {
     runtimeOnly("curse.maven:create-tweaked-controllers-898849:7958165")
 
     // CC: Tweaked — peripheral integration (mod gated at runtime; module
-    // compiles against the jar so source references resolve). Modrinth ships
-    // a single unified Forge+NeoForge artifact (squiddev maven has no 1.21.1
-    // neoforge build), so we use the Modrinth-published jar for compile,
-    // runtime, and test classpaths.
-    val ccVer = "1.115.1"
-    compileOnly("maven.modrinth:cc-tweaked:${ccVer}")
-    runtimeOnly("maven.modrinth:cc-tweaked:${ccVer}")
-    testImplementation("maven.modrinth:cc-tweaked:${ccVer}")
+    // compiles against the jar so source references resolve). squiddev's
+    // -forge artifact is the NeoForge-compatible build for 1.21.1 (ships a
+    // neoforge.mods.toml-style descriptor and references
+    // net.neoforged.neoforge.capabilities.BlockCapability via
+    // dan200.computercraft.api.peripheral.PeripheralCapability).
+    val ccVer = "1.113.1"
+    compileOnly("cc.tweaked:cc-tweaked-${mcVer}-forge:${ccVer}")
+    runtimeOnly("cc.tweaked:cc-tweaked-${mcVer}-forge:${ccVer}")
+    testImplementation("cc.tweaked:cc-tweaked-${mcVer}-forge:${ccVer}")
 
     // --- Create 6.0.10 for NeoForge 1.21.1 + transitive deps ---
     // :slim + isTransitive = false: skip Create's POM-declared optional deps
