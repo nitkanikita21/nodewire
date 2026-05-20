@@ -22,6 +22,7 @@ object NodewireNetwork {
         // Client → server packets
         registrar.playToServer(SaveGraphPacket.TYPE, SaveGraphPacket.STREAM_CODEC, SaveGraphPacket::handle)
         registrar.playToServer(BindChannelPacket.TYPE, BindChannelPacket.STREAM_CODEC, BindChannelPacket::handle)
+        registrar.playToServer(BindAeroSourcePacket.TYPE, BindAeroSourcePacket.STREAM_CODEC, BindAeroSourcePacket::handle)
         registrar.playToServer(BindSideChannelPacket.TYPE, BindSideChannelPacket.STREAM_CODEC, BindSideChannelPacket::handle)
         registrar.playToServer(RemoveBindingPacket.TYPE, RemoveBindingPacket.STREAM_CODEC, RemoveBindingPacket::handle)
         registrar.playToServer(SetBlockNamePacket.TYPE, SetBlockNamePacket.STREAM_CODEC, SetBlockNamePacket::handle)
