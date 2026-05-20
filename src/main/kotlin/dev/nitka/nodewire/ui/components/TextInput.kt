@@ -51,6 +51,8 @@ fun TextInput(
     placeholder: String = "",
     onSubmit: () -> Unit = {},
     enabled: Boolean = true,
+    transparent: Boolean = false,
+    autoFocus: Boolean = false,
     keyBindings: List<KeyBinding> = TextFieldKeyBindings.DEFAULT,
 ) {
     val focusController = LocalKeyFocus.current
@@ -107,6 +109,12 @@ fun TextInput(
     }
     val focused = focusController?.isFocused(handler) == true
 
+    if (autoFocus) {
+        LaunchedEffect(handler) {
+            focusController?.request(handler)
+        }
+    }
+
     holder.onSubmit = { onSubmitState.value(); focusController?.release(handler) }
     holder.onReleaseFocus = { focusController?.release(handler) }
 
@@ -139,7 +147,7 @@ fun TextInput(
     Layout(
         modifier = modifier
             .height(rowHeight)
-            .background(bg, NwTheme.shapes.medium)
+            .let { if (transparent) it else it.background(bg, NwTheme.shapes.medium) }
             .padding(horizontal = NwTheme.dimens.space4, vertical = 1)
             .onHover { hovered = it }
             .onSizeChanged { size -> holder.visibleWidthPx = size.width }
