@@ -222,11 +222,20 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
      * caller passes the actual edge instance from `edges.value`.
      */
     fun setEdgeLabel(edge: dev.nitka.nodewire.graph.Edge, label: String?) {
-        mutateGraph(mergeable = false) {
+        mutateGraph(mergeable = true) {
             val sanitized = label?.takeIf { it.isNotBlank() }
-            val idx = graph.edges.indexOf(edge)
+            // Match by (from, to) only — Edge is a data class with `label`
+            // in equals(), so a plain indexOf(edge) stops finding the row
+            // after the first label save, which silently breaks subsequent
+            // edits. Two edges can't share the same (from, to) so this is
+            // unambiguous.
+            val idx = graph.edges.indexOfFirst {
+                it.from == edge.from && it.to == edge.to
+            }
             if (idx < 0) return@mutateGraph
-            graph.edges[idx] = edge.copy(label = sanitized)
+            val current = graph.edges[idx]
+            if (current.label == sanitized) return@mutateGraph
+            graph.edges[idx] = current.copy(label = sanitized)
             _edges.value = graph.edges.toList()
         }
     }

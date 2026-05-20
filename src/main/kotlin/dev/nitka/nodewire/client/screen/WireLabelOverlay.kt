@@ -10,11 +10,19 @@ import dev.nitka.nodewire.ui.core.Modifier
 import dev.nitka.nodewire.ui.layout.Box
 import dev.nitka.nodewire.ui.modifier.layout.absolutePosition
 import dev.nitka.nodewire.ui.modifier.layout.width
+import dev.nitka.nodewire.ui.theme.NwTheme
+import net.minecraft.client.Minecraft
 
 /**
  * Inline rename popup for the wire currently in `editor.renamingEdge`.
  * Lives inside the [NodeCanvas] so it pans/zooms with the world — sits
- * at the wire's midpoint in world coordinates.
+ * at the wire's midpoint in world coordinates. Transparent so the wire
+ * remains visible under the field, autofocused so typing works straight
+ * away, and width-tracks the entered text so it never clips.
+ *
+ * The label is written into the graph on every keystroke (not only on
+ * Enter) — that way switching to another wire by clicking it doesn't
+ * silently discard what was just typed.
  */
 @Composable
 fun WireLabelOverlay() {
@@ -23,22 +31,40 @@ fun WireLabelOverlay() {
     val positions = editor.pinPositions
     val from = positions.get(PinKey(edge.from.node, edge.from.pin, PinSide.Output)) ?: return
     val to = positions.get(PinKey(edge.to.node, edge.to.pin, PinSide.Input)) ?: return
-    val midX = ((from.first + to.first) * 0.5f).toInt() - 40
+    // Re-key on the edge's full identity AND label so reopening a wire
+    // we just labelled seeds the field with the just-saved text, not
+    // stale in-progress text from another wire.
+    var text by remember(edge.from, edge.to, edge.label) {
+        mutableStateOf(edge.label ?: "")
+    }
+    val font = Minecraft.getInstance().font
+    val scale = NwTheme.typography.caption.scale
+    val placeholder = "label"
+    // Width grows with text — never below the placeholder's width so an
+    // empty field is still visibly clickable. Padding accounts for caret
+    // + a comfortable text margin on the right edge.
+    val measured = (font.width(text.ifEmpty { placeholder }) * scale).toInt()
+    val w = (measured + 8).coerceAtLeast(40)
+    val midX = ((from.first + to.first) * 0.5f).toInt() - w / 2
     val midY = ((from.second + to.second) * 0.5f).toInt() - 6
-    var text by remember(edge) { mutableStateOf(edge.label ?: "") }
     Box(
         modifier = Modifier
             .absolutePosition(midX, midY)
-            .width(80),
+            .width(w),
     ) {
         TextInput(
             value = text,
-            placeholder = "label",
-            onValueChange = { text = it },
-            onSubmit = {
-                editor.setEdgeLabel(edge, text)
-                editor.renamingEdge = null
+            placeholder = placeholder,
+            transparent = true,
+            autoFocus = true,
+            onValueChange = {
+                text = it
+                // Persist on every keystroke so switching wires (or
+                // simply dropping the overlay without Enter) doesn't
+                // lose the label.
+                editor.setEdgeLabel(edge, it)
             },
+            onSubmit = { editor.renamingEdge = null },
         )
     }
 }

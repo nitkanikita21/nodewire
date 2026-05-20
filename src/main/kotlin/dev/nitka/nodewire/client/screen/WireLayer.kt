@@ -89,6 +89,11 @@ fun WireLayer() {
                 if (ev.button != 0) return@pointerInput false  // LMB only
                 val positions = editor.pinPositions
                 for (e in edgesState) {
+                    // Same skip as the renderer: a wire fully internal to a
+                    // collapsed group has no visible midpoint, so picking
+                    // it from a stale pinPosition would let the user "label
+                    // a wire" that doesn't appear on screen.
+                    if (e.from.node in hidden && e.to.node in hidden) continue
                     val from = positions.get(PinKey(e.from.node, e.from.pin, PinSide.Output)) ?: continue
                     val to = positions.get(PinKey(e.to.node, e.to.pin, PinSide.Input)) ?: continue
                     val midX = (from.first + to.first) * 0.5f
