@@ -263,6 +263,7 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
             val idx = graph.groups.indexOfFirst { it.id == id }
             if (idx < 0) return@mutateGraph
             graph.groups[idx] = graph.groups[idx].copy(name = sanitized)
+            syncGroupsFlow()
         }
     }
 
