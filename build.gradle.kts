@@ -174,6 +174,16 @@ dependencies {
     compileOnly("curse.maven:create-tweaked-controllers-898849:7958165")
     runtimeOnly("curse.maven:create-tweaked-controllers-898849:7958165")
 
+    // CC: Tweaked — peripheral integration (mod gated at runtime; module
+    // compiles against the jar so source references resolve). Modrinth ships
+    // a single unified Forge+NeoForge artifact (squiddev maven has no 1.21.1
+    // neoforge build), so we use the Modrinth-published jar for compile,
+    // runtime, and test classpaths.
+    val ccVer = "1.115.1"
+    compileOnly("maven.modrinth:cc-tweaked:${ccVer}")
+    runtimeOnly("maven.modrinth:cc-tweaked:${ccVer}")
+    testImplementation("maven.modrinth:cc-tweaked:${ccVer}")
+
     // --- Create 6.0.10 for NeoForge 1.21.1 + transitive deps ---
     // :slim + isTransitive = false: skip Create's POM-declared optional deps
     // (CC:Tweaked, Architectury, etc.) so we control versions explicitly.
