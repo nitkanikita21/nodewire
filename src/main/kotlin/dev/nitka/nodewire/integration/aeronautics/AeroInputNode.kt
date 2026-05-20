@@ -55,9 +55,7 @@ object AeroInputNode {
                 putString("channel", AeroChannel.PROP_ROTATION_SPEED.name)
             }
         },
-        // configContent stubbed to null — wired in Aero T6 once
-        // NodeConfigContent.AeroInput exists.
-        configContent = null,
+        configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.AeroInput,
         evaluate = Evaluator,
     )
 

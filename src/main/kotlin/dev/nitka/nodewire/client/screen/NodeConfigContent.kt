@@ -24,7 +24,11 @@ import dev.nitka.nodewire.ui.modifier.layout.weight
 import dev.nitka.nodewire.ui.modifier.style.background
 import dev.nitka.nodewire.ui.modifier.style.border
 import dev.nitka.nodewire.ui.render.BorderStroke
+import dev.nitka.nodewire.endpoint.EndpointRef
+import dev.nitka.nodewire.integration.aeronautics.AeroBlockKind
+import dev.nitka.nodewire.integration.aeronautics.AeroChannel
 import dev.nitka.nodewire.ui.theme.NwTheme
+import net.minecraft.nbt.NbtOps
 
 /**
  * Per-NodeType configuration widgets. The factories below are wired into
@@ -682,6 +686,83 @@ object NodeConfigContent {
                 },
                 label = { it.lowercase() },
             )
+        }
+    }
+
+    /**
+     * AeroInput: endpoint description (read-only, shows blockPos when bound),
+     * block-kind Select (all [AeroBlockKind] entries), channel Select (filtered
+     * to channels whose [AeroChannel.kind] matches the selected block-kind),
+     * and a derived output-pin-type label. Mutations call
+     * [EditorState.changeAeroChannel].
+     */
+    val AeroInput: @Composable (Node) -> Unit = { node ->
+        val editor = LocalEditorState.current
+
+        var kindName by remember(node.id) {
+            mutableStateOf(
+                node.config.getString("blockKind").ifEmpty { AeroBlockKind.SMART_PROPELLER.name }
+            )
+        }
+        var channelName by remember(node.id) {
+            mutableStateOf(
+                node.config.getString("channel").ifEmpty { AeroChannel.PROP_ROTATION_SPEED.name }
+            )
+        }
+
+        val kind = AeroBlockKind.fromName(kindName) ?: AeroBlockKind.SMART_PROPELLER
+        val channel = AeroChannel.fromName(channelName) ?: AeroChannel.PROP_ROTATION_SPEED
+        val channelOptions = AeroChannel.byKind(kind)
+
+        // Endpoint description — parsed from config; shown read-only.
+        val endpointDesc = if (node.config.contains("endpoint")) {
+            EndpointRef.CODEC
+                .parse(NbtOps.INSTANCE, node.config.getCompound("endpoint"))
+                .result().orElse(null)
+                ?.payload?.blockPos?.toShortString()
+                ?: "(unbound — use Channel Link Tool)"
+        } else {
+            "(unbound — use Channel Link Tool)"
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2)) {
+            LabeledRow("Source") {
+                Text(
+                    endpointDesc,
+                    style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceMuted),
+                )
+            }
+            LabeledRow("Block") {
+                Select(
+                    options = AeroBlockKind.entries.toList(),
+                    selected = kind,
+                    onSelect = { nextKind ->
+                        val nextChannel = if (channel.kind == nextKind) channel
+                            else AeroChannel.byKind(nextKind).first()
+                        kindName = nextKind.name
+                        channelName = nextChannel.name
+                        editor?.changeAeroChannel(node.id, nextKind, nextChannel)
+                    },
+                    label = { it.displayName },
+                )
+            }
+            LabeledRow("Channel") {
+                Select(
+                    options = channelOptions,
+                    selected = if (channel in channelOptions) channel else channelOptions.first(),
+                    onSelect = { nextChannel ->
+                        channelName = nextChannel.name
+                        editor?.changeAeroChannel(node.id, kind, nextChannel)
+                    },
+                    label = { it.displayName },
+                )
+            }
+            LabeledRow("Output") {
+                Text(
+                    channel.pinType.name.lowercase(),
+                    style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceMuted),
+                )
+            }
         }
     }
 
