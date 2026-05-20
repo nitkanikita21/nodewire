@@ -218,8 +218,24 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         }
     }
 
+    private val _renamingNode = mutableStateOf<NodeId?>(null)
+    private val _renamingGroup = mutableStateOf<GroupId?>(null)
+
     /** Node currently being labelled via the inline overlay (null = idle). */
-    var renamingNode: NodeId? by mutableStateOf(null)
+    var renamingNode: NodeId?
+        get() = _renamingNode.value
+        set(value) {
+            _renamingNode.value = value
+            if (value != null) _renamingGroup.value = null
+        }
+
+    /** Group currently being renamed via the inline overlay (null = idle). */
+    var renamingGroup: GroupId?
+        get() = _renamingGroup.value
+        set(value) {
+            _renamingGroup.value = value
+            if (value != null) _renamingNode.value = null
+        }
 
     /**
      * Update a node's label. Blank or null clears it (stored as null so
@@ -232,6 +248,21 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
             val updated = node.copy(label = sanitized)
             graph.nodes[id] = updated
             nodeFlows[id]?.value = updated
+        }
+    }
+
+    /**
+     * Update a group's display name. Group name is non-null in the codec
+     * (`Codec.STRING.fieldOf("name")`), so blank input falls back to the
+     * literal "Group" — intentionally asymmetric with [setNodeLabel] where
+     * blank clears the optional sub-label.
+     */
+    fun setGroupName(id: GroupId, name: String) {
+        mutateGraph(mergeable = false) {
+            val sanitized = name.takeIf { it.isNotBlank() } ?: "Group"
+            val idx = graph.groups.indexOfFirst { it.id == id }
+            if (idx < 0) return@mutateGraph
+            graph.groups[idx] = graph.groups[idx].copy(name = sanitized)
         }
     }
 
