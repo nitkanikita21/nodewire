@@ -3,6 +3,7 @@ package dev.nitka.nodewire.block
 import dev.nitka.nodewire.Registry
 import dev.nitka.nodewire.endpoint.EndpointRef
 import dev.nitka.nodewire.graph.NodeGraph
+import dev.nitka.nodewire.graph.NodeId
 import dev.nitka.nodewire.graph.PinType
 import dev.nitka.nodewire.graph.PinValue
 import dev.nitka.nodewire.graph.StatefulGraphEvaluator
@@ -210,6 +211,22 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
         target: LogicBlockEntity,
         targetChannelName: String,
     ): Boolean = tryAddBinding(sourceChannelName, target, targetChannelName) is BindResult.Ok
+
+    /**
+     * Server-side mutator: replace a node's config blob. Used by
+     * [dev.nitka.nodewire.net.BindAeroSourcePacket.Companion.handle] (and any future packet that wants to
+     * update a single node's config without a full graph sync). Returns
+     * true if the node was found and updated.
+     *
+     * Caller is responsible for any neighbour-update / block-update
+     * broadcast — this method only mutates state + setChanged().
+     */
+    fun replaceNodeConfig(nodeId: NodeId, newConfig: CompoundTag): Boolean {
+        val existing = graph.nodes[nodeId] ?: return false
+        graph.nodes[nodeId] = existing.copy(config = newConfig)
+        setChanged()
+        return true
+    }
 
     fun bindingsSnapshot(): List<ChannelBinding> = bindings.toList()
     fun sideBindingsSnapshot(): List<SideBinding> = sideBindings.toList()
