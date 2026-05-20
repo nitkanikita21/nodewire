@@ -448,6 +448,33 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
                 .currentValues.set(prevAero)
         }
 
+        // CC: Tweaked event dispatch — skip everything if the mod isn't
+        // present so the BE class loads cleanly on CC-less servers.
+        if (net.neoforged.fml.ModList.get().isLoaded("computercraft") &&
+            nwAttachedPeripheralsView().isNotEmpty()) {
+            val newSnap = dev.nitka.nodewire.integration.cctweaked
+                .NwChannelIntrospection.outputSnapshot(graph, result)
+            // Build the attachments list as Lua-typed pairs. We hop
+            // through `Any` in the BE field to keep CC API types out of
+            // the BE compile scope; cast back here behind the ModList
+            // gate where it's safe.
+            val attachments = nwAttachedPeripheralsView().flatMap { p ->
+                val peripheral = p as dev.nitka.nodewire.integration.cctweaked.NodewirePeripheral
+                peripheral.attachmentsSnapshot()
+            }
+            dev.nitka.nodewire.integration.cctweaked.NwChannelEventDispatch
+                .diffAndBroadcast(attachments, prev = nwChannelOutputSnapshotView(), new = newSnap)
+            // Clear all per-attach initial-sync flags now that they've
+            // fired at least once.
+            for (p in nwAttachedPeripheralsView()) {
+                val peripheral = p as dev.nitka.nodewire.integration.cctweaked.NodewirePeripheral
+                for ((computer, _) in peripheral.attachmentsSnapshot()) {
+                    peripheral.clearInitialSync(computer)
+                }
+            }
+            nwUpdateChannelOutputSnapshot(newSnap)
+        }
+
         if (ModList.get().isLoaded("create")) {
             syncRedstoneLinkables(level, result)
         }
