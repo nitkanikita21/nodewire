@@ -16,12 +16,18 @@ import net.neoforged.neoforge.capabilities.RegisterCapabilitiesEvent
  */
 object NwPeripheralCapability {
 
+    private val LOG: org.slf4j.Logger =
+        com.mojang.logging.LogUtils.getLogger()
+
     fun register(modBus: IEventBus) {
+        LOG.info("CC: NwPeripheralCapability.register() called — adding MOD_BUS listener")
         modBus.addListener<RegisterCapabilitiesEvent> { event ->
+            LOG.info("CC: RegisterCapabilitiesEvent fired — registering BlockCapability")
             event.registerBlockEntity(
                 PeripheralCapability.get(),
                 Registry.LOGIC_BLOCK_BE.get(),
             ) { be: LogicBlockEntity, side ->
+                LOG.info("CC: peripheral factory called — side={}, be.pos={}", side, be.blockPos)
                 if (side == null) null else NodewirePeripheral(be, side)
             }
         }
