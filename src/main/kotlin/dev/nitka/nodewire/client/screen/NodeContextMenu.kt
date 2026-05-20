@@ -120,6 +120,7 @@ private fun buildGroupItems(
     val g = editor.graph.groups.firstOrNull { it.id == target.groupId } ?: return emptyList()
     val collapseLabel = if (g.collapsed) "Expand" else "Collapse"
     val items = mutableListOf<ContextMenuItem>(
+        ContextMenuItem.Action("Rename") { editor.renamingGroup = target.groupId },
         ContextMenuItem.Action(collapseLabel) { editor.toggleCollapsed(target.groupId) },
     )
     if (g.templateFile == null) {
