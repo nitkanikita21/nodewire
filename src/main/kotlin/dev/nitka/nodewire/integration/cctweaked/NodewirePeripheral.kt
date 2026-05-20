@@ -49,4 +49,34 @@ class NodewirePeripheral(
     internal fun clearInitialSync(computer: IComputerAccess) {
         synchronized(attached) { attached[computer] = false }
     }
+
+    /**
+     * Read the current value of a `channel_output` node by name.
+     * Returns `nil` (Java null) if no such named channel exists. The
+     * value comes from the cached snapshot maintained by serverTick —
+     * see [LogicBlockEntity.nwChannelOutputSnapshotView].
+     */
+    @LuaFunction
+    fun getChannel(name: String): Any? {
+        val snap = be.nwChannelOutputSnapshotView()
+        val v = snap[name] ?: return null
+        return NwChannelLuaCodec.toLua(v)
+    }
+
+    /**
+     * Write a value to a `channel_input` node by name. Type-checks
+     * the Lua value against the channel's declared `PinType`; throws
+     * `LuaException("no such channel")` or `"type mismatch: expected X"`
+     * with the channel's type name. The new value is picked up by the
+     * next server tick via `LogicBlockEntity.externalChannelInputs`.
+     */
+    @LuaFunction
+    fun setChannel(name: String, value: Any?): Boolean {
+        val inputs = NwChannelIntrospection.inputs(be.graph)
+        val type = inputs[name]
+            ?: throw dan200.computercraft.api.lua.LuaException("no such channel")
+        val pv = NwChannelLuaCodec.fromLua(value, type)
+        be.nwWriteChannelInput(name, pv)
+        return true
+    }
 }

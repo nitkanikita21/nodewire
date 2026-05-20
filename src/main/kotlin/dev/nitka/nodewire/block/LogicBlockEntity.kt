@@ -689,6 +689,32 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
     /** Read-only view used by [serverTick]'s CC dispatch step (added in T9). */
     internal fun nwAttachedPeripheralsView(): Set<Any> = nwAttachedPeripherals
 
+    /**
+     * Last-tick snapshot of `channel_output` values, keyed by channel
+     * name. Updated end-of-tick by the CC integration; consulted from
+     * Lua [dev.nitka.nodewire.integration.cctweaked.NodewirePeripheral.getChannel].
+     */
+    @Transient
+    private var nwChannelOutputSnapshot: Map<String, dev.nitka.nodewire.graph.PinValue> = emptyMap()
+
+    internal fun nwChannelOutputSnapshotView(): Map<String, dev.nitka.nodewire.graph.PinValue> =
+        nwChannelOutputSnapshot
+
+    internal fun nwUpdateChannelOutputSnapshot(snap: Map<String, dev.nitka.nodewire.graph.PinValue>) {
+        nwChannelOutputSnapshot = snap
+    }
+
+    /**
+     * Write to a `channel_input`-fed external. Same map the cross-block
+     * channel bindings use, so a Lua writer and another BE writer
+     * compete on a last-writer-wins basis (which is the existing
+     * channel-binding behaviour).
+     */
+    internal fun nwWriteChannelInput(name: String, value: dev.nitka.nodewire.graph.PinValue) {
+        externalChannelInputs[name] = value
+        setChanged()
+    }
+
     companion object {
         private const val MAX_NAME_LENGTH = 64
         private val DIRECTIONS_BY_NAME = Direction.entries.associateBy { it.name.lowercase() }
