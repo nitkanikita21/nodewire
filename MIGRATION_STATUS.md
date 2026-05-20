@@ -4,7 +4,7 @@ Branch: `port/neoforge-1.21.1`. **Compiles and tests pass**; in-client smoke tes
 
 ## What's done
 
-- [x] **Phase 1 — Toolchain swap.** `build.gradle.kts` rewritten for ModDevGradle non-legacy + NeoForge 21.1.230. `gradle.properties` updated. `META-INF/mods.toml` → `META-INF/neoforge.mods.toml` with NeoForge schema. Java toolchain bumped 17 → 21. Yoga jar in `libs/` rebuilt to Java 21 bytecode.
+- [x] **Phase 1 — Toolchain swap.** `build.gradle.kts` rewritten for ModDevGradle non-legacy + NeoForge 21.1.230. `gradle.properties` updated. `META-INF/mods.toml` → `META-INF/neoforge.mods.toml` with NeoForge schema. Java toolchain bumped 17 → 21. Yoga jar in `libs/` stays on Java 17 bytecode — runs on JDK 21 unchanged.
 - [x] **Phase 2 — Research.** Confirmed maven coords for Create / Ponder / Flywheel / Registrate / JEI / EMI on 1.21.1. KFF NeoForge 5.5.0 picked. NeoForge 21.1.230 is the chosen stable.
 - [x] **Phase 3 — `ResourceLocation` API.** 47 call sites migrated across 23 files.
 - [x] **Phase 4 — Network rewrite.** All packets rewritten as `CustomPacketPayload` data classes with static `TYPE` + `STREAM_CODEC`. `NodewireNetwork` is now an `@EventBusSubscriber` on the mod bus that listens for `RegisterPayloadHandlersEvent`. Send sites switched to `PacketDistributor.sendToServer` / `sendToPlayer`. `HighlightPacket` (server→client) drops `DistExecutor`. Includes the new `BindAeroSourcePacket` from the Aeronautics integration.
