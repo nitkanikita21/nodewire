@@ -132,6 +132,48 @@ object StockEvaluators {
         )
     }
 
+    /**
+     * Clamp: value, min, max → value.coerceIn(min, max). If min > max,
+     * swap them silently — the user is more likely to want a result
+     * than a NaN-out signal.
+     */
+    val Clamp: NodeEvaluator = { _, inputs ->
+        val v = (inputs["value"] as? PinValue.Float)?.value ?: 0f
+        val lo = (inputs["min"] as? PinValue.Float)?.value ?: 0f
+        val hi = (inputs["max"] as? PinValue.Float)?.value ?: 1f
+        val (realLo, realHi) = if (lo <= hi) lo to hi else hi to lo
+        mapOf("out" to PinValue.Float(v.coerceIn(realLo, realHi)))
+    }
+
+    /**
+     * Map: linear remap from [from_min, from_max] into [to_min, to_max].
+     * If the source range collapses (from_max == from_min) emit to_min
+     * to avoid div-by-zero. Result is NOT clamped — chain a Clamp node
+     * if needed.
+     */
+    val Map: NodeEvaluator = { _, inputs ->
+        val v = (inputs["value"] as? PinValue.Float)?.value ?: 0f
+        val fromMin = (inputs["from_min"] as? PinValue.Float)?.value ?: 0f
+        val fromMax = (inputs["from_max"] as? PinValue.Float)?.value ?: 1f
+        val toMin = (inputs["to_min"] as? PinValue.Float)?.value ?: 0f
+        val toMax = (inputs["to_max"] as? PinValue.Float)?.value ?: 1f
+        val out = if (fromMax == fromMin) toMin
+                  else toMin + (v - fromMin) * (toMax - toMin) / (fromMax - fromMin)
+        mapOf("out" to PinValue.Float(out))
+    }
+
+    /**
+     * Lerp: linear interpolate between a and b by t. t is clamped to
+     * [0, 1] before mixing so out stays inside [a, b] regardless of
+     * upstream sign.
+     */
+    val Lerp: NodeEvaluator = { _, inputs ->
+        val a = (inputs["a"] as? PinValue.Float)?.value ?: 0f
+        val b = (inputs["b"] as? PinValue.Float)?.value ?: 0f
+        val t = ((inputs["t"] as? PinValue.Float)?.value ?: 0f).coerceIn(0f, 1f)
+        mapOf("out" to PinValue.Float(a + (b - a) * t))
+    }
+
     // --- Conversion ----------------------------------------------------
 
     /**

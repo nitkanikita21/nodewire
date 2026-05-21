@@ -190,6 +190,47 @@ object StockNodeTypes {
         evaluate = StockEvaluators.Compare,
     )
 
+    val CLAMP = nodeType(
+        id = "clamp",
+        displayName = "📏 Clamp",
+        category = NodeCategory.MATH,
+        inputs = listOf(
+            Pin("value", "Value", PinType.FLOAT),
+            Pin("min", "Min", PinType.FLOAT),
+            Pin("max", "Max", PinType.FLOAT),
+        ),
+        outputs = listOf(Pin("out", "Out", PinType.FLOAT)),
+        evaluate = StockEvaluators.Clamp,
+    )
+
+    val MAP = nodeType(
+        id = "map",
+        displayName = "↗ Map",
+        category = NodeCategory.MATH,
+        inputs = listOf(
+            Pin("value", "Value", PinType.FLOAT),
+            Pin("from_min", "From Min", PinType.FLOAT),
+            Pin("from_max", "From Max", PinType.FLOAT),
+            Pin("to_min", "To Min", PinType.FLOAT),
+            Pin("to_max", "To Max", PinType.FLOAT),
+        ),
+        outputs = listOf(Pin("out", "Out", PinType.FLOAT)),
+        evaluate = StockEvaluators.Map,
+    )
+
+    val LERP = nodeType(
+        id = "lerp",
+        displayName = "🌊 Lerp",
+        category = NodeCategory.MATH,
+        inputs = listOf(
+            Pin("a", "A", PinType.FLOAT),
+            Pin("b", "B", PinType.FLOAT),
+            Pin("t", "T", PinType.FLOAT),
+        ),
+        outputs = listOf(Pin("out", "Out", PinType.FLOAT)),
+        evaluate = StockEvaluators.Lerp,
+    )
+
     // --- Conversion ----------------------------------------------------
 
     val CONVERT = nodeType(
@@ -330,7 +371,7 @@ object StockNodeTypes {
             // Constants
             CONSTANT, TIMER,
             // Math
-            MATH, COMPARE,
+            MATH, COMPARE, CLAMP, MAP, LERP,
             // Conversion
             CONVERT,
             // Flow

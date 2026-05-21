@@ -45,4 +45,70 @@ class AlgoNodeEvaluatorsTest {
         )
         assertEquals(PinValue.Bool(false), StockEvaluators.Switch(cfg, inputs)["out"])
     }
+
+    @Test fun `clamp inside passes through`() {
+        val out = StockEvaluators.Clamp(empty, mapOf(
+            "value" to PinValue.Float(5f),
+            "min" to PinValue.Float(0f),
+            "max" to PinValue.Float(10f),
+        ))
+        assertEquals(PinValue.Float(5f), out["out"])
+    }
+
+    @Test fun `clamp above clips to max`() {
+        val out = StockEvaluators.Clamp(empty, mapOf(
+            "value" to PinValue.Float(99f),
+            "min" to PinValue.Float(0f),
+            "max" to PinValue.Float(10f),
+        ))
+        assertEquals(PinValue.Float(10f), out["out"])
+    }
+
+    @Test fun `clamp swaps reversed min max`() {
+        val out = StockEvaluators.Clamp(empty, mapOf(
+            "value" to PinValue.Float(5f),
+            "min" to PinValue.Float(10f),
+            "max" to PinValue.Float(0f),
+        ))
+        assertEquals(PinValue.Float(5f), out["out"])
+    }
+
+    @Test fun `map 0_to_1 onto 0_to_100`() {
+        val out = StockEvaluators.Map(empty, mapOf(
+            "value" to PinValue.Float(0.5f),
+            "from_min" to PinValue.Float(0f), "from_max" to PinValue.Float(1f),
+            "to_min" to PinValue.Float(0f), "to_max" to PinValue.Float(100f),
+        ))
+        assertEquals(PinValue.Float(50f), out["out"])
+    }
+
+    @Test fun `map degenerate range collapses to to_min`() {
+        val out = StockEvaluators.Map(empty, mapOf(
+            "value" to PinValue.Float(0.5f),
+            "from_min" to PinValue.Float(1f), "from_max" to PinValue.Float(1f),
+            "to_min" to PinValue.Float(7f), "to_max" to PinValue.Float(99f),
+        ))
+        assertEquals(PinValue.Float(7f), out["out"])
+    }
+
+    @Test fun `lerp at zero returns a`() {
+        val out = StockEvaluators.Lerp(empty, mapOf(
+            "a" to PinValue.Float(10f), "b" to PinValue.Float(20f), "t" to PinValue.Float(0f),
+        ))
+        assertEquals(PinValue.Float(10f), out["out"])
+    }
+
+    @Test fun `lerp at one returns b`() {
+        val out = StockEvaluators.Lerp(empty, mapOf(
+            "a" to PinValue.Float(10f), "b" to PinValue.Float(20f), "t" to PinValue.Float(1f),
+        ))
+        assertEquals(PinValue.Float(20f), out["out"])
+    }
+
+    @Test fun `lerp t clamps to one`() {
+        val out = StockEvaluators.Lerp(empty, mapOf(
+            "a" to PinValue.Float(10f), "b" to PinValue.Float(20f), "t" to PinValue.Float(99f),
+        ))
+        assertEquals(PinValue.Float(20f), out["out"])
+    }
 }
