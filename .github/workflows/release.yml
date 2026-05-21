@@ -57,6 +57,13 @@ jobs:
             echo "Detected stable tag: $tag"
           fi
 
+      - name: Read mod_version from gradle.properties
+        id: ver
+        run: |
+          v=$(grep '^mod_version=' gradle.properties | cut -d= -f2-)
+          echo "mod_version=$v" >> "$GITHUB_OUTPUT"
+          echo "Detected mod_version=$v"
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -67,3 +74,34 @@ jobs:
           body_path: deps-table.md
           files: |
             build/libs/*.jar
+
+      # Mirror the release to Modrinth. Uses the same deps-table.md as
+      # the GitHub body so the version's changelog on Modrinth carries
+      # the identical Runtime / Integrations / Bundled / Toolchain
+      # tables. Dependency slugs declared explicitly so Modrinth shows
+      # the proper required / optional list — Modrinth doesn't infer
+      # these from neoforge.mods.toml.
+      - name: Publish to Modrinth
+        if: vars.MODRINTH_PROJECT_ID != ''
+        uses: Kir-Antipov/mc-publish@v3.3
+        with:
+          modrinth-id: ${{ vars.MODRINTH_PROJECT_ID }}
+          modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
+          name: Nodewire ${{ steps.ver.outputs.mod_version }}
+          version: ${{ steps.ver.outputs.mod_version }}
+          version-type: ${{ steps.prerel.outputs.prerelease == 'true' && 'beta' || 'release' }}
+          changelog-file: deps-table.md
+          files: build/libs/!(*-sources|*-dev|*-javadoc).jar
+          loaders: neoforge
+          game-versions: 1.21.1
+          # Format: slug(scope){platform:id?}. Slugs match Modrinth
+          # project slugs; mc-publish resolves them at publish time.
+          dependencies: |
+            kotlin-for-forge(required)
+            create(optional)
+            create-aeronautics(optional)
+            sable(optional)
+            cc-tweaked(optional)
+            jei(optional)
+            emi(optional)
+          fail-mode: warn
