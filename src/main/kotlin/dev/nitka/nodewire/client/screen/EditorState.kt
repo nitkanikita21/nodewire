@@ -356,7 +356,9 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         if (target.side == src.side) return false  // need opposite sides
         if (target.node == src.node) return false
         val (output, input) = orderOutputInput(src, target)
-        if (pinType(output) != pinType(input)) return false
+        val outType = pinType(output) ?: return false
+        val inType = pinType(input) ?: return false
+        if (!dev.nitka.nodewire.graph.PinValueConversion.canConvert(outType, inType)) return false
         val edge = Edge(PinRef(output.node, output.pin), PinRef(input.node, input.pin))
         mutateGraph(mergeable = false) {
             graph.connectReplacing(edge)
@@ -844,7 +846,11 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         for ((key, pos) in pinPositions.all()) {
             if (key.side != wantSide) continue
             if (key.node == src.node) continue
-            if (pinType(key) != srcType) continue
+            val targetType = pinType(key) ?: continue
+            // Direction matters: output-side feeds input-side, so canConvert
+            // is checked output→input regardless of which end the user grabbed.
+            val (outType, inType) = if (src.side == PinSide.Output) srcType to targetType else targetType to srcType
+            if (!dev.nitka.nodewire.graph.PinValueConversion.canConvert(outType, inType)) continue
             val dx = pos.first - x
             val dy = pos.second - y
             val sq = dx * dx + dy * dy

@@ -492,7 +492,7 @@ private fun pinColor(type: PinType): Color = when (type) {
     // ANY pins render in a neutral muted color — they have no canonical
     // type-color since they accept anything; see Task 4 for the dedicated
     // ANY-pin rendering treatment.
-    PinType.ANY -> NwTheme.colors.onSurfaceMuted
+    PinType.ANY -> NwTheme.colors.pinAny
 }
 
 /**

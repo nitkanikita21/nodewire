@@ -376,7 +376,7 @@ object WireWorldRenderer {
         PinType.QUAT -> 0xFF_C8_7C_E8.toInt()
         // Neutral light-gray for ANY — channel wires generally avoid ANY,
         // but if one ever appears the wire should still render visibly.
-        PinType.ANY -> 0xFF_C0_C0_C0.toInt()
+        PinType.ANY -> 0xFF_9C_A3_AF.toInt()
     }
 
     private const val WIRE_THICKNESS = 0.08

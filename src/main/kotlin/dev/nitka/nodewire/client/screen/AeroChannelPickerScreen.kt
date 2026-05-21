@@ -161,7 +161,7 @@ private fun aeroChannelPinColor(type: PinType): Color = when (type) {
     PinType.QUAT -> NwTheme.colors.pinQuat
     // ANY pins are not exposed by Aero channels — neutral fallback so the
     // UI degrades gracefully if a future channel ever advertises ANY.
-    PinType.ANY -> NwTheme.colors.onSurfaceMuted
+    PinType.ANY -> NwTheme.colors.pinAny
 }
 
 private const val PANEL_WIDTH = 260

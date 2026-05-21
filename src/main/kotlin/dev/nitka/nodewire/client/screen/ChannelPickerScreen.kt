@@ -149,7 +149,7 @@ private fun pinColor(type: PinType): Color = when (type) {
     PinType.VEC2 -> NwTheme.colors.pinVec2
     PinType.VEC3 -> NwTheme.colors.pinVec3
     PinType.QUAT -> NwTheme.colors.pinQuat
-    PinType.ANY -> NwTheme.colors.onSurfaceMuted
+    PinType.ANY -> NwTheme.colors.pinAny
 }
 
 private const val PANEL_WIDTH = 220

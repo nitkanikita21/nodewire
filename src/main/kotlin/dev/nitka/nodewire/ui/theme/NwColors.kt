@@ -42,6 +42,7 @@ data class NwColors(
     val pinVec2: Color,
     val pinVec3: Color,
     val pinQuat: Color,
+    val pinAny: Color,
 ) {
     companion object {
         val Dark = NwColors(
@@ -71,6 +72,7 @@ data class NwColors(
             pinVec2   = Color(0xFF_7C_E8_5C.toInt()),
             pinVec3  = Color(0xFF_AC_E8_5C.toInt()),
             pinQuat  = Color(0xFF_C8_7C_E8.toInt()),
+            pinAny   = Color(0xFF_9C_A3_AF.toInt()),
         )
     }
 }
