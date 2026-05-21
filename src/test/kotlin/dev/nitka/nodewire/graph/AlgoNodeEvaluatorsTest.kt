@@ -219,4 +219,16 @@ class AlgoNodeEvaluatorsTest {
         val last = (outs.last()["out"] as PinValue.Float).value
         org.junit.jupiter.api.Assertions.assertEquals(5f, last, 0.001f)
     }
+
+    @Test fun `pid clamps integral via input pins`() {
+        val frame = mapOf(
+            "setpoint" to PinValue.Float(10f), "measurement" to PinValue.Float(9f),
+            "kp" to PinValue.Float(0f), "ki" to PinValue.Float(1f), "kd" to PinValue.Float(0f),
+            "i_min" to PinValue.Float(-2f), "i_max" to PinValue.Float(2f),
+        )
+        val outs = runTicks(StockEvaluators.Pid, frames = List(10) { frame })
+        // Without the clamp integral would reach 10. With i_max=2 it caps at 2.
+        val last = (outs.last()["out"] as PinValue.Float).value
+        org.junit.jupiter.api.Assertions.assertEquals(2f, last, 0.001f)
+    }
 }

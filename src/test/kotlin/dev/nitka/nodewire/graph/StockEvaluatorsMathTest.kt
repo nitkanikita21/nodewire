@@ -6,117 +6,53 @@ import org.junit.jupiter.api.Test
 
 class StockEvaluatorsMathTest {
 
-    private fun cfg(build: CompoundTag.() -> Unit): CompoundTag = CompoundTag().apply(build)
+    private val empty = CompoundTag()
 
-    private fun intInputs(a: Int, b: Int) = mapOf(
-        "a" to PinValue.Int(a),
-        "b" to PinValue.Int(b),
-    )
-
-    private fun floatInputs(a: Float, b: Float) = mapOf(
+    private fun inputs(op: String, a: Float, b: Float) = mapOf(
+        "op" to PinValue.Str(op),
         "a" to PinValue.Float(a),
         "b" to PinValue.Float(b),
     )
 
-    // INT ops
-
-    @Test fun intAdd() = assertEquals(
-        PinValue.Int(7),
-        StockEvaluators.Math(
-            cfg { putString("op", "ADD"); putString("type", "INT") },
-            intInputs(3, 4),
-        )["out"],
+    @Test fun add() = assertEquals(
+        PinValue.Float(7f), StockEvaluators.Math(empty, inputs("ADD", 3f, 4f))["out"],
     )
 
-    @Test fun intSub() = assertEquals(
-        PinValue.Int(2),
-        StockEvaluators.Math(
-            cfg { putString("op", "SUB"); putString("type", "INT") },
-            intInputs(5, 3),
-        )["out"],
+    @Test fun sub() = assertEquals(
+        PinValue.Float(2f), StockEvaluators.Math(empty, inputs("SUB", 5f, 3f))["out"],
     )
 
-    @Test fun intMul() = assertEquals(
-        PinValue.Int(12),
-        StockEvaluators.Math(
-            cfg { putString("op", "MUL"); putString("type", "INT") },
-            intInputs(3, 4),
-        )["out"],
+    @Test fun mul() = assertEquals(
+        PinValue.Float(12f), StockEvaluators.Math(empty, inputs("MUL", 3f, 4f))["out"],
     )
 
-    @Test fun intDiv() = assertEquals(
-        PinValue.Int(3),
-        StockEvaluators.Math(
-            cfg { putString("op", "DIV"); putString("type", "INT") },
-            intInputs(9, 3),
-        )["out"],
+    @Test fun div() = assertEquals(
+        PinValue.Float(3f), StockEvaluators.Math(empty, inputs("DIV", 9f, 3f))["out"],
     )
 
-    @Test fun intMod() = assertEquals(
-        PinValue.Int(1),
-        StockEvaluators.Math(
-            cfg { putString("op", "MOD"); putString("type", "INT") },
-            intInputs(7, 3),
-        )["out"],
-    )
-
-    // FLOAT ops
-
-    @Test fun floatAdd() = assertEquals(
-        PinValue.Float(5.5f),
-        StockEvaluators.Math(
-            cfg { putString("op", "ADD"); putString("type", "FLOAT") },
-            floatInputs(2.0f, 3.5f),
-        )["out"],
-    )
-
-    @Test fun floatSub() = assertEquals(
-        PinValue.Float(1.5f),
-        StockEvaluators.Math(
-            cfg { putString("op", "SUB"); putString("type", "FLOAT") },
-            floatInputs(2.5f, 1.0f),
-        )["out"],
-    )
-
-    @Test fun floatMul() = assertEquals(
-        PinValue.Float(6.0f),
-        StockEvaluators.Math(
-            cfg { putString("op", "MUL"); putString("type", "FLOAT") },
-            floatInputs(2.0f, 3.0f),
-        )["out"],
-    )
-
-    @Test fun floatDiv() = assertEquals(
-        PinValue.Float(2.5f),
-        StockEvaluators.Math(
-            cfg { putString("op", "DIV"); putString("type", "FLOAT") },
-            floatInputs(5.0f, 2.0f),
-        )["out"],
+    @Test fun mod() = assertEquals(
+        PinValue.Float(1f), StockEvaluators.Math(empty, inputs("MOD", 7f, 3f))["out"],
     )
 
     // div/mod by zero edge cases
 
-    @Test fun intDivByZeroReturnsZero() = assertEquals(
-        PinValue.Int(0),
-        StockEvaluators.Math(
-            cfg { putString("op", "DIV"); putString("type", "INT") },
-            intInputs(5, 0),
-        )["out"],
+    @Test fun divByZeroReturnsZero() = assertEquals(
+        PinValue.Float(0f), StockEvaluators.Math(empty, inputs("DIV", 5f, 0f))["out"],
     )
 
-    @Test fun floatDivByZeroReturnsZero() = assertEquals(
-        PinValue.Float(0f),
-        StockEvaluators.Math(
-            cfg { putString("op", "DIV"); putString("type", "FLOAT") },
-            floatInputs(5f, 0f),
-        )["out"],
+    @Test fun modByZeroReturnsZero() = assertEquals(
+        PinValue.Float(0f), StockEvaluators.Math(empty, inputs("MOD", 5f, 0f))["out"],
     )
 
-    @Test fun intModByZeroReturnsZero() = assertEquals(
-        PinValue.Int(0),
-        StockEvaluators.Math(
-            cfg { putString("op", "MOD"); putString("type", "INT") },
-            intInputs(5, 0),
-        )["out"],
+    @Test fun unknownOpDefaultsToAdd() = assertEquals(
+        PinValue.Float(7f), StockEvaluators.Math(empty, inputs("WAT", 3f, 4f))["out"],
+    )
+
+    @Test fun missingOpInputDefaultsToAdd() = assertEquals(
+        PinValue.Float(7f),
+        StockEvaluators.Math(empty, mapOf(
+            "a" to PinValue.Float(3f),
+            "b" to PinValue.Float(4f),
+        ))["out"],
     )
 }

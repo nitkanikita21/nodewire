@@ -87,7 +87,8 @@ class StockNodeTypesTest {
     @Test
     fun timerConfigDefaultIs20Ticks() {
         val node = StockNodeTypes.TIMER.newInstance()
-        assertEquals(20, node.config.getInt("period"))
+        // `period` is now an INT input pin seeded via the pin-default mechanism.
+        assertEquals(PinValue.Int(20), node.getPinDefault("period"))
     }
 
     @Test

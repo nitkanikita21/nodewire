@@ -6,18 +6,29 @@ import org.junit.jupiter.api.Test
 
 class StockEvaluatorsLogicGateTest {
 
-    private fun cfg(op: String) = CompoundTag().apply { putString("op", op) }
-    private fun ab(a: Boolean, b: Boolean) = mapOf(
+    private val empty = CompoundTag()
+
+    private fun binary(op: String, a: Boolean, b: Boolean) = mapOf(
+        "op" to PinValue.Str(op),
         "a" to PinValue.Bool(a),
         "b" to PinValue.Bool(b),
     )
-    private fun unary(v: Boolean) = mapOf("in" to PinValue.Bool(v))
 
-    @Test fun andTrue()   = assertEquals(PinValue.Bool(true),  StockEvaluators.LogicGate(cfg("AND"),  ab(true, true))["out"])
-    @Test fun orFalse()   = assertEquals(PinValue.Bool(false), StockEvaluators.LogicGate(cfg("OR"),   ab(false, false))["out"])
-    @Test fun notTrue()   = assertEquals(PinValue.Bool(false), StockEvaluators.LogicGate(cfg("NOT"),  unary(true))["out"])
-    @Test fun xorMixed()  = assertEquals(PinValue.Bool(true),  StockEvaluators.LogicGate(cfg("XOR"),  ab(true, false))["out"])
-    @Test fun nandTrue()  = assertEquals(PinValue.Bool(false), StockEvaluators.LogicGate(cfg("NAND"), ab(true, true))["out"])
-    @Test fun norFalse()  = assertEquals(PinValue.Bool(true),  StockEvaluators.LogicGate(cfg("NOR"),  ab(false, false))["out"])
-    @Test fun xnorMixed() = assertEquals(PinValue.Bool(false), StockEvaluators.LogicGate(cfg("XNOR"), ab(true, false))["out"])
+    private fun unary(op: String, a: Boolean) = mapOf(
+        "op" to PinValue.Str(op),
+        "a" to PinValue.Bool(a),
+    )
+
+    @Test fun andTrue()   = assertEquals(PinValue.Bool(true),  StockEvaluators.LogicGate(empty, binary("AND",  true, true))["out"])
+    @Test fun orFalse()   = assertEquals(PinValue.Bool(false), StockEvaluators.LogicGate(empty, binary("OR",   false, false))["out"])
+    @Test fun notTrue()   = assertEquals(PinValue.Bool(false), StockEvaluators.LogicGate(empty, unary("NOT",   true))["out"])
+    @Test fun xorMixed()  = assertEquals(PinValue.Bool(true),  StockEvaluators.LogicGate(empty, binary("XOR",  true, false))["out"])
+    @Test fun nandTrue()  = assertEquals(PinValue.Bool(false), StockEvaluators.LogicGate(empty, binary("NAND", true, true))["out"])
+    @Test fun norFalse()  = assertEquals(PinValue.Bool(true),  StockEvaluators.LogicGate(empty, binary("NOR",  false, false))["out"])
+    @Test fun xnorMixed() = assertEquals(PinValue.Bool(false), StockEvaluators.LogicGate(empty, binary("XNOR", true, false))["out"])
+
+    @Test fun missingOpDefaultsToAnd() = assertEquals(
+        PinValue.Bool(true),
+        StockEvaluators.LogicGate(empty, mapOf("a" to PinValue.Bool(true), "b" to PinValue.Bool(true)))["out"],
+    )
 }

@@ -2,7 +2,18 @@ package dev.nitka.nodewire.graph
 
 import dev.nitka.nodewire.Nodewire
 import net.minecraft.nbt.CompoundTag
+import net.minecraft.nbt.NbtOps
 import net.minecraft.resources.ResourceLocation
+
+/**
+ * Encode a [PinValue] into the `pinDefaults` compound under [pinId].
+ * Helper for [NodeType.defaultConfig] blocks that need to seed inline
+ * defaults for input pins migrated away from raw config keys.
+ */
+private fun CompoundTag.seedPinDefault(pinId: String, value: PinValue) {
+    val pd = (get("pinDefaults") as? CompoundTag) ?: CompoundTag().also { put("pinDefaults", it) }
+    PinValue.CODEC.encodeStart(NbtOps.INSTANCE, value).result().ifPresent { pd.put(pinId, it) }
+}
 
 /**
  * The 13 baseline [NodeType]s from the MVP spec. Calling [registerAll]
@@ -119,10 +130,17 @@ object StockNodeTypes {
         id = "logic_gate",
         displayName = "🧮 Logic Gate",
         category = NodeCategory.LOGIC,
-        inputs = listOf(Pin("a", "A", PinType.BOOL), Pin("b", "B", PinType.BOOL)),
+        inputs = listOf(
+            Pin("op", "Op", PinType.STRING, editor = PinEditor.Enum(
+                listOf("AND", "OR", "NOT", "XOR", "NAND", "NOR", "XNOR")
+            )),
+            Pin("a", "A", PinType.BOOL),
+            Pin("b", "B", PinType.BOOL),
+        ),
         outputs = listOf(Pin("out", "Out", PinType.BOOL)),
-        defaultConfig = { CompoundTag().apply { putString("op", "AND") } },
-        configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.LogicGate,
+        defaultConfig = {
+            CompoundTag().apply { seedPinDefault("op", PinValue.Str("AND")) }
+        },
         evaluate = StockEvaluators.LogicGate,
     )
 
@@ -150,11 +168,11 @@ object StockNodeTypes {
         id = "timer",
         displayName = "⏱ Timer",
         category = NodeCategory.CONSTANTS,
-        // No `period` input pin — value comes from config; the node ticks
-        // a counter on the server and toggles `out` every config.period.
+        inputs = listOf(Pin("period", "Period", PinType.INT)),
         outputs = listOf(Pin("out", "Pulse", PinType.BOOL)),
-        defaultConfig = { CompoundTag().apply { putInt("period", 20) } },
-        configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.TimerPeriod,
+        defaultConfig = {
+            CompoundTag().apply { seedPinDefault("period", PinValue.Int(20)) }
+        },
         evaluate = StockEvaluators.Timer,
         tickEvaluator = StockEvaluators.TimerTick,
     )
@@ -163,15 +181,17 @@ object StockNodeTypes {
         id = "math",
         displayName = "➗ Math",
         category = NodeCategory.MATH,
-        inputs = listOf(Pin("a", "A", PinType.INT), Pin("b", "B", PinType.INT)),
-        outputs = listOf(Pin("out", "Out", PinType.INT)),
+        inputs = listOf(
+            Pin("op", "Op", PinType.STRING, editor = PinEditor.Enum(
+                listOf("ADD", "SUB", "MUL", "DIV", "MOD")
+            )),
+            Pin("a", "A", PinType.FLOAT),
+            Pin("b", "B", PinType.FLOAT),
+        ),
+        outputs = listOf(Pin("out", "Out", PinType.FLOAT)),
         defaultConfig = {
-            CompoundTag().apply {
-                putString("op", "ADD")
-                putString("type", PinType.INT.name)
-            }
+            CompoundTag().apply { seedPinDefault("op", PinValue.Str("ADD")) }
         },
-        configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.Math,
         evaluate = StockEvaluators.Math,
     )
 
@@ -179,14 +199,15 @@ object StockNodeTypes {
         id = "compare",
         displayName = "⚖ Compare",
         category = NodeCategory.MATH,
-        inputs = listOf(Pin("a", "A", PinType.INT), Pin("b", "B", PinType.INT)),
+        inputs = listOf(
+            Pin("a", "A", PinType.FLOAT),
+            Pin("b", "B", PinType.FLOAT),
+        ),
         outputs = listOf(
             Pin("gt", "A > B", PinType.BOOL),
             Pin("eq", "A = B", PinType.BOOL),
             Pin("lt", "A < B", PinType.BOOL),
         ),
-        defaultConfig = { CompoundTag().apply { putString("type", PinType.INT.name) } },
-        configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.Compare,
         evaluate = StockEvaluators.Compare,
     )
 
@@ -320,10 +341,14 @@ object StockNodeTypes {
 
     val DELAY = nodeType(
         id = "delay", displayName = "⏳ Delay", category = NodeCategory.FLOW,
-        inputs = listOf(Pin("in", "In", PinType.BOOL)),
+        inputs = listOf(
+            Pin("in", "In", PinType.BOOL),
+            Pin("delay", "Delay", PinType.INT),
+        ),
         outputs = listOf(Pin("out", "Delayed", PinType.BOOL)),
-        defaultConfig = { CompoundTag().apply { putInt("delay", 5) } },
-        configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.DelayTicks,
+        defaultConfig = {
+            CompoundTag().apply { seedPinDefault("delay", PinValue.Int(5)) }
+        },
         tickEvaluator = StockEvaluators.DelayTick,
     )
 
@@ -399,12 +424,14 @@ object StockNodeTypes {
             Pin("kp", "Kp", PinType.FLOAT),
             Pin("ki", "Ki", PinType.FLOAT),
             Pin("kd", "Kd", PinType.FLOAT),
+            Pin("i_min", "I Min", PinType.FLOAT),
+            Pin("i_max", "I Max", PinType.FLOAT),
         ),
         outputs = listOf(Pin("out", "Out", PinType.FLOAT)),
         defaultConfig = {
             CompoundTag().apply {
-                putFloat("i_min", -1000f)
-                putFloat("i_max", 1000f)
+                seedPinDefault("i_min", PinValue.Float(-1000f))
+                seedPinDefault("i_max", PinValue.Float(1000f))
             }
         },
         tickEvaluator = StockEvaluators.Pid,
@@ -416,9 +443,11 @@ object StockNodeTypes {
         id = "random_bool",
         displayName = "🎲 Random Bool",
         category = NodeCategory.CONSTANTS,
+        inputs = listOf(Pin("p", "P", PinType.FLOAT)),
         outputs = listOf(Pin("out", "Value", PinType.BOOL)),
-        defaultConfig = { CompoundTag().apply { putInt("probability", 50) } },
-        configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.Probability,
+        defaultConfig = {
+            CompoundTag().apply { seedPinDefault("p", PinValue.Float(0.5f)) }
+        },
         evaluate = StockEvaluators.RandomBool,
     )
 
@@ -426,9 +455,17 @@ object StockNodeTypes {
         id = "random_int",
         displayName = "🎲 Random Int",
         category = NodeCategory.CONSTANTS,
+        inputs = listOf(
+            Pin("min", "Min", PinType.INT),
+            Pin("max", "Max", PinType.INT),
+        ),
         outputs = listOf(Pin("out", "Value", PinType.INT)),
-        defaultConfig = { CompoundTag().apply { putInt("min", 0); putInt("max", 15) } },
-        configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.IntRange,
+        defaultConfig = {
+            CompoundTag().apply {
+                seedPinDefault("min", PinValue.Int(0))
+                seedPinDefault("max", PinValue.Int(15))
+            }
+        },
         evaluate = StockEvaluators.RandomInt,
     )
 

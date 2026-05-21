@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test
 
 class StockEvaluatorsCompareTest {
 
-    private fun cfg(build: CompoundTag.() -> Unit) = CompoundTag().apply(build)
+    private val empty = CompoundTag()
 
     private fun assertOutputs(out: Map<String, PinValue>, gt: Boolean, eq: Boolean, lt: Boolean) {
         assertEquals(PinValue.Bool(gt), out["gt"])
@@ -14,35 +14,24 @@ class StockEvaluatorsCompareTest {
         assertEquals(PinValue.Bool(lt), out["lt"])
     }
 
-    @Test fun intGt() = assertOutputs(
-        StockEvaluators.Compare(
-            cfg { putString("type", "INT") },
-            mapOf("a" to PinValue.Int(5), "b" to PinValue.Int(3)),
-        ),
+    @Test fun gt() = assertOutputs(
+        StockEvaluators.Compare(empty, mapOf(
+            "a" to PinValue.Float(5f), "b" to PinValue.Float(3f),
+        )),
         gt = true, eq = false, lt = false,
     )
 
-    @Test fun intEq() = assertOutputs(
-        StockEvaluators.Compare(
-            cfg { putString("type", "INT") },
-            mapOf("a" to PinValue.Int(3), "b" to PinValue.Int(3)),
-        ),
+    @Test fun eq() = assertOutputs(
+        StockEvaluators.Compare(empty, mapOf(
+            "a" to PinValue.Float(3f), "b" to PinValue.Float(3f),
+        )),
         gt = false, eq = true, lt = false,
     )
 
-    @Test fun intLt() = assertOutputs(
-        StockEvaluators.Compare(
-            cfg { putString("type", "INT") },
-            mapOf("a" to PinValue.Int(1), "b" to PinValue.Int(2)),
-        ),
-        gt = false, eq = false, lt = true,
-    )
-
-    @Test fun floatLt() = assertOutputs(
-        StockEvaluators.Compare(
-            cfg { putString("type", "FLOAT") },
-            mapOf("a" to PinValue.Float(1.0f), "b" to PinValue.Float(2.0f)),
-        ),
+    @Test fun lt() = assertOutputs(
+        StockEvaluators.Compare(empty, mapOf(
+            "a" to PinValue.Float(1f), "b" to PinValue.Float(2f),
+        )),
         gt = false, eq = false, lt = true,
     )
 }

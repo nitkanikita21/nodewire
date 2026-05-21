@@ -15,13 +15,13 @@ object StockEvaluators {
 
     /**
      * LogicGate: dispatches to one of AND/OR/NOT/XOR/NAND/NOR/XNOR based on
-     * `config.op`. NOT reads from pin "in"; all binary ops read from "a" and "b".
-     * Unknown op → false.
+     * the `op` STRING input pin. NOT ignores `b` (and acts as `!a`); all
+     * binary ops read from "a" and "b". Unknown op → false.
      */
-    val LogicGate: NodeEvaluator = { config, inputs ->
-        val op = config.getString("op").ifEmpty { "AND" }
+    val LogicGate: NodeEvaluator = { _, inputs ->
+        val op = (inputs["op"] as? PinValue.Str)?.value ?: "AND"
         val out = when (op) {
-            "NOT"  -> !boolIn(inputs, "in")
+            "NOT"  -> !boolIn(inputs, "a")
             "AND"  -> boolIn(inputs, "a") && boolIn(inputs, "b")
             "OR"   -> boolIn(inputs, "a") || boolIn(inputs, "b")
             "XOR"  -> boolIn(inputs, "a") xor boolIn(inputs, "b")
@@ -68,8 +68,8 @@ object StockEvaluators {
         mapOf("out" to PinValue.Bool(false))
     }
 
-    val TimerTick: TickEvaluator = { state, config, _ ->
-        val period = config.getInt("period").coerceAtLeast(1)
+    val TimerTick: TickEvaluator = { state, _, inputs ->
+        val period = ((inputs["period"] as? PinValue.Int)?.value ?: 20).coerceAtLeast(1)
         var counter = state.getInt("counter") + 1
         var phase = state.getBoolean("phase")
         if (counter >= period) {
@@ -84,51 +84,35 @@ object StockEvaluators {
     // --- Math -----------------------------------------------------------
 
     /**
-     * Math: dispatches on config.type (INT/FLOAT) then config.op
-     * (ADD/SUB/MUL/DIV/MOD). MOD is INT-only; DIV/MOD by zero returns 0.
+     * Math: float-only since `op` is now a STRING input pin and we no longer
+     * carry a type discriminator. Existing branches preserved: ADD/SUB/MUL/
+     * DIV/MOD. MOD on floats uses Kotlin's `rem`. DIV/MOD by zero returns 0.
      */
-    val Math: NodeEvaluator = { config, inputs ->
-        val op = config.getString("op").ifEmpty { "ADD" }
-        val type = config.getString("type").ifEmpty { "INT" }
-        val out: PinValue = if (type == "FLOAT") {
-            val a = floatIn(inputs, "a"); val b = floatIn(inputs, "b")
-            PinValue.Float(when (op) {
-                "SUB" -> a - b
-                "MUL" -> a * b
-                "DIV" -> if (b == 0f) 0f else a / b
-                else -> a + b // "ADD"
-            })
-        } else {
-            val a = intIn(inputs, "a"); val b = intIn(inputs, "b")
-            PinValue.Int(when (op) {
-                "SUB" -> a - b
-                "MUL" -> a * b
-                "DIV" -> if (b == 0) 0 else a / b
-                "MOD" -> if (b == 0) 0 else a % b
-                else -> a + b // "ADD"
-            })
+    val Math: NodeEvaluator = { _, inputs ->
+        val op = (inputs["op"] as? PinValue.Str)?.value ?: "ADD"
+        val a = floatIn(inputs, "a"); val b = floatIn(inputs, "b")
+        val out = when (op) {
+            "SUB" -> a - b
+            "MUL" -> a * b
+            "DIV" -> if (b == 0f) 0f else a / b
+            "MOD" -> if (b == 0f) 0f else a % b
+            else -> a + b // "ADD"
         }
-        mapOf("out" to out)
+        mapOf("out" to PinValue.Float(out))
     }
 
     /**
-     * Compare: dispatches on config.type (INT/FLOAT), compares `a` and `b`,
-     * and returns all three boolean relations: gt/eq/lt.
+     * Compare: float-only comparison driven by the `op` STRING input pin is
+     * not used here — we always emit all three boolean relations (gt/eq/lt)
+     * on every tick because there are three separate output pins. Float
+     * comparison fits all numeric upstream types via auto-conversion.
      */
-    val Compare: NodeEvaluator = { config, inputs ->
-        val type = config.getString("type").ifEmpty { "INT" }
-        val gt: Boolean; val eq: Boolean; val lt: Boolean
-        if (type == "FLOAT") {
-            val a = floatIn(inputs, "a"); val b = floatIn(inputs, "b")
-            gt = a > b; eq = a == b; lt = a < b
-        } else {
-            val a = intIn(inputs, "a"); val b = intIn(inputs, "b")
-            gt = a > b; eq = a == b; lt = a < b
-        }
+    val Compare: NodeEvaluator = { _, inputs ->
+        val a = floatIn(inputs, "a"); val b = floatIn(inputs, "b")
         mapOf(
-            "gt" to PinValue.Bool(gt),
-            "eq" to PinValue.Bool(eq),
-            "lt" to PinValue.Bool(lt),
+            "gt" to PinValue.Bool(a > b),
+            "eq" to PinValue.Bool(a == b),
+            "lt" to PinValue.Bool(a < b),
         )
     }
 
@@ -377,8 +361,8 @@ object StockEvaluators {
      * stored as a serialized byte ring in state — for MVP we cap at
      * MAX_DELAY ticks.
      */
-    val DelayTick: TickEvaluator = { state, config, inputs ->
-        val delay = config.getInt("delay").coerceIn(0, MAX_DELAY)
+    val DelayTick: TickEvaluator = { state, _, inputs ->
+        val delay = ((inputs["delay"] as? PinValue.Int)?.value ?: 5).coerceIn(0, MAX_DELAY)
         val now = boolIn(inputs, "in")
         val buf = state.getByteArray("buf")
         val ring = if (buf.size == MAX_DELAY) buf.copyOf() else ByteArray(MAX_DELAY)
@@ -400,18 +384,18 @@ object StockEvaluators {
      * Stateless because the evaluator is the only deterministic-vs-not source —
      * we don't keep state between ticks. Random instance is per-thread.
      */
-    val RandomBool: NodeEvaluator = { config, _ ->
-        val pct = config.getInt("probability").coerceIn(0, 100)
-        mapOf("out" to PinValue.Bool(java.util.concurrent.ThreadLocalRandom.current().nextInt(100) < pct))
+    val RandomBool: NodeEvaluator = { _, inputs ->
+        val p = ((inputs["p"] as? PinValue.Float)?.value ?: 0.5f).coerceIn(0f, 1f)
+        mapOf("out" to PinValue.Bool(java.util.concurrent.ThreadLocalRandom.current().nextFloat() < p))
     }
 
     /**
      * Random Int: each evaluation emits a uniform int in [min, max] inclusive.
      * If min > max, swaps for sanity.
      */
-    val RandomInt: NodeEvaluator = { config, _ ->
-        var lo = config.getInt("min")
-        var hi = config.getInt("max")
+    val RandomInt: NodeEvaluator = { _, inputs ->
+        var lo = (inputs["min"] as? PinValue.Int)?.value ?: 0
+        var hi = (inputs["max"] as? PinValue.Int)?.value ?: 15
         if (hi < lo) { val t = lo; lo = hi; hi = t }
         val v = lo + java.util.concurrent.ThreadLocalRandom.current().nextInt(hi - lo + 1)
         mapOf("out" to PinValue.Int(v))
@@ -556,16 +540,14 @@ object StockEvaluators {
      * clamped per-config (default ±1000) to prevent wind-up. Time step is
      * implicit (one tick = 1 unit) — user tunes ki/kd accordingly.
      */
-    val Pid: TickEvaluator = { state, config, inputs ->
+    val Pid: TickEvaluator = { state, _, inputs ->
         val setpoint = (inputs["setpoint"] as? PinValue.Float)?.value ?: 0f
         val measurement = (inputs["measurement"] as? PinValue.Float)?.value ?: 0f
         val kp = (inputs["kp"] as? PinValue.Float)?.value ?: 1f
         val ki = (inputs["ki"] as? PinValue.Float)?.value ?: 0f
         val kd = (inputs["kd"] as? PinValue.Float)?.value ?: 0f
-        // 0f from a missing config key shouldn't disable the clamp entirely;
-        // treat 0 as "use the default range" here.
-        val iMin = config.getFloat("i_min").let { if (it == 0f) -1000f else it }
-        val iMax = config.getFloat("i_max").let { if (it == 0f) 1000f else it }
+        val iMin = (inputs["i_min"] as? PinValue.Float)?.value ?: -1000f
+        val iMax = (inputs["i_max"] as? PinValue.Float)?.value ?: 1000f
         val error = setpoint - measurement
         var integral = state.getFloat("i") + error
         integral = integral.coerceIn(iMin, iMax)

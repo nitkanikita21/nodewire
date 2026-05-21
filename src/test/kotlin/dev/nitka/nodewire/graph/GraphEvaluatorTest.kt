@@ -64,7 +64,9 @@ class GraphEvaluatorTest {
             addEdge(Edge(PinRef(add1.id, "out"), PinRef(add2.id, "a")))
             addEdge(Edge(PinRef(c7.id, "out"), PinRef(add2.id, "b")))
         }
-        assertEquals(PinValue.Int(15), GraphEvaluator.eval(g).valueAt(add2.id, "out"))
+        // Math is now FLOAT-only; INT constants are auto-converted to FLOAT
+        // at the input pin. Output is FLOAT(15) accordingly.
+        assertEquals(PinValue.Float(15f), GraphEvaluator.eval(g).valueAt(add2.id, "out"))
     }
 
     @Test
@@ -98,7 +100,7 @@ class GraphEvaluatorTest {
             add(a); add(add)
             addEdge(Edge(PinRef(a.id, "out"), PinRef(add.id, "a")))
         }
-        assertEquals(PinValue.Int(42), GraphEvaluator.eval(g).valueAt(add.id, "out"))
+        assertEquals(PinValue.Float(42f), GraphEvaluator.eval(g).valueAt(add.id, "out"))
     }
 
     @Test
@@ -108,27 +110,19 @@ class GraphEvaluatorTest {
         val channelIn = StockNodeTypes.CHANNEL_INPUT.newInstance().also {
             it.config.putString("type", "BOOL")
         }
-        val not = StockNodeTypes.LOGIC_GATE.newInstance().also {
-            it.config.putString("op", "NOT")
-            // Rebuild inputs to single "in" pin for NOT
-            // (EditorState.changeLogicGateOp does this in a live editor;
-            //  here we manually replicate the structural change since we
-            //  bypass EditorState.)
-        }
-        // Note: the test wires channelIn.out → not.in, but LOGIC_GATE defaults
-        // to 2 binary inputs (a, b). We patch the node's inputs list via a
-        // copy to match NOT's single-pin shape so the evaluator key "in" resolves.
-        val notNode = not.copy(
-            inputs = listOf(dev.nitka.nodewire.graph.Pin("in", "In", dev.nitka.nodewire.graph.PinType.BOOL))
-        )
+        // LOGIC_GATE now has `op` as a STRING input pin. Default-config
+        // seeds op="AND"; override via withPinDefault to "NOT". NOT reads
+        // only the `a` pin in the new pin shape.
+        val not = StockNodeTypes.LOGIC_GATE.newInstance()
+            .withPinDefault("op", PinValue.Str("NOT"))
         val g = NodeGraph().apply {
-            add(channelIn); add(notNode)
-            addEdge(Edge(PinRef(channelIn.id, "out"), PinRef(notNode.id, "in")))
+            add(channelIn); add(not)
+            addEdge(Edge(PinRef(channelIn.id, "out"), PinRef(not.id, "a")))
         }
         val r = GraphEvaluator.eval(
             g,
             externalOutputs = mapOf((channelIn.id to "out") to PinValue.Bool(true)),
         )
-        assertEquals(PinValue.Bool(false), r.valueAt(notNode.id, "out"))
+        assertEquals(PinValue.Bool(false), r.valueAt(not.id, "out"))
     }
 }
