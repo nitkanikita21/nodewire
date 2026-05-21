@@ -47,11 +47,14 @@ Open `N` (outside the editor) opens the demo screen.
 - **Logic** — `Logic Gate` (AND / OR / NOT / XOR / NAND / NOR / XNOR).
 - **Math** — `Math` (+, −, ×, ÷, min, max, abs, …), `Compare` (==, ≠, <, ≤, >, ≥).
 - **Conversion** — `Convert` between bool / redstone level / int / float.
-- **Flow** — `Select Bool`, `Rising Edge`, `Toggle`, `Counter`, `Delay`.
+- **Flow** — `Select Bool`, `Rising Edge`, `Toggle`, `Counter`, `Delay`, `If Then Else`, `Switch`, `Sample & Hold`, `Latch SR`, `Latch D`, `Sequencer`.
+- **Math** — `Math`, `Compare`, `Clamp`, `Map` (linear range remap), `Lerp`, `Smooth` (low-pass filter), `PID` (closed-loop controller).
 - **Constants** — `Constant` (any value, incl. `Vec2` / `Vec3`), `Timer`, `Pulse`, `Random Bool`, `Random Int`.
 - **Vector** — `Vec Make` (compose `Vec2` / `Vec3` from scalars), `Vec Split` (decompose), `Vec Op` (per-component arithmetic, dot, length, normalize, …).
 - **Groups** are not nodes — they're visual containers that wrap a subset of the graph. They can be collapsed into a single tile, saved as a reusable template, and live-edited.
 - **Comments** are floating markdown-like text boxes for annotating the graph; they are not part of evaluation.
+
+**`any` pins** — generic pins shown in gray accept connections from any type. Edges between mismatched scalar types (int↔float, bool↔redstone, etc.) are auto-converted at evaluation time; the wire-drag UI shows the source type. Vector and quaternion types are not auto-converted from / to scalars — use `Vec Make` / `Vec Split` explicitly.
 
 Right-clicking an existing node / group / comment / wire opens its own context menu (rename, delete, save as template, collapse, set label, …).
 

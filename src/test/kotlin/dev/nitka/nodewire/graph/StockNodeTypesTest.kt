@@ -47,7 +47,10 @@ class StockNodeTypesTest {
         // NeoForge 1.21.1 port: TC 1.2.7 has a 1.21.1 NeoForge build;
         // controller_input restored in Phase 7-TC.
         // Aeronautics integration: aeronautics_input added (+1 → 25).
-        assertEquals(25, NodeTypeRegistry.all().size)
+        // Algorithm nodes (v0.3.0): if_then_else, switch, sample_hold,
+        // latch_sr, latch_d, sequencer, clamp, map, lerp, smooth, pid
+        // added (+11 → 36).
+        assertEquals(36, NodeTypeRegistry.all().size)
     }
 
     @Test
