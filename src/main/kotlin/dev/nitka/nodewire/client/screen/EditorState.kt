@@ -660,6 +660,24 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
      * TO_VEC3 inputs VEC2→VEC3, TO_VEC2 inputs VEC3→VEC2) overwrite
      * caller's [dim].
      */
+    /** Switch case-count change — reshape input pins, disconnect old edges. */
+    fun changeSwitchCases(
+        id: dev.nitka.nodewire.graph.NodeId,
+        cases: Int,
+    ) {
+        val clamped = cases.coerceIn(2, 8)
+        mutateGraph(mergeable = false) {
+            _updateNodeInternal(id) { n ->
+                val newConfig = n.config.copy().apply { putInt("cases", clamped) }
+                n.copy(
+                    inputs = dev.nitka.nodewire.graph.StockEvaluators.switchInputs(clamped),
+                    config = newConfig,
+                )
+            }
+            _disconnectAllEdgesInternal(id)
+        }
+    }
+
     fun changeVecOp(
         id: dev.nitka.nodewire.graph.NodeId,
         op: String,

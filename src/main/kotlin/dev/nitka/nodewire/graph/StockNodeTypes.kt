@@ -242,6 +242,17 @@ object StockNodeTypes {
         evaluate = StockEvaluators.IfThenElse,
     )
 
+    val SWITCH = nodeType(
+        id = "switch",
+        displayName = "🔀 Switch",
+        category = NodeCategory.FLOW,
+        inputs = StockEvaluators.switchInputs(4),
+        outputs = listOf(Pin("out", "Out", PinType.ANY)),
+        defaultConfig = { CompoundTag().apply { putInt("cases", 4) } },
+        configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.SwitchCases,
+        evaluate = StockEvaluators.Switch,
+    )
+
     val EDGE_RISING = nodeType(
         id = "edge_rising", displayName = "📈 Rising Edge", category = NodeCategory.FLOW,
         inputs = listOf(Pin("in", "In", PinType.BOOL)),
@@ -323,7 +334,7 @@ object StockNodeTypes {
             // Conversion
             CONVERT,
             // Flow
-            SELECT_BOOL, IF_THEN_ELSE, EDGE_RISING, TOGGLE, COUNTER, DELAY,
+            SELECT_BOOL, IF_THEN_ELSE, SWITCH, EDGE_RISING, TOGGLE, COUNTER, DELAY,
             // Test / Generators
             RANDOM_BOOL, RANDOM_INT, PULSE,
         ).forEach(NodeTypeRegistry::register)

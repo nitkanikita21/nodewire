@@ -8,6 +8,7 @@ import androidx.compose.runtime.setValue
 import dev.nitka.nodewire.graph.Node
 import dev.nitka.nodewire.graph.Pin
 import dev.nitka.nodewire.graph.PinType
+import dev.nitka.nodewire.ui.components.Button
 import dev.nitka.nodewire.ui.components.Checkbox
 import dev.nitka.nodewire.ui.components.Select
 import dev.nitka.nodewire.ui.components.Text
@@ -900,4 +901,33 @@ object NodeConfigContent {
 
     private fun isVecOpDimLocked(op: String): Boolean =
         op == "CROSS" || op == "ROTATE2D" || op == "TO_VEC3" || op == "TO_VEC2"
+
+    /**
+     * Switch: row of 2..8 case-count selector buttons. The currently-active
+     * count is shown disabled (acts as the indicator); clicking any other
+     * count calls [EditorState.changeSwitchCases] which reshapes the
+     * `case_i` input pins and drops stale edges.
+     */
+    val SwitchCases: @Composable (dev.nitka.nodewire.graph.Node) -> Unit = { node ->
+        val editor = LocalEditorState.current
+        val current = node.config.getInt("cases").coerceIn(2, 8)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Center,
+            horizontalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2),
+        ) {
+            Text(
+                "Cases:",
+                style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceMuted),
+            )
+            for (n in 2..8) {
+                Button(
+                    onClick = { editor?.changeSwitchCases(node.id, n) },
+                    enabled = n != current,
+                ) {
+                    Text(n.toString())
+                }
+            }
+        }
+    }
 }

@@ -25,4 +25,24 @@ class AlgoNodeEvaluatorsTest {
         ))
         assertEquals(PinValue.Float(2f), out["out"])
     }
+
+    @Test fun `switch picks case by index`() {
+        val cfg = net.minecraft.nbt.CompoundTag().apply { putInt("cases", 3) }
+        val inputs = mapOf(
+            "index" to PinValue.Int(1),
+            "case_0" to PinValue.Float(10f),
+            "case_1" to PinValue.Float(20f),
+            "case_2" to PinValue.Float(30f),
+        )
+        assertEquals(PinValue.Float(20f), StockEvaluators.Switch(cfg, inputs)["out"])
+    }
+
+    @Test fun `switch out of range yields default`() {
+        val cfg = net.minecraft.nbt.CompoundTag().apply { putInt("cases", 3) }
+        val inputs = mapOf(
+            "index" to PinValue.Int(99),
+            "case_0" to PinValue.Float(10f),
+        )
+        assertEquals(PinValue.Bool(false), StockEvaluators.Switch(cfg, inputs)["out"])
+    }
 }

@@ -403,6 +403,27 @@ object StockEvaluators {
         mapOf("out" to (chosen ?: PinValue.Bool(false)))
     }
 
+    /**
+     * Switch: index:INT + case_0..N-1:ANY → out:ANY. Out-of-range index
+     * yields Bool(false) — downstream auto-conversion turns it into the
+     * default of whatever was expected.
+     */
+    val Switch: NodeEvaluator = { config, inputs ->
+        val cases = config.getInt("cases").coerceIn(2, 8)
+        val idx = (inputs["index"] as? PinValue.Int)?.value ?: 0
+        val key = "case_$idx"
+        val out = if (idx in 0 until cases) inputs[key] else null
+        mapOf("out" to (out ?: PinValue.Bool(false)))
+    }
+
+    /** Build the input pin list for a Switch given its configured case count. */
+    fun switchInputs(cases: Int): List<Pin> {
+        val n = cases.coerceIn(2, 8)
+        val list = mutableListOf(Pin("index", "Index", PinType.INT))
+        for (i in 0 until n) list += Pin("case_$i", "Case $i", PinType.ANY)
+        return list
+    }
+
     // --- helpers --------------------------------------------------------
 
     private fun boolIn(inputs: Map<String, PinValue>, pin: String): Boolean =
