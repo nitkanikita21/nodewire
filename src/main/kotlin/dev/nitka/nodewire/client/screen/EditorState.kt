@@ -21,6 +21,7 @@ import dev.nitka.nodewire.graph.NodeTypeRegistry
 import dev.nitka.nodewire.graph.Pin
 import dev.nitka.nodewire.graph.PinRef
 import dev.nitka.nodewire.graph.PinType
+import dev.nitka.nodewire.graph.withPinDefault
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -236,6 +237,24 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
             _renamingGroup.value = value
             if (value != null) _renamingNode.value = null
         }
+
+    /**
+     * Set (or clear, with [value] == null) the inline default for an
+     * input pin. Mergeable so typing into a numeric editor collapses
+     * into a single undo entry. Wired pins ignore the default — see
+     * the evaluator edge-read change — but setting one is harmless and
+     * is preserved when the user disconnects the wire.
+     */
+    fun setPinDefault(
+        id: NodeId,
+        pinId: String,
+        value: dev.nitka.nodewire.graph.PinValue?,
+    ) {
+        mutateGraph(mergeable = true) {
+            _updateNodeInternal(id) { it.withPinDefault(pinId, value) }
+        }
+        requestSave?.invoke()
+    }
 
     /**
      * Update a node's label. Blank or null clears it (stored as null so

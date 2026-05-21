@@ -13,6 +13,7 @@ import dev.nitka.nodewire.graph.NodeTypeRegistry
 import dev.nitka.nodewire.graph.Pin
 import dev.nitka.nodewire.graph.PinType
 import dev.nitka.nodewire.graph.PinValue
+import dev.nitka.nodewire.graph.getPinDefault
 import dev.nitka.nodewire.ui.layout.Layout
 import dev.nitka.nodewire.ui.canvas.LocalCanvasState
 import dev.nitka.nodewire.ui.modifier.input.onPositioned
@@ -286,7 +287,7 @@ private fun CardBody(nodeId: java.util.UUID, node: Node) {
             verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2),
             horizontalAlignment = Alignment.Start,
         ) {
-            for (pin in node.inputs) InputPinRow(nodeId, pin, hidden)
+            for (pin in node.inputs) InputPinRow(nodeId, node, pin, hidden)
         }
         Column(
             modifier = Modifier.weight(1f),
@@ -301,12 +302,29 @@ private fun CardBody(nodeId: java.util.UUID, node: Node) {
 @Composable
 private fun InputPinRow(
     nodeId: java.util.UUID,
+    node: Node,
     pin: Pin,
     hidden: Set<dev.nitka.nodewire.graph.NodeId>,
 ) {
     val chip = pinChipText(pin, valueFlowingInto(nodeId, pin.id))
-    // Plain LTR: [●] Name chip. Content-sized row left-aligned by the
-    // surrounding column.
+    val editor = LocalEditorState.current
+    // An incoming edge to this pin suppresses the inline editor — the
+    // wire's value wins and the field would just be misleading.
+    val hasIncomingEdge = remember(editor, nodeId, pin.id) {
+        editor?.graph?.edges?.any { it.to.node == nodeId && it.to.pin == pin.id } == true
+    }
+    // Look up the editor spec from the canonical NodeType; the saved
+    // pin's type is the fallback for reshape pins (e.g. Switch.case_N)
+    // not present in the canonical inputs list.
+    val editorSpec = remember(node.typeKey, pin.id, pin.type) {
+        NodeTypeRegistry.get(node.typeKey)?.editorFor(pin.id, pin.type)
+            ?: dev.nitka.nodewire.graph.defaultEditorFor(pin.type)
+    }
+    val showEditor = editor != null &&
+        !hasIncomingEdge &&
+        editorSpec !is dev.nitka.nodewire.graph.PinEditor.None
+    // Plain LTR: [●] Name chip [editor?]. Content-sized row left-
+    // aligned by the surrounding column.
     Row(
         verticalAlignment = Alignment.Center,
         horizontalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2),
@@ -320,6 +338,15 @@ private fun InputPinRow(
         )
         Text(pin.name, style = NwTheme.typography.caption)
         ChipLabel(chip)
+        if (showEditor) {
+            val current = node.getPinDefault(pin.id) ?: PinValue.default(pin.type)
+            PinDefaultEditor(
+                editor = editorSpec,
+                pinType = pin.type,
+                current = current,
+                onChange = { newValue -> editor!!.setPinDefault(nodeId, pin.id, newValue) },
+            )
+        }
     }
 }
 
