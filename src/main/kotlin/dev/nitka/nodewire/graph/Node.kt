@@ -60,3 +60,35 @@ data class Node(
         fun newId(): NodeId = UUID.randomUUID()
     }
 }
+
+/**
+ * Inline pin-default lookup. Returns the value stored under
+ * `config["pinDefaults"][pinId]` or null if no default has been set
+ * for this pin. Decode is via [PinValue.CODEC]; corrupt entries return
+ * null (caller falls back to [PinValue.default]).
+ */
+fun Node.getPinDefault(pinId: String): PinValue? {
+    val defaults = config.get("pinDefaults") as? net.minecraft.nbt.CompoundTag ?: return null
+    val tag = defaults.get(pinId) ?: return null
+    return PinValue.CODEC.parse(net.minecraft.nbt.NbtOps.INSTANCE, tag).result().orElse(null)
+}
+
+/**
+ * Return a copy of this node with the inline default for [pinId] set
+ * to [value], or cleared if [value] is null. Mutates only the
+ * `pinDefaults` sub-tag of [config]; all other config keys are
+ * preserved.
+ */
+fun Node.withPinDefault(pinId: String, value: PinValue?): Node {
+    val cfg = config.copy()
+    val existing = cfg.get("pinDefaults") as? net.minecraft.nbt.CompoundTag
+    val defaults = existing?.copy() ?: net.minecraft.nbt.CompoundTag()
+    if (value == null) {
+        defaults.remove(pinId)
+    } else {
+        PinValue.CODEC.encodeStart(net.minecraft.nbt.NbtOps.INSTANCE, value)
+            .result().ifPresent { defaults.put(pinId, it) }
+    }
+    cfg.put("pinDefaults", defaults)
+    return copy(config = cfg)
+}

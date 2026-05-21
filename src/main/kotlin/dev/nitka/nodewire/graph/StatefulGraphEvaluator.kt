@@ -72,7 +72,11 @@ class StatefulGraphEvaluator(val graph: NodeGraph) {
                     else outputs[src.node to src.pin]
                 } else null
                 inputs[pin.id] = when {
-                    value == null -> PinValue.default(pin.type)
+                    value == null -> {
+                        val pinDefault = node.getPinDefault(pin.id) ?: PinValue.default(pin.type)
+                        if (pin.type == PinType.ANY) pinDefault
+                        else PinValueConversion.convert(pinDefault, pin.type)
+                    }
                     pin.type == PinType.ANY -> value
                     else -> PinValueConversion.convert(value, pin.type)
                 }
