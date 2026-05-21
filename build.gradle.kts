@@ -1,3 +1,7 @@
+import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
+import java.util.zip.ZipOutputStream
+
 plugins {
     // ModDevGradle (non-legacy) — for NeoForge 1.20.2+ / 1.21.x.
     // The .legacyforge plugin was for Forge 1.20.1 (now retired in master).
@@ -115,7 +119,12 @@ configurations.all {
 
 // KFF bundles kotlin-stdlib at runtime — same JPMS constraint as before.
 // compose-runtime + yoga are still SHADED into the mod jar so they live in
-// our module and can see KFF's kotlin.* exports.
+// our module and can see KFF's kotlin.* exports. Yoga is ALSO bundled by
+// other mods (ldlib2, AE2-derivatives) — JPMS rejects two modules
+// exporting the same package, so we ASM-relocate Yoga's package into
+// dev.nitka.nodewire.shaded.yoga before shading. compose-runtime ships
+// under androidx.compose.* which is not bundled elsewhere in the modpack
+// ecosystem we target, so it stays in its original package.
 val shadedLibs by configurations.creating
 
 dependencies {
@@ -125,6 +134,21 @@ dependencies {
     }
     shadedLibs(files("libs/yoga-1.0.0-j17.jar"))
 }
+
+// ASM is available via the buildscript classpath — ModDevGradle brings it
+// in. We add it explicitly here too as a belt-and-braces, since we use
+// the asm-commons SimpleRemapper / ClassRemapper from the build script
+// body (not from a task class).
+buildscript {
+    repositories { mavenCentral() }
+    dependencies {
+        classpath("org.ow2.asm:asm:9.7.1")
+        classpath("org.ow2.asm:asm-commons:9.7.1")
+    }
+}
+
+val yogaOriginalPath = "org/appliedenergistics/yoga"
+val yogaRelocatedPath = "dev/nitka/nodewire/shaded/yoga"
 
 val extractedShadedLibs = layout.buildDirectory.dir("shadedLibs")
 
@@ -137,6 +161,61 @@ val extractShadedLibs = tasks.register<Sync>("extractShadedLibs") {
 
 sourceSets.named("main") {
     output.dir(mapOf("builtBy" to extractShadedLibs), extractedShadedLibs)
+}
+
+// After `jar` packs everything (our classes + shaded yoga + compose-runtime),
+// ASM-relocate every reference to org.appliedenergistics.yoga.* into
+// dev.nitka.nodewire.shaded.yoga.*. That way our jar exports the latter
+// path (private to us) instead of the former (also exported by ldlib2's
+// jarjar'd yoga and other AE2-derived mods), and JPMS no longer rejects
+// the modpack with a split-package error.
+//
+// Done as an in-place rewrite of the final jar so both shaded yoga classes
+// AND our own classes (which import org.appliedenergistics.yoga directly
+// in source) end up referencing the same renamed package.
+tasks.named<Jar>("jar") {
+    doLast {
+        val src = archiveFile.get().asFile
+        val tmp = File(src.parentFile, src.name + ".tmp")
+        // SimpleRemapper only does exact-match — to rename every class
+        // under a package prefix we need a custom Remapper that replaces
+        // the prefix anywhere it appears in an internal name.
+        val remapper = object : org.objectweb.asm.commons.Remapper() {
+            override fun map(internalName: String): String =
+                if (internalName.startsWith("$yogaOriginalPath/"))
+                    yogaRelocatedPath + internalName.removePrefix(yogaOriginalPath)
+                else internalName
+        }
+        ZipFile(src).use { zip ->
+            ZipOutputStream(tmp.outputStream()).use { out ->
+                val entries = zip.entries().toList()
+                for (e in entries) {
+                    val outName = if (e.name.startsWith("$yogaOriginalPath/")) {
+                        yogaRelocatedPath + e.name.removePrefix(yogaOriginalPath)
+                    } else e.name
+                    out.putNextEntry(ZipEntry(outName))
+                    zip.getInputStream(e).use { input ->
+                        if (e.name.endsWith(".class")) {
+                            // Disambiguate: use the byte-array constructor.
+                            val bytes: ByteArray = input.readBytes()
+                            val reader = org.objectweb.asm.ClassReader(bytes)
+                            val writer = org.objectweb.asm.ClassWriter(0)
+                            reader.accept(
+                                org.objectweb.asm.commons.ClassRemapper(writer, remapper),
+                                0,
+                            )
+                            out.write(writer.toByteArray())
+                        } else {
+                            input.copyTo(out)
+                        }
+                    }
+                    out.closeEntry()
+                }
+            }
+        }
+        src.delete()
+        tmp.renameTo(src)
+    }
 }
 
 dependencies {
