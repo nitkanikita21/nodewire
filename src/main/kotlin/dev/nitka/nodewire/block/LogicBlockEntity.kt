@@ -57,6 +57,12 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
      */
     private val sideBindings: MutableList<SideBinding> = mutableListOf()
 
+    /**
+     * Mirror of [sideBindings]: each entry feeds a redstone level read from
+     * an arbitrary world block into a named `channel_input` on this BE.
+     */
+    private val remoteRedstoneBindings: MutableList<RemoteRedstoneBinding> = mutableListOf()
+
     private var blockName: String = ""
 
     fun getBlockName(): String = blockName
@@ -235,6 +241,42 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
 
     fun bindingsSnapshot(): List<ChannelBinding> = bindings.toList()
     fun sideBindingsSnapshot(): List<SideBinding> = sideBindings.toList()
+    fun remoteRedstoneBindingsSnapshot(): List<RemoteRedstoneBinding> = remoteRedstoneBindings.toList()
+
+    /**
+     * Add a binding from a world block at [sourcePos] to the named
+     * `channel_input` on this BE. Returns false if the channel doesn't
+     * exist, isn't redstone-coercible, or the source is air.
+     * Duplicates (same target channel + source pos) replace the existing entry.
+     */
+    fun addRemoteRedstoneBinding(targetChannelName: String, sourcePos: BlockPos): Boolean {
+        if (targetChannelName.isEmpty()) return false
+        val lvl = level ?: return false
+        if (lvl.getBlockState(sourcePos).isAir) return false
+        val tgtNode = graph.nodes.values.firstOrNull {
+            it.typeKey.path == "channel_input"
+                && it.config.getString("name") == targetChannelName
+        } ?: return false
+        val tgtType = PinType.fromName(tgtNode.config.getString("type"))
+        if (!dev.nitka.nodewire.graph.PinValueConversion.canConvert(PinType.REDSTONE, tgtType)) return false
+        remoteRedstoneBindings.removeAll {
+            it.targetChannelName == targetChannelName
+                && it.source.payload.blockPos == sourcePos
+        }
+        val ref = dev.nitka.nodewire.endpoint.EndpointRef.from(lvl, sourcePos)
+        remoteRedstoneBindings.add(RemoteRedstoneBinding(targetChannelName, ref))
+        setChanged()
+        return true
+    }
+
+    fun removeRemoteRedstoneBinding(targetChannelName: String, sourcePos: BlockPos): Boolean {
+        val removed = remoteRedstoneBindings.removeAll {
+            it.targetChannelName == targetChannelName
+                && it.source.payload.blockPos == sourcePos
+        }
+        if (removed) setChanged()
+        return removed
+    }
 
     /**
      * Delete one channel-binding tuple. Returns true if a matching entry
@@ -408,6 +450,22 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
                 setChanged()
                 // Push so client-side wire renderer drops the dead link.
                 level.sendBlockUpdated(pos, state, state, net.minecraft.world.level.block.Block.UPDATE_CLIENTS)
+            }
+        }
+
+        if (remoteRedstoneBindings.isNotEmpty()) {
+            val before = remoteRedstoneBindings.size
+            remoteRedstoneBindings.removeAll { isRemoteRedstoneStale(it, level) }
+            if (remoteRedstoneBindings.size != before) {
+                setChanged()
+                level.sendBlockUpdated(pos, state, state, net.minecraft.world.level.block.Block.UPDATE_CLIENTS)
+            }
+            // Poll each source's best-neighbour redstone and inject into the
+            // corresponding channel_input. Mirrors how cross-block ChannelBinding
+            // sets externalChannelInputs on the target BE — same delivery slot.
+            for (rrb in remoteRedstoneBindings) {
+                val sigLevel = level.getBestNeighborSignal(rrb.source.payload.blockPos)
+                externalChannelInputs[rrb.targetChannelName] = PinValue.Redstone(sigLevel)
             }
         }
 
@@ -629,6 +687,14 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
                     .orElseThrow { IllegalStateException("side_bindings encode failed") },
             )
         }
+        if (remoteRedstoneBindings.isNotEmpty()) {
+            tag.put(
+                "remote_redstone_bindings",
+                RemoteRedstoneBinding.CODEC.listOf()
+                    .encodeStart(NbtOps.INSTANCE, remoteRedstoneBindings.toList()).result()
+                    .orElseThrow { IllegalStateException("remote_redstone_bindings encode failed") },
+            )
+        }
         if (blockName.isNotEmpty()) {
             tag.putString("name", blockName)
         }
@@ -660,6 +726,13 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
                 .orElse(emptyList())
             sideBindings.addAll(list)
         }
+        remoteRedstoneBindings.clear()
+        if (tag.contains("remote_redstone_bindings")) {
+            val list = RemoteRedstoneBinding.CODEC.listOf()
+                .parse(NbtOps.INSTANCE, tag.get("remote_redstone_bindings")).result()
+                .orElse(emptyList())
+            remoteRedstoneBindings.addAll(list)
+        }
         invalidateEvaluator()
     }
 
@@ -686,6 +759,21 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
         // chain. Unloaded chunks are tolerated: we just stop emitting until
         // they reload (don't prune, would surprise the user).
         val state = level.getBlockState(sb.target.payload.blockPos)
+        if (state.isAir) return true
+        return false
+    }
+
+    private fun isRemoteRedstoneStale(rrb: RemoteRedstoneBinding, level: Level): Boolean {
+        // Target channel must still exist on this BE.
+        val tgtNode = graph.nodes.values.firstOrNull {
+            it.typeKey.path == "channel_input"
+                && it.config.getString("name") == rrb.targetChannelName
+        } ?: return true
+        val tgtType = PinType.fromName(tgtNode.config.getString("type"))
+        if (!dev.nitka.nodewire.graph.PinValueConversion.canConvert(PinType.REDSTONE, tgtType)) return true
+        // Source must still be a non-air block. Unloaded chunks tolerate
+        // (channel just stays at last value); only air means it was broken.
+        val state = level.getBlockState(rrb.source.payload.blockPos)
         if (state.isAir) return true
         return false
     }

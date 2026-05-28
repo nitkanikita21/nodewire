@@ -104,7 +104,23 @@ object WireWorldRenderer {
             }
         }
 
-        if (bindList.isEmpty() && sideList.isEmpty()) return
+        // Remote-redstone bindings (logic block READS redstone from arbitrary
+        // world block). Visually: wire from world block → logic block, plus
+        // a vanilla-style block outline around the source block so the user
+        // can identify which block is bound.
+        val remoteList = mutableListOf<RenderRemoteRedstoneBinding>()
+        for (logic in tracked) {
+            val rrbs = logic.remoteRedstoneBindingsSnapshot()
+            if (rrbs.isEmpty()) continue
+            for (rrb in rrbs) {
+                val dstKey = logic.blockPos.asLong()
+                val dstIdx = inCount[dstKey] ?: 0
+                inCount[dstKey] = dstIdx + 1
+                remoteList.add(RenderRemoteRedstoneBinding(logic, rrb, dstIdx))
+            }
+        }
+
+        if (bindList.isEmpty() && sideList.isEmpty() && remoteList.isEmpty()) return
 
         // Totals per endpoint so we can normalize index→angle.
         val outTotal = HashMap<Long, Int>()
@@ -115,6 +131,9 @@ object WireWorldRenderer {
         }
         for (sb in sideList) {
             outTotal.merge(sb.source.blockPos.asLong(), 1, Int::plus)
+        }
+        for (rr in remoteList) {
+            inTotal.merge(rr.logic.blockPos.asLong(), 1, Int::plus)
         }
 
         val cameraPos = event.camera.position
@@ -134,6 +153,22 @@ object WireWorldRenderer {
             val src = fanOffset(srcCenter, rb.srcIdx, outTotal[srcKey]!!)
             val dst = fanOffset(dstCenter, rb.dstIdx, inTotal[dstKey]!!)
             val color = colorForBinding(rb.source, rb.binding.sourceChannelName)
+            drawStraightWire(builder, matrix, src, dst, cameraPos, color)
+        }
+        for (rr in remoteList) {
+            val dstKey = rr.logic.blockPos.asLong()
+            val srcCenter = net.minecraft.world.phys.Vec3.atCenterOf(rr.binding.source.payload.blockPos)
+            val dstCenter = sourceWorldCenter(rr.logic, level) ?: continue
+            // Use the input-fan slot on the logic block; source side gets
+            // its own fan slot keyed by source pos so multiple remote
+            // sources spread out around their respective endpoints.
+            val srcKey = rr.binding.source.payload.blockPos.asLong()
+            val srcIdx = outCount[srcKey] ?: 0
+            outCount[srcKey] = srcIdx + 1
+            outTotal.merge(srcKey, 1, Int::plus)
+            val src = fanOffset(srcCenter, srcIdx, outTotal[srcKey]!!)
+            val dst = fanOffset(dstCenter, rr.dstIdx, inTotal[dstKey]!!)
+            val color = colorForType(PinType.REDSTONE)
             drawStraightWire(builder, matrix, src, dst, cameraPos, color)
         }
         for (sb in sideList) {
@@ -161,6 +196,36 @@ object WireWorldRenderer {
         }
         pose.popPose()
         bufferSource.endBatch(WIRE_TYPE)
+
+        // Vanilla-style black outline around each remote-redstone source block.
+        // Rendered with the LINES render type, separate from the wire batch.
+        if (remoteList.isNotEmpty()) {
+            val lineBuf = bufferSource.getBuffer(net.minecraft.client.renderer.RenderType.lines())
+            pose.pushPose()
+            pose.translate(-cameraPos.x, -cameraPos.y, -cameraPos.z)
+            // De-dup source positions — multiple bindings on the same block
+            // shouldn't stack 12 line passes on the same 12 edges.
+            val seen = HashSet<Long>()
+            for (rr in remoteList) {
+                val sp = rr.binding.source.payload.blockPos
+                if (!seen.add(sp.asLong())) continue
+                val state = level.getBlockState(sp)
+                val shape = state.getShape(level, sp)
+                val box = if (shape.isEmpty) {
+                    net.minecraft.world.phys.AABB(sp)
+                } else {
+                    shape.bounds().move(sp.x.toDouble(), sp.y.toDouble(), sp.z.toDouble())
+                }
+                net.minecraft.client.renderer.LevelRenderer.renderLineBox(
+                    pose, lineBuf,
+                    box.minX, box.minY, box.minZ,
+                    box.maxX, box.maxY, box.maxZ,
+                    0f, 0f, 0f, 1f,
+                )
+            }
+            pose.popPose()
+            bufferSource.endBatch(net.minecraft.client.renderer.RenderType.lines())
+        }
     }
 
     /**
@@ -392,6 +457,12 @@ object WireWorldRenderer {
         val source: LogicBlockEntity,
         val binding: ChannelBinding,
         val srcIdx: Int,
+        val dstIdx: Int,
+    )
+
+    private data class RenderRemoteRedstoneBinding(
+        val logic: LogicBlockEntity,
+        val binding: dev.nitka.nodewire.block.RemoteRedstoneBinding,
         val dstIdx: Int,
     )
 }

@@ -10,6 +10,7 @@ import dev.nitka.nodewire.integration.aeronautics.AeroBlockKind
 import dev.nitka.nodewire.integration.aeronautics.AeroChannel
 import dev.nitka.nodewire.net.BindAeroSourcePacket
 import dev.nitka.nodewire.net.BindChannelPacket
+import dev.nitka.nodewire.net.BindRemoteRedstonePacket
 import dev.nitka.nodewire.net.BindSideChannelPacket
 import net.neoforged.fml.ModList
 import net.neoforged.neoforge.network.PacketDistributor
@@ -68,12 +69,14 @@ class ChannelLinkToolItem(props: Properties) : Item(props) {
                 if (player.isShiftKeyDown) {
                     openSourcePicker(stack, be)
                 } else {
-                    // Branch 2: Aero target-bind — check BEFORE the classic source check.
+                    // Order: Aero → RemoteRedstone → classic ChannelOutput target.
                     val tag = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag()
-                    if (tag.contains(NBT_AERO_SOURCE)) {
-                        openAeroTargetPicker(stack, be, tag.getCompound(NBT_AERO_SOURCE))
-                    } else {
-                        openTargetPicker(stack, be)
+                    when {
+                        tag.contains(NBT_AERO_SOURCE) ->
+                            openAeroTargetPicker(stack, be, tag.getCompound(NBT_AERO_SOURCE))
+                        tag.contains(NBT_REDSTONE_SOURCE_POS) ->
+                            openRemoteRedstoneTargetPicker(stack, be, NbtUtils.readBlockPos(tag, NBT_REDSTONE_SOURCE_POS).orElse(null))
+                        else -> openTargetPicker(stack, be)
                     }
                 }
             }
@@ -110,6 +113,22 @@ class ChannelLinkToolItem(props: Properties) : Item(props) {
             }
         }
 
+        // Branch 1b: RemoteRedstone source-set — sneak + RMB on any non-Aero,
+        // non-LogicBlock world block becomes a redstone source. We poll its
+        // best-neighbour signal each server tick and feed it into a
+        // channel_input on the target LogicBlock.
+        if (level.isClientSide && player.isShiftKeyDown) {
+            val newTag = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag()
+            newTag.put(NBT_REDSTONE_SOURCE_POS, NbtUtils.writeBlockPos(pos))
+            // Mutual exclusion with the other source modes.
+            newTag.remove(NBT_AERO_SOURCE)
+            newTag.remove(NBT_SOURCE_POS)
+            newTag.remove(NBT_SOURCE_NAME)
+            stack.set(DataComponents.CUSTOM_DATA, CustomData.of(newTag))
+            actionBar("Redstone source: (${pos.x},${pos.y},${pos.z})", false)
+            return InteractionResult.SUCCESS
+        }
+
         // Non-logic target — only valid as the "target" of an already-set
         // source. Shift+RMB here does nothing (no source to set on this
         // kind of block).
@@ -117,6 +136,42 @@ class ChannelLinkToolItem(props: Properties) : Item(props) {
             handleNonLogicTarget(stack, ctx)
         }
         return InteractionResult.sidedSuccess(level.isClientSide)
+    }
+
+    private fun openRemoteRedstoneTargetPicker(stack: ItemStack, be: LogicBlockEntity, sourcePos: BlockPos?) {
+        if (sourcePos == null) {
+            actionBar("Invalid redstone source stored", true)
+            return
+        }
+        val options = be.graph.nodes.values
+            .filter { it.typeKey.path == "channel_input" }
+            .mapNotNull { node ->
+                val name = node.config.getString("name")
+                if (name.isEmpty()) return@mapNotNull null
+                val type = PinType.fromName(node.config.getString("type"))
+                if (!dev.nitka.nodewire.graph.PinValueConversion
+                        .canConvert(PinType.REDSTONE, type)) return@mapNotNull null
+                ChannelPickerScreen.Option(name, type)
+            }
+        if (options.isEmpty()) {
+            actionBar("No redstone-coercible channel inputs on this block.", true)
+            return
+        }
+        val targetPos = be.blockPos
+        Minecraft.getInstance().setScreen(
+            ChannelPickerScreen("Target channel (redstone)", options) { picked ->
+                PacketDistributor.sendToServer(
+                    BindRemoteRedstonePacket(targetPos, picked, sourcePos),
+                )
+                val newTag = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag()
+                newTag.remove(NBT_REDSTONE_SOURCE_POS)
+                stack.set(DataComponents.CUSTOM_DATA, CustomData.of(newTag))
+                actionBar(
+                    "Bound (${sourcePos.x},${sourcePos.y},${sourcePos.z}) → (${targetPos.x},${targetPos.y},${targetPos.z})/$picked",
+                    false,
+                )
+            },
+        )
     }
 
     private fun openAeroTargetPicker(stack: ItemStack, be: LogicBlockEntity, aeroTag: CompoundTag) {
@@ -289,5 +344,6 @@ class ChannelLinkToolItem(props: Properties) : Item(props) {
         private const val NBT_SOURCE_POS = "source_pos"
         private const val NBT_SOURCE_NAME = "source_name"
         private const val NBT_AERO_SOURCE = "aeroSource"
+        private const val NBT_REDSTONE_SOURCE_POS = "redstoneSourcePos"
     }
 }
