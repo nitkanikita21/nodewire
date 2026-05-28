@@ -58,6 +58,23 @@ object VirtualSignalMap {
         }
 
         /**
+         * Strongest virtual signal reaching [targetPos] specifically on
+         * [face]. Used by the `getSignal(pos, dir)` mixin so blocks that
+         * inspect a SINGLE incoming face (e.g. Simulated's Directional
+         * Gearshift checking left vs right) see our injection — the
+         * any-face [strongestAt] alone isn't enough for them.
+         */
+        fun powerAtFace(targetPos: BlockPos, face: Direction): Int {
+            val perSource = signals[Key(targetPos, face)] ?: return 0
+            var best = 0
+            for (v in perSource.values) {
+                if (v > best) best = v
+                if (best >= 15) return 15
+            }
+            return best
+        }
+
+        /**
          * Strongest virtual signal reaching [targetPos] from any face,
          * mirroring what vanilla's [net.minecraft.world.level.Level.getBestNeighborSignal]
          * would return when scanning the six neighbours. Returns 0 if no

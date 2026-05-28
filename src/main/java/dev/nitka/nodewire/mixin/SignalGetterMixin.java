@@ -4,6 +4,7 @@ import dev.nitka.nodewire.signal.VirtualSignalMap;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.state.BlockState;
 import org.spongepowered.asm.mixin.Mixin;
 
 /**
@@ -42,6 +43,31 @@ public abstract class SignalGetterMixin {
             if (virtual > best) best = virtual;
         }
         return best;
+    }
+
+    /**
+     * Per-face signal query. Vanilla path: ask the block at {@code pos}
+     * what signal it emits in {@code direction}. We layer virtual signal on
+     * top: if there's a binding driving (queryer, direction), surface that.
+     *
+     * Queryer is at {@code pos.relative(direction.getOpposite())}. The face
+     * of the queryer that touches {@code pos} is exactly {@code direction}.
+     * That's the key we wrote into VirtualSignalMap.put(...).
+     *
+     * Without this override blocks like Simulated's Directional Gearshift
+     * that inspect a single specific incoming face via {@code Level.getSignal}
+     * (not the aggregate {@code hasNeighborSignal}) miss our injection.
+     */
+    public int getSignal(BlockPos pos, Direction direction) {
+        Level self = (Level) (Object) this;
+        BlockState state = self.getBlockState(pos);
+        int vanilla = state.getSignal(self, pos, direction);
+        if (!self.isClientSide) {
+            BlockPos queryer = pos.relative(direction.getOpposite());
+            int virtual = VirtualSignalMap.INSTANCE.of(self).powerAtFace(queryer, direction);
+            if (virtual > vanilla) vanilla = virtual;
+        }
+        return vanilla;
     }
 
     public boolean hasNeighborSignal(BlockPos pos) {
