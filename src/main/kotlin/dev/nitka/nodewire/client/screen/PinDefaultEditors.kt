@@ -1,6 +1,7 @@
 package dev.nitka.nodewire.client.screen
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -63,7 +64,12 @@ private fun NumericEditor(
         is PinValue.Redstone -> current.value.toString()
         else -> "0"
     }
-    var text by remember(initial) { mutableStateOf(initial) }
+    // Buffer is NOT keyed on the value string (that collided across pins of
+    // equal value); slot identity comes from key(pin.id) in NodeCard. Re-prime
+    // from `current` via an effect so an external change (undo, pin-default
+    // set elsewhere) updates the field without resurrecting a stale buffer.
+    var text by remember { mutableStateOf(initial) }
+    LaunchedEffect(current) { text = initial }
     TextInput(
         value = text,
         modifier = Modifier.width(50),
@@ -97,7 +103,8 @@ private fun CheckboxEditor(current: PinValue, onChange: (PinValue) -> Unit) {
 @Composable
 private fun TextEditor(current: PinValue, onChange: (PinValue) -> Unit) {
     val initial = (current as? PinValue.Str)?.value ?: ""
-    var text by remember(initial) { mutableStateOf(initial) }
+    var text by remember { mutableStateOf(initial) }
+    LaunchedEffect(current) { text = initial }
     TextInput(
         value = text,
         modifier = Modifier.width(100),
@@ -124,10 +131,17 @@ private fun VectorEditor(
         PinType.QUAT -> 4
         else -> 0
     }
-    var x by remember(initial[0]) { mutableStateOf(initial[0].toString()) }
-    var y by remember(initial[1]) { mutableStateOf(initial[1].toString()) }
-    var z by remember(initial[2]) { mutableStateOf(initial[2].toString()) }
-    var w by remember(initial[3]) { mutableStateOf(initial[3].toString()) }
+    // Not keyed on the float values (two pins both (0,0,0) shared a slot's
+    // stale buffer); slot identity is key(pin.id) in NodeCard. All four
+    // buffers re-prime atomically from `current` on an external change.
+    var x by remember { mutableStateOf(initial[0].toString()) }
+    var y by remember { mutableStateOf(initial[1].toString()) }
+    var z by remember { mutableStateOf(initial[2].toString()) }
+    var w by remember { mutableStateOf(initial[3].toString()) }
+    LaunchedEffect(current) {
+        x = initial[0].toString(); y = initial[1].toString()
+        z = initial[2].toString(); w = initial[3].toString()
+    }
 
     fun commit() {
         val xf = x.toFloatOrNull() ?: 0f

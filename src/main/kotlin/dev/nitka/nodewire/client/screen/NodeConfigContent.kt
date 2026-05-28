@@ -46,7 +46,7 @@ object NodeConfigContent {
     /** Constant (INT slot): numeric text input writing to `config.int`. */
     @Composable
     private fun ConstantBodyInt(node: Node, editor: EditorState?) {
-        var text by remember(node.id) { mutableStateOf(node.config.getInt("int").toString()) }
+        var text by remember(node.config.getInt("int")) { mutableStateOf(node.config.getInt("int").toString()) }
         LabeledRow("Value") {
             TextInput(
                 modifier = Modifier.fillMaxWidth(),
@@ -68,7 +68,7 @@ object NodeConfigContent {
     /** Constant (FLOAT slot): numeric text input writing to `config.float`. */
     @Composable
     private fun ConstantBodyFloat(node: Node, editor: EditorState?) {
-        var text by remember(node.id) { mutableStateOf(node.config.getFloat("float").toString()) }
+        var text by remember(node.config.getFloat("float")) { mutableStateOf(node.config.getFloat("float").toString()) }
         LabeledRow("Value") {
             TextInput(
                 modifier = Modifier.fillMaxWidth(),
@@ -99,7 +99,7 @@ object NodeConfigContent {
     /** Constant (STRING slot): plain text input writing to `config.string`. */
     @Composable
     private fun ConstantBodyString(node: Node, editor: EditorState?) {
-        var text by remember(node.id) { mutableStateOf(node.config.getString("string")) }
+        var text by remember(node.config.getString("string")) { mutableStateOf(node.config.getString("string")) }
         LabeledRow("Value") {
             TextInput(
                 modifier = Modifier.fillMaxWidth(),
@@ -120,7 +120,7 @@ object NodeConfigContent {
     /** TIMER (legacy — Pulse only): integer period in ticks. */
     val TimerPeriod: @Composable (Node) -> Unit = { node ->
         val editor = LocalEditorState.current
-        var text by remember(node.id) { mutableStateOf(node.config.getInt("period").toString()) }
+        var text by remember(node.config.getInt("period")) { mutableStateOf(node.config.getInt("period").toString()) }
         LabeledRow("Period") {
             TextInput(
                 modifier = Modifier.fillMaxWidth(),
@@ -144,13 +144,12 @@ object NodeConfigContent {
     /** SideInput / SideOutput: face picker. */
     val SideFace: @Composable (Node) -> Unit = { node ->
         val editor = LocalEditorState.current
-        var face by remember(node.id) { mutableStateOf(node.config.getString("face").ifEmpty { "north" }) }
+        val face = node.config.getString("face").ifEmpty { "north" }
         LabeledRow("Face") {
             Select(
                 options = FACES,
                 selected = face,
                 onSelect = { next ->
-                    face = next
                     editor?.updateNode(node.id) { n ->
                         n.copy(config = n.config.copy().apply {
                             putString("face", next)
@@ -170,10 +169,8 @@ object NodeConfigContent {
      */
     val ChannelEndpoint: @Composable (Node) -> Unit = { node ->
         val editor = LocalEditorState.current
-        var name by remember(node.id) { mutableStateOf(node.config.getString("name")) }
-        var type by remember(node.id) {
-            mutableStateOf(PinType.fromName(node.config.getString("type").ifEmpty { PinType.BOOL.name }))
-        }
+        var name by remember(node.config.getString("name")) { mutableStateOf(node.config.getString("name")) }
+        val type = PinType.fromName(node.config.getString("type").ifEmpty { PinType.BOOL.name })
         Column(verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2)) {
             LabeledRow("Name") {
                 TextInput(
@@ -194,7 +191,6 @@ object NodeConfigContent {
                     options = CHANNEL_TYPES,
                     selected = type,
                     onSelect = { next ->
-                        type = next
                         editor?.changeChannelType(node.id, next)
                     },
                     label = { it.name.lowercase() },
@@ -298,7 +294,7 @@ object NodeConfigContent {
     /** Constant (BOOL slot): single checkbox writing to `config.bool`. */
     @Composable
     private fun ConstantBodyBool(node: Node, editor: EditorState?) {
-        var value by remember(node.id) { mutableStateOf(node.config.getBoolean("bool")) }
+        val value = node.config.getBoolean("bool")
         Row(
             modifier = Modifier,
             verticalAlignment = Alignment.Center,
@@ -307,7 +303,6 @@ object NodeConfigContent {
             Checkbox(
                 checked = value,
                 onCheckedChange = { v ->
-                    value = v
                     editor?.updateNode(node.id) { n ->
                         n.copy(config = n.config.copy().apply {
                             putBoolean("bool", v)
@@ -347,16 +342,13 @@ object NodeConfigContent {
      */
     val Constant: @Composable (Node) -> Unit = { node ->
         val editor = LocalEditorState.current
-        var type by remember(node.id) {
-            mutableStateOf(PinType.fromName(node.config.getString("type").ifEmpty { PinType.BOOL.name }))
-        }
+        val type = PinType.fromName(node.config.getString("type").ifEmpty { PinType.BOOL.name })
         Column(verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2)) {
             LabeledRow("Type") {
                 Select(
                     options = CONSTANT_TYPES,
                     selected = type,
                     onSelect = { next ->
-                        type = next
                         editor?.changeConstantType(node.id, next)
                     },
                     label = { it.name.lowercase() },
@@ -387,28 +379,18 @@ object NodeConfigContent {
      */
     val Convert: @Composable (Node) -> Unit = { node ->
         val editor = LocalEditorState.current
-        var source by remember(node.id) {
-            mutableStateOf(PinType.fromName(node.config.getString("sourceType").ifEmpty { PinType.INT.name }))
-        }
-        var target by remember(node.id) {
-            mutableStateOf(PinType.fromName(node.config.getString("targetType").ifEmpty { PinType.FLOAT.name }))
-        }
-        var mode by remember(node.id) {
-            mutableStateOf(node.config.getString("mode"))
-        }
+        val source = PinType.fromName(node.config.getString("sourceType").ifEmpty { PinType.INT.name })
+        val target = PinType.fromName(node.config.getString("targetType").ifEmpty { PinType.FLOAT.name })
+        val mode = node.config.getString("mode")
         Column(verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2)) {
             LabeledRow("From") {
                 Select(
                     options = CONVERT_SOURCES,
                     selected = source,
                     onSelect = { next ->
-                        source = next
                         val validTargets = validTargetsFor(next)
                         val newTarget = if (target in validTargets) target else validTargets.first()
-                        target = newTarget
                         editor?.changeConvertTypes(node.id, next, newTarget)
-                        // Sync local mode after mutator default-applies it.
-                        mode = node.config.getString("mode") // will be empty or default
                     },
                     label = { it.name.lowercase() },
                 )
@@ -418,9 +400,7 @@ object NodeConfigContent {
                     options = validTargetsFor(source),
                     selected = target,
                     onSelect = { next ->
-                        target = next
                         editor?.changeConvertTypes(node.id, source, next)
-                        mode = node.config.getString("mode")
                     },
                     label = { it.name.lowercase() },
                 )
@@ -432,7 +412,6 @@ object NodeConfigContent {
                         options = modes,
                         selected = mode.ifEmpty { modes.first() },
                         onSelect = { next ->
-                            mode = next
                             editor?.changeConvertMode(node.id, next)
                         },
                         label = { it },
@@ -497,15 +476,12 @@ object NodeConfigContent {
      */
     val VecMake: @Composable (Node) -> Unit = { node ->
         val editor = LocalEditorState.current
-        var dim by remember(node.id) {
-            mutableStateOf(node.config.getString("dim").ifEmpty { "VEC2" })
-        }
+        val dim = node.config.getString("dim").ifEmpty { "VEC2" }
         LabeledRow("Dim") {
             Select(
                 options = VEC_DIMS,
                 selected = dim,
                 onSelect = { next ->
-                    dim = next
                     editor?.changeVecMakeSplitDim(node.id, next)
                 },
                 label = { it.lowercase() },
@@ -523,16 +499,8 @@ object NodeConfigContent {
     val AeroInput: @Composable (Node) -> Unit = { node ->
         val editor = LocalEditorState.current
 
-        var kindName by remember(node.id) {
-            mutableStateOf(
-                node.config.getString("blockKind").ifEmpty { AeroBlockKind.SMART_PROPELLER.name }
-            )
-        }
-        var channelName by remember(node.id) {
-            mutableStateOf(
-                node.config.getString("channel").ifEmpty { AeroChannel.PROP_ROTATION_SPEED.name }
-            )
-        }
+        val kindName = node.config.getString("blockKind").ifEmpty { AeroBlockKind.SMART_PROPELLER.name }
+        val channelName = node.config.getString("channel").ifEmpty { AeroChannel.PROP_ROTATION_SPEED.name }
 
         val kind = AeroBlockKind.fromName(kindName) ?: AeroBlockKind.SMART_PROPELLER
         val channel = AeroChannel.fromName(channelName) ?: AeroChannel.PROP_ROTATION_SPEED
@@ -563,8 +531,6 @@ object NodeConfigContent {
                     onSelect = { nextKind ->
                         val nextChannel = if (channel.kind == nextKind) channel
                             else AeroChannel.byKind(nextKind).first()
-                        kindName = nextKind.name
-                        channelName = nextChannel.name
                         editor?.changeAeroChannel(node.id, nextKind, nextChannel)
                     },
                     label = { it.displayName },
@@ -575,7 +541,6 @@ object NodeConfigContent {
                     options = channelOptions,
                     selected = if (channel in channelOptions) channel else channelOptions.first(),
                     onSelect = { nextChannel ->
-                        channelName = nextChannel.name
                         editor?.changeAeroChannel(node.id, kind, nextChannel)
                     },
                     label = { it.displayName },
@@ -598,15 +563,11 @@ object NodeConfigContent {
      */
     val ControllerInput: @Composable (Node) -> Unit = { node ->
         val editor = LocalEditorState.current
-        var channel by remember(node.id) {
-            mutableStateOf(node.config.getString("channel").ifEmpty {
-                dev.nitka.nodewire.integration.tweakedcontroller.ControllerChannel.LEFT_STICK.name
-            })
+        val channel = node.config.getString("channel").ifEmpty {
+            dev.nitka.nodewire.integration.tweakedcontroller.ControllerChannel.LEFT_STICK.name
         }
-        var mode by remember(node.id) {
-            mutableStateOf(node.config.getString("outputMode").ifEmpty {
-                dev.nitka.nodewire.integration.tweakedcontroller.ControllerOutputMode.VEC2_RAW.name
-            })
+        val mode = node.config.getString("outputMode").ifEmpty {
+            dev.nitka.nodewire.integration.tweakedcontroller.ControllerOutputMode.VEC2_RAW.name
         }
         val ch = dev.nitka.nodewire.integration.tweakedcontroller.ControllerChannel.fromName(channel)
         val cat = ch.category
@@ -618,10 +579,7 @@ object NodeConfigContent {
                     options = dev.nitka.nodewire.integration.tweakedcontroller.ControllerChannel.entries.toList(),
                     selected = ch,
                     onSelect = { next ->
-                        channel = next.name
                         // mode resets to category default — handled by mutator
-                        mode = dev.nitka.nodewire.integration.tweakedcontroller
-                            .allowedOutputModes(next.category).first().name
                         editor?.changeControllerChannel(node.id, next.name)
                     },
                     label = { it.displayName },
@@ -633,7 +591,6 @@ object NodeConfigContent {
                     selected = dev.nitka.nodewire.integration.tweakedcontroller.ControllerOutputMode
                         .entries.firstOrNull { it.name == mode } ?: modeOptions.first(),
                     onSelect = { next ->
-                        mode = next.name
                         editor?.changeControllerOutputMode(node.id, next.name)
                     },
                     label = { it.name.lowercase().replace('_', ' ') },
@@ -653,15 +610,12 @@ object NodeConfigContent {
     /** VecSplit: same Select as VecMake; output pins reshape. */
     val VecSplit: @Composable (Node) -> Unit = { node ->
         val editor = LocalEditorState.current
-        var dim by remember(node.id) {
-            mutableStateOf(node.config.getString("dim").ifEmpty { "VEC2" })
-        }
+        val dim = node.config.getString("dim").ifEmpty { "VEC2" }
         LabeledRow("Dim") {
             Select(
                 options = VEC_DIMS,
                 selected = dim,
                 onSelect = { next ->
-                    dim = next
                     editor?.changeVecMakeSplitDim(node.id, next)
                 },
                 label = { it.lowercase() },
@@ -678,19 +632,14 @@ object NodeConfigContent {
      */
     val VecOp: @Composable (Node) -> Unit = { node ->
         val editor = LocalEditorState.current
-        var op by remember(node.id) {
-            mutableStateOf(node.config.getString("op").ifEmpty { "ADD" })
-        }
-        var dim by remember(node.id) {
-            mutableStateOf(node.config.getString("dim").ifEmpty { "VEC2" })
-        }
+        val op = node.config.getString("op").ifEmpty { "ADD" }
+        val dim = node.config.getString("dim").ifEmpty { "VEC2" }
         Column(verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2)) {
             LabeledRow("Op") {
                 Select(
                     options = VEC_OPS,
                     selected = op,
                     onSelect = { next ->
-                        op = next
                         editor?.changeVecOp(node.id, next, dim)
                     },
                     label = { it.lowercase() },
@@ -702,7 +651,6 @@ object NodeConfigContent {
                         options = VEC_DIMS,
                         selected = dim,
                         onSelect = { next ->
-                            dim = next
                             editor?.changeVecOp(node.id, op, next)
                         },
                         label = { it.lowercase() },

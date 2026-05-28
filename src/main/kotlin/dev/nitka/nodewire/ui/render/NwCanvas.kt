@@ -106,57 +106,27 @@ class NwCanvas(val gfx: GuiGraphics, val font: Font) {
     }
 
     /**
-     * Stack of active scissor rectangles in screen-space (already offset-
-     * translated). Push intersects with the current top so nested scrolls
-     * never extend their children past the outer container.
-     */
-    private data class ClipRect(val x: Int, val y: Int, val x2: Int, val y2: Int)
-    private val clips: ArrayDeque<ClipRect> = ArrayDeque()
-
-    /**
-     * Push a scissor clip rect in node-local coords. The pushed rect is
-     * intersected with any already-active clip so nested scroll containers,
-     * popups inside scrolls, etc. stay inside their ancestors. [popClip]
-     * restores the previous scissor.
+     * Push a scissor clip rect in node-local coords. MC's own
+     * [GuiGraphics.ScissorStack] already intersects each pushed rect with
+     * the current top and restores the parent on pop, so nested scroll
+     * containers / clips stay inside their ancestors without us tracking a
+     * separate intersection stack.
      */
     fun pushClip(x: Int, y: Int, width: Int, height: Int) {
-        val sx = ox + x
-        val sy = oy + y
-        val sx2 = sx + width
-        val sy2 = sy + height
-        val effective = clips.lastOrNull()?.let { outer ->
-            ClipRect(
-                maxOf(outer.x, sx),
-                maxOf(outer.y, sy),
-                minOf(outer.x2, sx2),
-                minOf(outer.y2, sy2),
-            )
-        } ?: ClipRect(sx, sy, sx2, sy2)
-        clips.addLast(effective)
-        // Empty intersection → still push a 0-area scissor so popClip arity
-        // matches; nothing draws under it anyway.
-        gfx.enableScissor(effective.x, effective.y, effective.x2, effective.y2)
+        gfx.enableScissor(ox + x, oy + y, ox + x + width, oy + y + height)
     }
 
     fun popClip() {
-        check(clips.isNotEmpty()) { "popClip() without matching pushClip()" }
-        clips.removeLast()
-        val outer = clips.lastOrNull()
-        if (outer == null) {
-            gfx.disableScissor()
-        } else {
-            gfx.enableScissor(outer.x, outer.y, outer.x2, outer.y2)
-        }
+        gfx.disableScissor()
     }
 
     /**
-     * Commits any buffered geometry (notably text — `gfx.drawString` queues
-     * into a separate buffer that's normally flushed at the end of the GUI
-     * frame). Call before painting a popup / overlay so prior text doesn't
-     * render *above* the popup's background.
-     *
-     * Cost: forces a small render-state batch — fine for the handful of
-     * popups per frame, don't sprinkle inside hot paint loops.
+     * Commits buffered geometry via [GuiGraphics.flush] (BufferSource.endBatch).
+     * Rarely needed: MC's `drawString` already self-flushes after each string
+     * and the shared GUI buffer flushes on every gui<->text render-type
+     * switch, so within-frame draw order already equals submission order.
+     * Kept as an explicit escape hatch for the odd case that interleaves with
+     * a vanilla buffered overlay; do NOT sprinkle in hot paint loops.
      */
     fun flush() {
         gfx.flush()

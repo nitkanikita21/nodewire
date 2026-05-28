@@ -220,9 +220,17 @@ class NwUiOwner {
                 // Clear keyboard focus on any press; if the press lands on
                 // a TextInput, its handler re-requests focus during hit-
                 // testing and the slot is restored before we return.
+                val losing = keyFocus
                 keyFocus = null
                 val hit = root.hitTest(event)
                 pointerFocus = hit
+                // If focus was NOT re-acquired to the same handler, it truly
+                // lost focus to an outside press — notify it so a focused
+                // field can resolve (commit / dismiss) on click-away. Fired
+                // after hit-test so clicking from one field straight into
+                // another (or back into the same field) is a no-op, not a
+                // spurious cancel.
+                if (losing != null && keyFocus !== losing) losing.onFocusLost()
                 hit != null
             }
             is PointerEvent.Drag -> {

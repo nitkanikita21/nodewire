@@ -50,6 +50,8 @@ fun TextInput(
     modifier: Modifier = Modifier,
     placeholder: String = "",
     onSubmit: () -> Unit = {},
+    onCancel: () -> Unit = {},
+    onFocusLost: () -> Unit = {},
     enabled: Boolean = true,
     transparent: Boolean = false,
     autoFocus: Boolean = false,
@@ -79,6 +81,8 @@ fun TextInput(
 
     val cb = rememberUpdatedState(onValueChange)
     val onSubmitState = rememberUpdatedState(onSubmit)
+    val onCancelState = rememberUpdatedState(onCancel)
+    val onFocusLostState = rememberUpdatedState(onFocusLost)
 
     // Sync external value → holder.
     LaunchedEffect(value) { if (holder.state.text != value) holder.replaceText(value) }
@@ -105,6 +109,12 @@ fun TextInput(
                     else -> false
                 }
             }
+
+            // Click-away: framework dropped our focus. Resolve via the
+            // caller's onFocusLost (rename overlays commit the typed label
+            // here). Distinct from Escape (onCancel) so the two gestures can
+            // mean different things — commit vs discard.
+            override fun onFocusLost() { onFocusLostState.value() }
         }
     }
     val focused = focusController?.isFocused(handler) == true
@@ -116,7 +126,11 @@ fun TextInput(
     }
 
     holder.onSubmit = { onSubmitState.value(); focusController?.release(handler) }
-    holder.onReleaseFocus = { focusController?.release(handler) }
+    // Escape (cancel): fire onCancel BEFORE releasing focus. Callers use it
+    // to clear the owning state (e.g. editor.renamingNode = null) so the
+    // overlay early-returns next recomposition and the field actually
+    // unmounts — releasing key-focus alone would leave a caret-less ghost.
+    holder.onReleaseFocus = { onCancelState.value(); focusController?.release(handler) }
 
     DisposableEffect(handler) { onDispose { focusController?.release(handler) } }
 

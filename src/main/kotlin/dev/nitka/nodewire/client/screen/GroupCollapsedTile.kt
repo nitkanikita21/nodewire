@@ -141,10 +141,15 @@ fun GroupCollapsedTile(group: Group) {
                         verticalAlignment = Alignment.Center,
                         horizontalArrangement = Arrangement.spacedBy(NwTheme.dimens.space4),
                     ) {
-                        Text(
-                            group.name.ifBlank { "Group" },
-                            style = NwTheme.typography.caption,
-                        )
+                        // Hide the name while GroupLabelOverlay edits it (the
+                        // collapsed tile opens the same renamingGroup), so the
+                        // transparent field doesn't stack over the title.
+                        if (editor.renamingGroup != group.id) {
+                            Text(
+                                group.name.ifBlank { "Group" },
+                                style = NwTheme.typography.caption,
+                            )
+                        }
                         if (group.templateFile != null) {
                             Text(
                                 "↪${group.templateFile}",

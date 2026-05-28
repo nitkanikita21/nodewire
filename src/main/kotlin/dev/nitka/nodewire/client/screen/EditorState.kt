@@ -105,6 +105,11 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         graph.comments.clear()
         graph.comments.addAll(snapshot.comments)
         syncCommentsFlow()
+        // Sever any rename overlay / context menu whose target isn't in the
+        // restored graph — otherwise undo of a delete (or a redo, or a
+        // server/template replace) could resurrect a ghost overlay on an
+        // element the user is no longer editing.
+        pruneStaleUiPointers()
         clearSelection()
     }
 
@@ -187,6 +192,7 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
             // dangling edges in flight to the same recomposition.
             pinPositions.removeNode(id)
             syncGroupsFlow()
+            pruneStaleUiPointers()
         }
     }
 
@@ -237,6 +243,29 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
             _renamingGroup.value = value
             if (value != null) _renamingNode.value = null
         }
+
+    /**
+     * Drop any UI pointer (rename overlay, context menu) whose target
+     * element no longer exists in [graph]. Called after every mutation
+     * that removes nodes/groups/comments and after a full graph restore
+     * (undo/redo/server sync), so a deleted-or-undone element can never
+     * resurrect a ghost rename field or a context menu for a dead target.
+     */
+    private fun pruneStaleUiPointers() {
+        if (_renamingNode.value != null && _renamingNode.value !in graph.nodes) {
+            _renamingNode.value = null
+        }
+        if (_renamingGroup.value != null && graph.groups.none { it.id == _renamingGroup.value }) {
+            _renamingGroup.value = null
+        }
+        val stale = when (val cm = contextMenu) {
+            is ContextMenuTarget.Node -> cm.nodeId !in graph.nodes
+            is ContextMenuTarget.Group -> graph.groups.none { it.id == cm.groupId }
+            is ContextMenuTarget.Comment -> graph.comments.none { it.id == cm.commentId }
+            else -> false
+        }
+        if (stale) contextMenu = null
+    }
 
     /**
      * Set (or clear, with [value] == null) the inline default for an
@@ -1056,13 +1085,34 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
                     }
                 }
             }
+            // Strip the deleted NODES from every group's members and GC any
+            // group left empty — mirroring NodeGraph.removeNode so a group
+            // whose members were all deleted doesn't survive as an orphan
+            // frame/tile. Empty LINKED groups (templateFile != null) are
+            // kept: the template still defines their shape.
+            if (nodeIds.isNotEmpty()) {
+                val removedNodes = nodeIds.toHashSet()
+                val rewritten = graph.groups.map { g ->
+                    g.copy(members = g.members.filter { m ->
+                        m !is dev.nitka.nodewire.graph.MemberRef.Node || m.id !in removedNodes
+                    })
+                }
+                graph.groups.clear()
+                for (g in rewritten) {
+                    if (g.members.isEmpty() && g.templateFile == null) continue
+                    graph.groups.add(g)
+                }
+            }
             if (commentIds.isNotEmpty()) {
                 graph.comments.removeAll { it.id in commentIds }
             }
             _nodes.value = graph.nodes.keys.toList()
             _edges.value = graph.edges.toList()
-            if (groupIds.isNotEmpty()) syncGroupsFlow()
+            // Node deletion may have mutated/removed groups too, so refresh
+            // the groups flow whenever nodes OR groups changed.
+            if (nodeIds.isNotEmpty() || groupIds.isNotEmpty()) syncGroupsFlow()
             if (commentIds.isNotEmpty()) syncCommentsFlow()
+            pruneStaleUiPointers()
         }
         clearSelection()
     }
@@ -1277,6 +1327,7 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
             graph.groups.clear()
             graph.groups.addAll(rebuilt)
             syncGroupsFlow()
+            pruneStaleUiPointers()
         }
     }
 
@@ -1395,6 +1446,7 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         mutateGraph(mergeable = false) {
             graph.comments.removeAll { it.id == id }
             syncCommentsFlow()
+            pruneStaleUiPointers()
         }
     }
 

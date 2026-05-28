@@ -215,11 +215,20 @@ private fun TitleBar(
                 }
             },
     ) {
+        // While this node is being renamed, the transparent rename overlay
+        // (NodeLabelOverlay) sits over this strip. Suppress our own title so
+        // the two don't paint on top of each other (the overlay keeps the
+        // header's accent fill behind it via the headerRenderer). Reading
+        // editor.renamingNode here makes the title vanish the instant rename
+        // opens and reappear when it clears.
+        val renaming = editor?.renamingNode == nodeId
         // takeUnless { blank } so an empty-but-non-null label (e.g. legacy
         // graph loaded from before setNodeLabel sanitised) renders as just
         // the title instead of a hollow caption row.
         val label = node.label?.takeUnless { it.isBlank() }
-        if (label != null) {
+        if (renaming) {
+            // Nothing — overlay owns this strip while editing.
+        } else if (label != null) {
             Column {
                 Text(
                     label,
@@ -287,14 +296,22 @@ private fun CardBody(nodeId: java.util.UUID, node: Node) {
             verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2),
             horizontalAlignment = Alignment.Start,
         ) {
-            for (pin in node.inputs) InputPinRow(nodeId, node, pin, hidden)
+            // key(pin.id): tie each row's composition identity to the pin id,
+            // not its positional slot. After a reshape that removes a pin and
+            // slides another into its slot, this disposes the old row's
+            // remembered editor state instead of leaking it onto the new pin.
+            for (pin in node.inputs) androidx.compose.runtime.key(pin.id) {
+                InputPinRow(nodeId, node, pin, hidden)
+            }
         }
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2),
             horizontalAlignment = Alignment.End,
         ) {
-            for (pin in node.outputs) OutputPinRow(nodeId, pin, hidden)
+            for (pin in node.outputs) androidx.compose.runtime.key(pin.id) {
+                OutputPinRow(nodeId, pin, hidden)
+            }
         }
     }
 }

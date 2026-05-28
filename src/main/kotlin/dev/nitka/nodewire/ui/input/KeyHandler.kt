@@ -13,6 +13,15 @@ import androidx.compose.runtime.compositionLocalOf
  */
 interface KeyHandler {
     fun handle(event: KeyEvent): Boolean
+
+    /**
+     * Called by the framework when this handler loses key focus due to an
+     * outside press (not a self-initiated release). Lets a focused field
+     * resolve (commit / dismiss) on click-away — without it the focus slot
+     * drops silently and an autoFocus field would re-acquire next frame as a
+     * caret-less ghost. Default no-op.
+     */
+    fun onFocusLost() {}
 }
 
 /**

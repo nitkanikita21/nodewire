@@ -62,6 +62,12 @@ fun GroupLabelOverlay() {
                 editor.setGroupName(groupId, text)
                 editor.renamingGroup = null
             },
+            // Escape discards; click-away (focus lost) commits.
+            onCancel = { editor.renamingGroup = null },
+            onFocusLost = {
+                editor.setGroupName(groupId, text)
+                editor.renamingGroup = null
+            },
         )
     }
 }

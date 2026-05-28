@@ -44,6 +44,13 @@ fun NodeLabelOverlay() {
                 editor.setNodeLabel(nodeId, text)
                 editor.renamingNode = null
             },
+            // Escape discards; click-away (focus lost) commits — like most
+            // rename UIs. Both unmount the field by clearing renamingNode.
+            onCancel = { editor.renamingNode = null },
+            onFocusLost = {
+                editor.setNodeLabel(nodeId, text)
+                editor.renamingNode = null
+            },
         )
     }
 }

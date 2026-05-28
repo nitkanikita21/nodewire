@@ -165,10 +165,15 @@ fun GroupFrame(group: Group) {
                     verticalAlignment = Alignment.Center,
                     horizontalArrangement = Arrangement.spacedBy(NwTheme.dimens.space4),
                 ) {
-                    Text(
-                        group.name.ifBlank { "Group" },
-                        style = NwTheme.typography.caption,
-                    )
+                    // Hide the name while the transparent GroupLabelOverlay is
+                    // editing it, so the two don't stack. The template chip and
+                    // collapse button stay visible.
+                    if (editor.renamingGroup != group.id) {
+                        Text(
+                            group.name.ifBlank { "Group" },
+                            style = NwTheme.typography.caption,
+                        )
+                    }
                     if (group.templateFile != null) {
                         Text(
                             "↪${group.templateFile}",
