@@ -192,7 +192,12 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
         } ?: return BindResult.TargetMissing
         val srcType = PinType.fromName(srcNode.config.getString("type"))
         val tgtType = PinType.fromName(tgtNode.config.getString("type"))
-        if (srcType != tgtType) return BindResult.TypeMismatch(srcType, tgtType)
+        // Accept any pair that PinValueConversion can route — same set the
+        // edge-read pipeline uses. Strict equality used to reject e.g.
+        // Bool channel → Redstone channel even though the value transfers.
+        if (!dev.nitka.nodewire.graph.PinValueConversion.canConvert(srcType, tgtType)) {
+            return BindResult.TypeMismatch(srcType, tgtType)
+        }
 
         bindings.removeAll {
             it.sourceChannelName == sourceChannelName
