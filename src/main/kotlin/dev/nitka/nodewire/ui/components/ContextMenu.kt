@@ -102,6 +102,16 @@ private val LocalSubmenuOpenReporter = compositionLocalOf<((id: Any, open: Boole
 private val LocalSubmenuDirection = compositionLocalOf { PopupPlacement.RightOf }
 
 /**
+ * Per-[MenuPanel] mutable holder for "which submenu row is currently
+ * open". Lets sibling [SubmenuRow]s coordinate so opening one closes
+ * any other in the same panel — fixes the overlap that happened when
+ * the user hovered submenu A's content, then moved straight to row B,
+ * and both submenus stayed visible on screen.
+ */
+private val LocalOpenSubmenuRow =
+    compositionLocalOf<androidx.compose.runtime.MutableState<Any?>?> { null }
+
+/**
  * [onHover] fires `true` whenever this panel OR any descendant submenu
  * (at any depth) has hover, and `false` only when the whole sub-tree is
  * cold. Callers use this to keep their parent submenu open while the
@@ -127,6 +137,11 @@ private fun MenuPanel(
     val openChildren = remember { mutableStateMapOf<Any, Boolean>() }
     val descendantOpen = openChildren.values.any { it }
     SideEffect { onDescendantOpen(descendantOpen) }
+    // One-of-N submenu coordination: every SubmenuRow in this panel reads
+    // this state to know if it's the chosen row. Sibling rows force it
+    // to point at themselves when they want to open, which evicts the
+    // previous holder.
+    val openRow = remember { mutableStateOf<Any?>(null) }
 
     Surface(
         modifier = Modifier.onHover(onSelfHover),
@@ -142,6 +157,7 @@ private fun MenuPanel(
         // the menu auto-sizes to its widest label.
         CompositionLocalProvider(
             LocalSubmenuOpenReporter provides { id, open -> openChildren[id] = open },
+            LocalOpenSubmenuRow provides openRow,
         ) {
             Column(
                 verticalArrangement = Arrangement.spacedBy(0),
@@ -217,7 +233,19 @@ private fun SubmenuRow(item: ContextMenuItem.Submenu, onDismiss: () -> Unit) {
     var subDescendantOpen by remember { mutableStateOf(false) }
     var anchor by remember { mutableStateOf<LayoutCoordinates?>(null) }
     val rowId = remember { Any() }
-    val open = rowHovered || subPanelHovered || subDescendantOpen
+    val shouldOpen = rowHovered || subPanelHovered || subDescendantOpen
+    // Coordinate with the enclosing MenuPanel: only one row's submenu
+    // can be open at a time. Hovering this row claims the slot;
+    // releasing only clears it if we still own it (so the previous
+    // hover doesn't accidentally clear a newer hover's claim).
+    val openRow = LocalOpenSubmenuRow.current
+    SideEffect {
+        if (openRow != null) {
+            if (shouldOpen) openRow.value = rowId
+            else if (openRow.value == rowId) openRow.value = null
+        }
+    }
+    val open = if (openRow != null) openRow.value == rowId else shouldOpen
     val reporter = LocalSubmenuOpenReporter.current
     SideEffect { reporter?.invoke(rowId, open) }
     val bg = if (open) NwTheme.colors.surfaceHover else NwTheme.colors.surface

@@ -58,7 +58,21 @@ fun UiNode.renderWalk(canvas: NwCanvas) {
             canvas.gfx.pose().translate(canvasMod.state.panX, canvasMod.state.panY, 0f)
         }
         try {
-            for (child in childrenInPaintOrder()) child.renderWalk(canvas)
+            // Flush between siblings: MC's BufferSource.endBatch() finalises
+            // render types in a fixed order (text after gui), so without an
+            // intermediate flush, sibling A's queued text would render on top
+            // of sibling B's freshly-queued background at end-of-frame even
+            // though B paints later. Per-sibling flush forces strict
+            // sequential rendering — small per-frame cost, full correctness.
+            // Skip before the first child so the parent's own background is
+            // batched with the first child's draws (no need to split there).
+            val ordered = childrenInPaintOrder()
+            var first = true
+            for (child in ordered) {
+                if (!first) canvas.flush()
+                first = false
+                child.renderWalk(canvas)
+            }
         } finally {
             if (canvasMod != null) {
                 canvas.gfx.pose().popPose()
