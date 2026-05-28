@@ -77,6 +77,10 @@ object StockNodeTypes {
         },
         configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.ChannelEndpoint,
         evaluate = StockEvaluators.ChannelInput,
+        pinReshape = { config ->
+            val type = PinType.fromName(config.getString("type").ifEmpty { "BOOL" })
+            emptyList<Pin>() to listOf(Pin("out", "Value", type))
+        },
     )
 
     val CHANNEL_OUTPUT = nodeType(
@@ -92,6 +96,10 @@ object StockNodeTypes {
         },
         configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.ChannelEndpoint,
         evaluate = StockEvaluators.ChannelOutput,
+        pinReshape = { config ->
+            val type = PinType.fromName(config.getString("type").ifEmpty { "BOOL" })
+            listOf(Pin("in", "Value", type)) to emptyList()
+        },
     )
 
     val REDSTONE_LINK_INPUT = nodeType(
@@ -162,6 +170,10 @@ object StockNodeTypes {
         },
         configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.Constant,
         evaluate = StockEvaluators.Constant,
+        pinReshape = { config ->
+            val type = PinType.fromName(config.getString("type").ifEmpty { "BOOL" })
+            emptyList<Pin>() to listOf(Pin("out", "Value", type))
+        },
     )
 
     val TIMER = nodeType(
@@ -276,6 +288,11 @@ object StockNodeTypes {
         },
         configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.Convert,
         evaluate = StockEvaluators.Convert,
+        pinReshape = { config ->
+            val src = PinType.fromName(config.getString("sourceType").ifEmpty { "INT" })
+            val tgt = PinType.fromName(config.getString("targetType").ifEmpty { "FLOAT" })
+            listOf(Pin("in", "In", src)) to listOf(Pin("out", "Out", tgt))
+        },
     )
 
     // --- Flow ----------------------------------------------------------
@@ -313,6 +330,10 @@ object StockNodeTypes {
         defaultConfig = { CompoundTag().apply { putInt("cases", 4) } },
         configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.SwitchCases,
         evaluate = StockEvaluators.Switch,
+        pinReshape = { config ->
+            val cases = config.getInt("cases").coerceIn(2, 8).let { if (it == 0) 4 else it }
+            StockEvaluators.switchInputs(cases) to listOf(Pin("out", "Out", PinType.ANY))
+        },
     )
 
     val EDGE_RISING = nodeType(
@@ -541,6 +562,7 @@ object StockNodeTypes {
         configContent: (@androidx.compose.runtime.Composable (Node) -> Unit)? = null,
         evaluate: NodeEvaluator? = null,
         tickEvaluator: TickEvaluator? = null,
+        pinReshape: ((CompoundTag) -> Pair<List<Pin>, List<Pin>>)? = null,
     ) = NodeType(
         id = ResourceLocation.fromNamespaceAndPath(Nodewire.ID, id),
         displayName = displayName,
@@ -551,6 +573,7 @@ object StockNodeTypes {
         configContent = configContent,
         evaluate = evaluate,
         tickEvaluator = tickEvaluator,
+        pinReshape = pinReshape,
     )
 
     private fun faceBoolPins(): List<Pin> = listOf(

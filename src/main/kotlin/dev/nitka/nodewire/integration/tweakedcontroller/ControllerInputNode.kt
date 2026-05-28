@@ -4,6 +4,7 @@ import dev.nitka.nodewire.Nodewire
 import dev.nitka.nodewire.graph.NodeCategory
 import dev.nitka.nodewire.graph.NodeEvaluator
 import dev.nitka.nodewire.graph.NodeType
+import dev.nitka.nodewire.graph.Pin
 import dev.nitka.nodewire.graph.PinValue
 import net.minecraft.nbt.CompoundTag
 import net.minecraft.resources.ResourceLocation
@@ -75,5 +76,12 @@ object ControllerInputNode {
         },
         configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.ControllerInput,
         evaluate = Evaluator,
+        pinReshape = { config ->
+            val channel = ControllerChannel.fromName(config.getString("channel"))
+            val modeName = config.getString("outputMode")
+            val mode = ControllerOutputMode.entries.firstOrNull { it.name == modeName }
+                ?: allowedOutputModes(channel.category).first()
+            emptyList<Pin>() to pinsForControllerInput(channel, mode)
+        },
     )
 }

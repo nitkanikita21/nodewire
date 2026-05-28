@@ -81,7 +81,19 @@ data class NodeType(
      * fallback when null.
      */
     val tickEvaluator: TickEvaluator? = null,
+    /**
+     * Optional dynamic pin layout: when the node's pin shape depends on
+     * its config (e.g. Switch.cases, VecMake.dim, Convert.sourceType,
+     * ChannelInput.type), this lambda derives `(inputs, outputs)` from
+     * a config blob. Used by [Node.CODEC] on decode so we don't have to
+     * serialise the pin lists — the registry is the source of truth.
+     * Default = (this.inputs, this.outputs).
+     */
+    val pinReshape: ((CompoundTag) -> Pair<List<Pin>, List<Pin>>)? = null,
 ) {
+    fun pinsFor(config: CompoundTag): Pair<List<Pin>, List<Pin>> =
+        pinReshape?.invoke(config) ?: (inputs to outputs)
+
     /**
      * Look up the inline-editor spec for one of this node type's input
      * pins. Returns the explicit [Pin.editor] if declared; otherwise

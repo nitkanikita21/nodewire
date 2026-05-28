@@ -10,14 +10,42 @@ import net.minecraft.nbt.NbtOps
 import net.minecraft.nbt.NbtUtils
 import net.minecraft.nbt.TagParser
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 
 class CodecRoundTripTest {
 
+    companion object {
+        @BeforeAll @JvmStatic fun registerTypes() {
+            StockNodeTypes.registerAll()
+        }
+    }
+
     @BeforeEach fun resetBackends() {
         EndpointBackends.clearForTests()
         EndpointBackends.register(WorldBackend)
+    }
+
+    /**
+     * Build a Node whose pin shape matches what the registry would derive
+     * on decode. Since [Node.CODEC] no longer serialises pin lists, in-test
+     * constructions that supplied custom pin shapes wouldn't round-trip.
+     */
+    private fun rl(path: String) =
+        net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("nodewire", path)
+
+    private fun mkNode(
+        typeKey: net.minecraft.resources.ResourceLocation,
+        id: NodeId,
+        pos: CanvasPos,
+        config: net.minecraft.nbt.CompoundTag,
+        label: String? = null,
+    ): Node {
+        val t = NodeTypeRegistry.get(typeKey)
+            ?: error("Type not registered: $typeKey")
+        val (ins, outs) = t.pinsFor(config)
+        return Node(id, typeKey, pos, ins, outs, config, label)
     }
 
     /** Encode → decode through NbtOps. Asserts result equals input. */
@@ -81,42 +109,23 @@ class CodecRoundTripTest {
 
     @Test fun nodeNbt() {
         val cfg = net.minecraft.nbt.CompoundTag().apply { putInt("period", 20) }
-        val n = Node(
-            id = nodeA,
-            typeKey = net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("nodewire", "timer"),
-            pos = CanvasPos(10f, 20f),
-            inputs = emptyList(),
-            outputs = listOf(Pin("out", "Pulse", PinType.BOOL)),
-            config = cfg,
-        )
-        roundTripNbt(Node.CODEC, n)
+        roundTripNbt(Node.CODEC, mkNode(rl("timer"), nodeA, CanvasPos(10f, 20f), cfg))
     }
 
     @Test fun nodeSnbt() {
         val cfg = net.minecraft.nbt.CompoundTag().apply { putString("name", "speed"); putString("type", "INT") }
-        val n = Node(
-            id = nodeB,
-            typeKey = net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("nodewire", "channel_output"),
-            pos = CanvasPos(-50f, 5f),
-            inputs = listOf(Pin("in", "Value", PinType.INT)),
-            outputs = emptyList(),
-            config = cfg,
-        )
-        roundTripSnbt(Node.CODEC, n)
+        roundTripSnbt(Node.CODEC, mkNode(rl("channel_output"), nodeB, CanvasPos(-50f, 5f), cfg))
     }
 
     @Test fun nodeGraphNbtRoundTrip() {
         val g = NodeGraph()
-        g.add(Node(
-            id = nodeA,
-            typeKey = net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("nodewire", "timer"),
-            pos = CanvasPos(0f, 0f),
-            inputs = emptyList(),
-            outputs = listOf(Pin("out", "Pulse", PinType.BOOL)),
-        ))
+        g.add(mkNode(rl("timer"), nodeA, CanvasPos(0f, 0f), net.minecraft.nbt.CompoundTag()))
+        // The "not" type isn't registered, so its decode produces empty pins.
+        // We still want the graph-codec roundtrip to preserve the entry — only
+        // ids/edges are asserted below.
         g.add(Node(
             id = nodeB,
-            typeKey = net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("nodewire", "not"),
+            typeKey = rl("not"),
             pos = CanvasPos(50f, 0f),
             inputs = listOf(Pin("in", "In", PinType.BOOL)),
             outputs = listOf(Pin("out", "Out", PinType.BOOL)),
@@ -143,28 +152,12 @@ class CodecRoundTripTest {
             putString("string", "hello")
             putFloat("x", 0f); putFloat("y", 0f); putFloat("z", 0f)
         }
-        val n = Node(
-            id = nodeC,
-            typeKey = net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("nodewire", "constant"),
-            pos = CanvasPos(0f, 0f),
-            inputs = emptyList(),
-            outputs = listOf(Pin("out", "Value", PinType.STRING)),
-            config = cfg,
-        )
-        roundTripNbt(Node.CODEC, n)
+        roundTripNbt(Node.CODEC, mkNode(rl("constant"), nodeC, CanvasPos(0f, 0f), cfg))
     }
 
     @Test fun logicGateXorRoundTrip() {
         val cfg = net.minecraft.nbt.CompoundTag().apply { putString("op", "XOR") }
-        val n = Node(
-            id = nodeC,
-            typeKey = net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("nodewire", "logic_gate"),
-            pos = CanvasPos(10f, 10f),
-            inputs = listOf(Pin("a", "A", PinType.BOOL), Pin("b", "B", PinType.BOOL)),
-            outputs = listOf(Pin("out", "Out", PinType.BOOL)),
-            config = cfg,
-        )
-        roundTripNbt(Node.CODEC, n)
+        roundTripNbt(Node.CODEC, mkNode(rl("logic_gate"), nodeC, CanvasPos(10f, 10f), cfg))
     }
 
     @Test fun mathDivFloatRoundTrip() {
@@ -172,32 +165,12 @@ class CodecRoundTripTest {
             putString("op", "DIV")
             putString("type", "FLOAT")
         }
-        val n = Node(
-            id = nodeC,
-            typeKey = net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("nodewire", "math"),
-            pos = CanvasPos(20f, 0f),
-            inputs = listOf(Pin("a", "A", PinType.FLOAT), Pin("b", "B", PinType.FLOAT)),
-            outputs = listOf(Pin("out", "Out", PinType.FLOAT)),
-            config = cfg,
-        )
-        roundTripNbt(Node.CODEC, n)
+        roundTripNbt(Node.CODEC, mkNode(rl("math"), nodeC, CanvasPos(20f, 0f), cfg))
     }
 
     @Test fun compareFloatRoundTrip() {
         val cfg = net.minecraft.nbt.CompoundTag().apply { putString("type", "FLOAT") }
-        val n = Node(
-            id = nodeC,
-            typeKey = net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("nodewire", "compare"),
-            pos = CanvasPos(30f, 0f),
-            inputs = listOf(Pin("a", "A", PinType.FLOAT), Pin("b", "B", PinType.FLOAT)),
-            outputs = listOf(
-                Pin("gt", "A > B", PinType.BOOL),
-                Pin("eq", "A = B", PinType.BOOL),
-                Pin("lt", "A < B", PinType.BOOL),
-            ),
-            config = cfg,
-        )
-        roundTripNbt(Node.CODEC, n)
+        roundTripNbt(Node.CODEC, mkNode(rl("compare"), nodeC, CanvasPos(30f, 0f), cfg))
     }
 
     @Test fun convertBoolToIntRoundTrip() {
@@ -224,15 +197,7 @@ class CodecRoundTripTest {
             putInt("min", 0)
             putInt("max", 100)
         }
-        val n = Node(
-            id = nodeC,
-            typeKey = net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("nodewire", "convert"),
-            pos = CanvasPos(50f, 0f),
-            inputs = listOf(Pin("in", "In", PinType.INT)),
-            outputs = listOf(Pin("out", "Out", PinType.REDSTONE)),
-            config = cfg,
-        )
-        roundTripNbt(Node.CODEC, n)
+        roundTripNbt(Node.CODEC, mkNode(rl("convert"), nodeC, CanvasPos(50f, 0f), cfg))
     }
 
     @Test fun convertRedstoneToFloatNormalizedRoundTrip() {
@@ -241,15 +206,7 @@ class CodecRoundTripTest {
             putString("targetType", "FLOAT")
             putString("mode", "normalized")
         }
-        val n = Node(
-            id = nodeC,
-            typeKey = net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("nodewire", "convert"),
-            pos = CanvasPos(60f, 0f),
-            inputs = listOf(Pin("in", "In", PinType.REDSTONE)),
-            outputs = listOf(Pin("out", "Out", PinType.FLOAT)),
-            config = cfg,
-        )
-        roundTripNbt(Node.CODEC, n)
+        roundTripNbt(Node.CODEC, mkNode(rl("convert"), nodeC, CanvasPos(60f, 0f), cfg))
     }
 
     @Test fun channelBindingNbt() = roundTripNbt(
@@ -289,25 +246,12 @@ class CodecRoundTripTest {
     )
 
     @Test fun nodeWithLabelNbt() {
-        val n = Node(
-            id = Node.newId(),
-            typeKey = net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("nodewire", "logic_gate"),
-            pos = CanvasPos(0f, 0f),
-            inputs = emptyList(),
-            outputs = emptyList(),
-            label = "My Door Counter",
-        )
+        val n = mkNode(rl("logic_gate"), Node.newId(), CanvasPos(0f, 0f), net.minecraft.nbt.CompoundTag(), label = "My Door Counter")
         roundTripNbt(Node.CODEC, n)
     }
 
     @Test fun nodeWithNullLabelNbt() {
-        val n = Node(
-            id = Node.newId(),
-            typeKey = net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("nodewire", "logic_gate"),
-            pos = CanvasPos(0f, 0f),
-            inputs = emptyList(),
-            outputs = emptyList(),
-        )
+        val n = mkNode(rl("logic_gate"), Node.newId(), CanvasPos(0f, 0f), net.minecraft.nbt.CompoundTag())
         assertEquals(null, n.label)
         roundTripNbt(Node.CODEC, n)
     }

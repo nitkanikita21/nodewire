@@ -42,18 +42,29 @@ data class Node(
     val label: String? = null,
 ) {
     companion object {
+        /**
+         * Thin codec: encodes only `(id, typeKey, pos, config, label)`.
+         * Pin layout is derived from [NodeTypeRegistry] + [NodeType.pinsFor]
+         * on decode — the registry is the single source of truth, so wire
+         * payloads stay small and pin lists can't drift out of sync with
+         * the registered type. Unknown types decode to empty pin lists;
+         * [SaveGraphPacket.validate] then rejects any edges into them.
+         *
+         * Legacy NBT saves carrying explicit `inputs`/`outputs` arrays are
+         * still readable — `RecordCodecBuilder` ignores extra fields.
+         */
         val CODEC: Codec<Node> = RecordCodecBuilder.create { i ->
             i.group(
                 GraphCodecs.UUID_CODEC.fieldOf("id").forGetter(Node::id),
                 ResourceLocation.CODEC.fieldOf("type").forGetter(Node::typeKey),
                 CanvasPos.CODEC.fieldOf("pos").forGetter(Node::pos),
-                Pin.CODEC.listOf().fieldOf("inputs").forGetter(Node::inputs),
-                Pin.CODEC.listOf().fieldOf("outputs").forGetter(Node::outputs),
                 CompoundTag.CODEC.fieldOf("config").forGetter(Node::config),
                 Codec.STRING.optionalFieldOf("label")
                     .forGetter { java.util.Optional.ofNullable(it.label) },
-            ).apply(i) { id, type, pos, inputs, outputs, config, label ->
-                Node(id, type, pos, inputs, outputs, config, label.orElse(null))
+            ).apply(i) { id, type, pos, config, label ->
+                val nt = NodeTypeRegistry.get(type)
+                val (ins, outs) = nt?.pinsFor(config) ?: (emptyList<Pin>() to emptyList<Pin>())
+                Node(id, type, pos, ins, outs, config, label.orElse(null))
             }
         }
 

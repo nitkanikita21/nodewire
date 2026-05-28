@@ -57,6 +57,13 @@ object AeroInputNode {
         },
         configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.AeroInput,
         evaluate = Evaluator,
+        pinReshape = { config ->
+            val channelName = config.getString("channel")
+                .ifEmpty { AeroChannel.PROP_ROTATION_SPEED.name }
+            val channel = AeroChannel.fromName(channelName)
+                ?: AeroChannel.PROP_ROTATION_SPEED
+            pinsFor(channel)
+        },
     )
 
     /**
