@@ -106,18 +106,47 @@ class NwCanvas(val gfx: GuiGraphics, val font: Font) {
     }
 
     /**
-     * Push a scissor clip rect in node-local coords. Subsequent draws are
-     * clipped until [popClip]. MC's scissor stack only goes one level deep,
-     * so nested clips intersect with the outer rect manually — caller must
-     * pop before pushing a new one for now (TODO: implement nested clip
-     * intersection if we hit a use case).
+     * Stack of active scissor rectangles in screen-space (already offset-
+     * translated). Push intersects with the current top so nested scrolls
+     * never extend their children past the outer container.
+     */
+    private data class ClipRect(val x: Int, val y: Int, val x2: Int, val y2: Int)
+    private val clips: ArrayDeque<ClipRect> = ArrayDeque()
+
+    /**
+     * Push a scissor clip rect in node-local coords. The pushed rect is
+     * intersected with any already-active clip so nested scroll containers,
+     * popups inside scrolls, etc. stay inside their ancestors. [popClip]
+     * restores the previous scissor.
      */
     fun pushClip(x: Int, y: Int, width: Int, height: Int) {
-        gfx.enableScissor(ox + x, oy + y, ox + x + width, oy + y + height)
+        val sx = ox + x
+        val sy = oy + y
+        val sx2 = sx + width
+        val sy2 = sy + height
+        val effective = clips.lastOrNull()?.let { outer ->
+            ClipRect(
+                maxOf(outer.x, sx),
+                maxOf(outer.y, sy),
+                minOf(outer.x2, sx2),
+                minOf(outer.y2, sy2),
+            )
+        } ?: ClipRect(sx, sy, sx2, sy2)
+        clips.addLast(effective)
+        // Empty intersection → still push a 0-area scissor so popClip arity
+        // matches; nothing draws under it anyway.
+        gfx.enableScissor(effective.x, effective.y, effective.x2, effective.y2)
     }
 
     fun popClip() {
-        gfx.disableScissor()
+        check(clips.isNotEmpty()) { "popClip() without matching pushClip()" }
+        clips.removeLast()
+        val outer = clips.lastOrNull()
+        if (outer == null) {
+            gfx.disableScissor()
+        } else {
+            gfx.enableScissor(outer.x, outer.y, outer.x2, outer.y2)
+        }
     }
 
     /**

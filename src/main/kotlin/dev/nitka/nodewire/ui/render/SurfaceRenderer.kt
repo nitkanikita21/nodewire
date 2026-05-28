@@ -16,10 +16,16 @@ object SurfaceRenderer : Renderer {
     override fun NwCanvas.render(node: UiNode) {
         val w = node.layoutWidth
         val h = node.layoutHeight
-        node.styleModifiers
+        val bg = node.styleModifiers
             .filterIsInstance<BackgroundModifier>()
-            .lastOrNull()
-            ?.let { fillRect(0, 0, w, h, it.color) }
+            .lastOrNull() ?: return
+        // Commit any text glyphs queued by previously-painted siblings.
+        // MC's BufferSource.endBatch() finalises RenderType.text() AFTER
+        // RenderType.gui(), so without this flush, sibling A's text would
+        // render on top of sibling B's freshly-drawn background at end-of-
+        // frame — even though B's bg was drawn later in paint order.
+        flush()
+        fillRect(0, 0, w, h, bg.color)
     }
 
     override fun NwCanvas.renderAfterChildren(node: UiNode) {

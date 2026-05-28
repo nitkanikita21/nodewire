@@ -3,6 +3,7 @@ package dev.nitka.nodewire.ui.render
 import dev.nitka.nodewire.ui.canvas.CanvasModifier
 import dev.nitka.nodewire.ui.canvas.CanvasState
 import dev.nitka.nodewire.ui.core.UiNode
+import dev.nitka.nodewire.ui.modifier.style.ZIndexModifier
 import dev.nitka.nodewire.ui.scroll.ScrollAxis
 import dev.nitka.nodewire.ui.scroll.ScrollModifier
 import dev.nitka.nodewire.ui.scroll.ScrollState
@@ -57,7 +58,7 @@ fun UiNode.renderWalk(canvas: NwCanvas) {
             canvas.gfx.pose().translate(canvasMod.state.panX, canvasMod.state.panY, 0f)
         }
         try {
-            for (child in children) child.renderWalk(canvas)
+            for (child in childrenInPaintOrder()) child.renderWalk(canvas)
         } finally {
             if (canvasMod != null) {
                 canvas.gfx.pose().popPose()
@@ -83,6 +84,32 @@ fun UiNode.renderWalk(canvas: NwCanvas) {
     } finally {
         canvas.popOffset()
     }
+}
+
+/**
+ * Stable-sort children by their [ZIndexModifier] value (default 0). Higher
+ * value paints later (on top of lower-valued siblings); ties preserve
+ * composition source order. The vast majority of UI uses no zIndex, so
+ * we early-out when no child has the modifier — no allocation in the hot
+ * path.
+ */
+private fun UiNode.childrenInPaintOrder(): List<UiNode> {
+    var anyNonZero = false
+    for (c in children) {
+        if (c.styleModifiers.any { it is ZIndexModifier && it.value != 0 }) {
+            anyNonZero = true; break
+        }
+    }
+    if (!anyNonZero) return children
+    return children.withIndex()
+        .sortedBy { (idx, node) ->
+            val z = node.styleModifiers
+                .filterIsInstance<ZIndexModifier>()
+                .lastOrNull()?.value ?: 0
+            // Pack (zIndex, originalIndex) so equal-z siblings keep source order.
+            z.toLong() * Int.MAX_VALUE + idx
+        }
+        .map { it.value }
 }
 
 private const val INDICATOR_THICKNESS = 3
