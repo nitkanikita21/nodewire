@@ -669,8 +669,11 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
             it.typeKey.path == "channel_output"
                 && it.config.getString("name") == sb.sourceChannelName
         } ?: return true
+        // Source type must be convertible to REDSTONE (redstoneOf routes
+        // any scalar through PinValueConversion). Vectors/strings without a
+        // sensible numeric mapping prune the binding.
         val srcType = PinType.fromName(srcNode.config.getString("type"))
-        if (srcType != PinType.BOOL && srcType != PinType.INT && srcType != PinType.REDSTONE) {
+        if (!dev.nitka.nodewire.graph.PinValueConversion.canConvert(srcType, PinType.REDSTONE)) {
             return true
         }
         // Target must still be a non-air block. Distance is fine — the
@@ -692,9 +695,12 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
             it.typeKey.path == "channel_input"
                 && it.config.getString("name") == binding.targetChannelName
         } ?: return true
+        // Allow any pair whose values can flow through PinValueConversion.
+        // Strict equality was too aggressive — Constant(Bool) → channel_output(redstone)
+        // routed across to channel_input(redstone) used to prune as Bool != Redstone.
         val srcType = PinType.fromName(srcNode.config.getString("type"))
         val tgtType = PinType.fromName(tgtNode.config.getString("type"))
-        return srcType != tgtType
+        return !dev.nitka.nodewire.graph.PinValueConversion.canConvert(srcType, tgtType)
     }
 
     // ── CC: Tweaked attached-peripheral tracking ──────────────────────────
