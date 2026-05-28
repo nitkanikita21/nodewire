@@ -749,11 +749,14 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
         private fun directionOf(name: String): Direction? =
             DIRECTIONS_BY_NAME[name.lowercase()]
 
-        private fun redstoneOf(value: PinValue?): Int = when (value) {
-            is PinValue.Redstone -> value.value.coerceIn(0, 15)
-            is PinValue.Int -> value.value.coerceIn(0, 15)
-            is PinValue.Bool -> if (value.value) 15 else 0
-            else -> 0
+        internal fun redstoneOf(value: PinValue?): Int {
+            if (value == null) return 0
+            // Bool keeps its emission convention: true → 15 (full signal),
+            // not 1 (which is what the generic numeric conversion would give).
+            if (value is PinValue.Bool) return if (value.value) 15 else 0
+            val converted = dev.nitka.nodewire.graph.PinValueConversion
+                .convert(value, dev.nitka.nodewire.graph.PinType.REDSTONE)
+            return (converted as? PinValue.Redstone)?.value?.coerceIn(0, 15) ?: 0
         }
     }
 }
