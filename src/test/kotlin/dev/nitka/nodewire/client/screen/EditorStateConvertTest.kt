@@ -17,7 +17,7 @@ class EditorStateConvertTest {
         @BeforeAll @JvmStatic fun reg() { StockNodeTypes.registerAll() }
     }
 
-    @Test fun changeConvertTypesRebuildsInputOutputAndDisconnects() {
+    @Test fun changeConvertTypesRebuildsAndKeepsConvertibleEdge() {
         val graph = NodeGraph()
         // Default CONVERT: in=INT, out=FLOAT
         val conv = StockNodeTypes.CONVERT.newInstance(CanvasPos.Zero)
@@ -35,8 +35,10 @@ class EditorStateConvertTest {
         assertEquals(PinType.INT, updated.outputs.first().type)
         assertEquals("BOOL", updated.config.getString("sourceType"))
         assertEquals("INT", updated.config.getString("targetType"))
-        // the edge must have been disconnected
-        assertTrue(editor.edges.value.isEmpty())
+        // INT (source.out) → BOOL (conv.in) is convertible via PinValueConversion,
+        // so the edge must survive the reshape. Pre-fix, every reshape dropped
+        // every edge unconditionally — broke user wiring on every config tweak.
+        assertEquals(1, editor.edges.value.size)
     }
 
     @Test

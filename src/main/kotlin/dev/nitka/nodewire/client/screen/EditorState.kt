@@ -429,7 +429,7 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
                 if (n.inputs.isNotEmpty()) n.copy(inputs = listOf(rebuilt), config = newConfig)
                 else n.copy(outputs = listOf(rebuilt), config = newConfig)
             }
-            _disconnectAllEdgesInternal(id)
+            _pruneIncompatibleEdgesInternal(id)
         }
     }
 
@@ -448,7 +448,7 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
                 val newConfig = n.config.copy().apply { putString("type", newType.name) }
                 n.copy(outputs = listOf(rebuilt), config = newConfig)
             }
-            _disconnectAllEdgesInternal(id)
+            _pruneIncompatibleEdgesInternal(id)
         }
     }
 
@@ -474,7 +474,7 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
                 }
                 n.copy(inputs = inputs, outputs = outputs, config = newConfig)
             }
-            _disconnectAllEdgesInternal(id)
+            _pruneIncompatibleEdgesInternal(id)
         }
     }
 
@@ -531,7 +531,7 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
                 val newConfig = n.config.copy().apply { putString("dim", newDim) }
                 n.copy(inputs = newInputs, outputs = newOutputs, config = newConfig)
             }
-            _disconnectAllEdgesInternal(id)
+            _pruneIncompatibleEdgesInternal(id)
         }
     }
 
@@ -570,7 +570,7 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
                 }
                 n.copy(outputs = outs, config = newConfig)
             }
-            _disconnectAllEdgesInternal(id)
+            _pruneIncompatibleEdgesInternal(id)
         }
     }
 
@@ -597,7 +597,7 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
                 }
                 n.copy(outputs = outs, config = newConfig)
             }
-            _disconnectAllEdgesInternal(id)
+            _pruneIncompatibleEdgesInternal(id)
         }
     }
 
@@ -621,7 +621,7 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
                     config = newConfig,
                 )
             }
-            _disconnectAllEdgesInternal(id)
+            _pruneIncompatibleEdgesInternal(id)
         }
     }
 
@@ -639,7 +639,7 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
                 }
                 n.copy(inputs = ins, outputs = outs, config = newConfig)
             }
-            _disconnectAllEdgesInternal(id)
+            _pruneIncompatibleEdgesInternal(id)
         }
     }
 
@@ -670,7 +670,7 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
                 }
                 n.copy(inputs = ins, outputs = outs, config = newConfig)
             }
-            _disconnectAllEdgesInternal(id)
+            _pruneIncompatibleEdgesInternal(id)
         }
     }
 
@@ -780,6 +780,43 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
     private fun _disconnectAllEdgesInternal(id: dev.nitka.nodewire.graph.NodeId) {
         val before = graph.edges.size
         graph.edges.removeAll { it.from.node == id || it.to.node == id }
+        if (graph.edges.size != before) {
+            _edges.value = graph.edges.toList()
+        }
+    }
+
+    /**
+     * Reshape-aware pruner used after a node's pin layout changes.
+     * Drops edges whose endpoint pin no longer exists, or whose endpoint
+     * pin type can no longer convert to/from the other side per
+     * [dev.nitka.nodewire.graph.PinValueConversion.canConvert]. Edges that
+     * still type-check are preserved — Constant(Bool) → channel_output(Redstone)
+     * stays connected when the user toggles the channel type.
+     */
+    private fun _pruneIncompatibleEdgesInternal(id: dev.nitka.nodewire.graph.NodeId) {
+        val before = graph.edges.size
+        val node = graph.nodes[id] ?: return
+        val inputById = node.inputs.associateBy { it.id }
+        val outputById = node.outputs.associateBy { it.id }
+        graph.edges.removeAll { e ->
+            val touchesFrom = e.from.node == id
+            val touchesTo = e.to.node == id
+            if (!touchesFrom && !touchesTo) return@removeAll false
+            val ourPinType = when {
+                touchesFrom -> outputById[e.from.pin]?.type ?: return@removeAll true
+                else -> inputById[e.to.pin]?.type ?: return@removeAll true
+            }
+            val otherNodeId = if (touchesFrom) e.to.node else e.from.node
+            val otherNode = graph.nodes[otherNodeId] ?: return@removeAll true
+            val otherPinType = if (touchesFrom) {
+                otherNode.inputs.firstOrNull { it.id == e.to.pin }?.type
+            } else {
+                otherNode.outputs.firstOrNull { it.id == e.from.pin }?.type
+            } ?: return@removeAll true
+            val (srcType, dstType) = if (touchesFrom) ourPinType to otherPinType
+                else otherPinType to ourPinType
+            !dev.nitka.nodewire.graph.PinValueConversion.canConvert(srcType, dstType)
+        }
         if (graph.edges.size != before) {
             _edges.value = graph.edges.toList()
         }
