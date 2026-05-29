@@ -155,6 +155,15 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
     var faceOutputs: Map<Direction, Int> = emptyMap()
         private set
 
+    /**
+     * Last-tick emitted redstone per (targetPos, targetSide) for our side
+     * bindings. We fire a neighbour update only when a slot's value actually
+     * changes — mirrors DriveByWire's `WireNetworkNode.setInput` change-gate
+     * and avoids a per-tick neighbour-update storm on held signals.
+     * Transient — rebuilt from live bindings each server tick.
+     */
+    private val lastSideEmit: MutableMap<Pair<BlockPos, Direction>, Int> = HashMap()
+
     fun invalidateEvaluator() {
         serverEvaluator = null
     }
@@ -314,14 +323,18 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
         }
         if (removed) {
             setChanged()
-            // Pre-empt the next-tick rewrite: clear our contribution now
-            // so the target neighbour-update we fire next sees 0.
-            level?.let { dev.nitka.nodewire.signal.VirtualSignalMap.of(it).put(blockPos, targetPos, targetSide, 0) }
-            level?.let {
-                val tgt = it.getBlockState(targetPos)
-                if (!tgt.isAir) {
-                    it.neighborChanged(targetPos, tgt.block, targetPos)
-                    it.updateNeighborsAt(targetPos, tgt.block)
+            level?.let { lvl ->
+                // Pre-empt the next-tick rewrite: clear our contribution now
+                // so the neighbour-update we fire sees 0.
+                dev.nitka.nodewire.signal.VirtualSignalMap.of(lvl).put(blockPos, targetPos, targetSide, 0)
+                lastSideEmit.remove(targetPos to targetSide)
+                // Poke the virtual-source neighbour (and the target) so the
+                // target re-reads the now-zero bound face — same delivery
+                // path as serverTick.
+                val from = targetPos.relative(targetSide)
+                lvl.updateNeighborsAt(from, lvl.getBlockState(from).block)
+                if (!lvl.getBlockState(targetPos).isAir) {
+                    lvl.updateNeighborsAt(targetPos, lvl.getBlockState(targetPos).block)
                 }
             }
         }
@@ -578,32 +591,44 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
             map
         }
         // Side bindings: inject into the per-level virtual signal map. The
-        // mixin into Level.getBestNeighborSignal will surface these to any
-        // block that polls its neighbours — distance and adjacency are
-        // irrelevant. We collect per (targetPos, targetSide) and take the
-        // max if multiple sources drive the same slot.
-        if (sideBindings.isNotEmpty()) {
+        // mixin into Level.getSignal surfaces these to any block that polls
+        // its neighbours — distance and adjacency are irrelevant. We collect
+        // per (targetPos, targetSide) and take the max if multiple sources
+        // drive the same slot.
+        //
+        // Delivery: the signal arrives on `targetSide`, i.e. as if a redstone
+        // source sat at `from = targetPos.relative(targetSide)`. To make the
+        // target re-poll we therefore poke `from` (whose neighbour-notify
+        // reaches the target ON the bound face, with the correct fromPos)
+        // plus `to` (so re-emitting blocks chain) — exactly how vanilla
+        // redstone propagates and how DriveByWire's ship-wire sinks deliver.
+        // Poking the target *itself* (the old behaviour) only worked for
+        // face-agnostic consumers (vanilla lamp, self-polling Create
+        // gearshift); a mod block that keys on which face changed never saw
+        // it. Gate on value-change to avoid a per-tick neighbour-update storm.
+        if (sideBindings.isNotEmpty() || lastSideEmit.isNotEmpty()) {
             val map = dev.nitka.nodewire.signal.VirtualSignalMap.of(level)
             // Remove any previous contributions from this source first so a
             // dropped binding clears its signal in the same tick.
             map.clearSource(pos)
+            val nowEmit = HashMap<Pair<BlockPos, Direction>, Int>()
             for (sb in sideBindings) {
                 val value = perChannelValueCache[sb.sourceChannelName] ?: continue
-                val r = redstoneOf(value)
-                map.put(pos, sb.target.payload.blockPos, sb.targetSide, r)
+                val slot = sb.target.payload.blockPos to sb.targetSide
+                nowEmit[slot] = maxOf(nowEmit[slot] ?: 0, redstoneOf(value))
             }
-            // Schedule a neighbour update on each affected target so it
-            // re-polls its power state; without this most blocks won't
-            // notice until something else perturbs them.
-            for (sb in sideBindings) {
-                val targetState = level.getBlockState(sb.target.payload.blockPos)
-                if (!targetState.isAir) {
-                    level.neighborChanged(sb.target.payload.blockPos, targetState.block, sb.target.payload.blockPos)
-                    // Also poke updateNeighborsAt so block entities that
-                    // chain (e.g. piston extensions) see the change.
-                    level.updateNeighborsAt(sb.target.payload.blockPos, targetState.block)
-                }
+            for ((slot, r) in nowEmit) map.put(pos, slot.first, slot.second, r)
+            // Poke only slots whose value changed since last tick (incl. ones
+            // that dropped to 0 because their binding was pruned/removed).
+            for (slot in nowEmit.keys + lastSideEmit.keys) {
+                if ((nowEmit[slot] ?: 0) == (lastSideEmit[slot] ?: 0)) continue
+                val to = slot.first
+                val from = to.relative(slot.second)
+                level.updateNeighborsAt(from, level.getBlockState(from).block)
+                level.updateNeighborsAt(to, level.getBlockState(to).block)
             }
+            lastSideEmit.clear()
+            lastSideEmit.putAll(nowEmit)
         }
         if (updated != faceOutputs) {
             faceOutputs = updated
@@ -645,12 +670,15 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
                 // Plus poke every target so it actually re-polls — without
                 // this, a piston/lamp/etc. that was held high by our signal
                 // would stay high indefinitely (vanilla only re-reads on
-                // neighbour-change events, not on a passive value drop).
+                // neighbour-change events, not on a passive value drop). Poke
+                // the virtual-source neighbour `from` so the target sees the
+                // drop on the bound face (same delivery as serverTick).
                 for (sb in sideBindings) {
-                    val tgt = lvl.getBlockState(sb.target.payload.blockPos)
-                    if (!tgt.isAir) {
-                        lvl.neighborChanged(sb.target.payload.blockPos, tgt.block, sb.target.payload.blockPos)
-                        lvl.updateNeighborsAt(sb.target.payload.blockPos, tgt.block)
+                    val to = sb.target.payload.blockPos
+                    val from = to.relative(sb.targetSide)
+                    lvl.updateNeighborsAt(from, lvl.getBlockState(from).block)
+                    if (!lvl.getBlockState(to).isAir) {
+                        lvl.updateNeighborsAt(to, lvl.getBlockState(to).block)
                     }
                 }
                 if (ModList.get().isLoaded("create")) {

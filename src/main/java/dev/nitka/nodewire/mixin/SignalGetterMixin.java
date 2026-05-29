@@ -20,6 +20,14 @@ import org.spongepowered.asm.mixin.Mixin;
  * kind (vanilla, Create, mod X) that go through any of these APIs see the
  * injected virtual signals.
  *
+ * NOTE on cross-mod composition: a mod that overrides these on a more-derived
+ * class (e.g. DriveByWire's @Mixin(ServerLevel) getSignal) wins dispatch and
+ * its super.getSignal() resolves to the SignalGetter *default*, bypassing the
+ * copy we add to Level. The aggregate methods we own here (getBestNeighborSignal
+ * / hasNeighborSignal) still surface the virtual signal via strongestAt, but a
+ * block that reads strictly via getSignal under such a mod won't — that case is
+ * handled separately (see docs/superpowers notes on DriveByWire).
+ *
  * Convention for the per-face methods (getSignal / getDirectSignal /
  * hasSignal / getControlInputSignal):
  *   pos      = neighbour position passed by vanilla.
@@ -124,11 +132,14 @@ public abstract class SignalGetterMixin {
 
     public int getDirectSignalTo(BlockPos pos) {
         Level self = (Level) (Object) this;
-        int sum = 0;
+        // Vanilla SignalGetter.getDirectSignalTo takes the MAX direct signal
+        // across the six neighbours (not the sum). Our getDirectSignal
+        // override already layers VirtualSignalMap per face.
+        int best = 0;
         for (Direction d : Direction.values()) {
-            sum += self.getDirectSignal(pos.relative(d), d);
-            if (sum >= 15) return 15;
+            best = Math.max(best, self.getDirectSignal(pos.relative(d), d));
+            if (best >= 15) return 15;
         }
-        return sum;
+        return best;
     }
 }

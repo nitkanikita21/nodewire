@@ -65,6 +65,10 @@ object VirtualSignalMap {
          * any-face [strongestAt] alone isn't enough for them.
          */
         fun powerAtFace(targetPos: BlockPos, face: Direction): Int {
+            // Hot path: this runs from BlockStateBase.getSignal, i.e. on every
+            // redstone read in the world. Bail before allocating a Key when the
+            // level has no bindings at all (the overwhelmingly common case).
+            if (signals.isEmpty()) return 0
             val perSource = signals[Key(targetPos, face)] ?: return 0
             var best = 0
             for (v in perSource.values) {
@@ -72,6 +76,30 @@ object VirtualSignalMap {
                 if (best >= 15) return 15
             }
             return best
+        }
+
+        /**
+         * Resolve the virtual power that a `getSignal(queryPos, queryDir)` call
+         * should observe, tolerating the two direction conventions blocks use
+         * in the wild. We can't know which the caller meant, so we probe both
+         * keys and take the max — keys are precise `(pos, face)` pairs, so the
+         * convention that doesn't apply almost always resolves to 0 and only a
+         * binding that genuinely exists is ever surfaced.
+         *
+         *  - **Standard** (vanilla `hasNeighborSignal`, Create gearshift):
+         *    `getSignal(target.relative(side), side)` — the powered block is
+         *    [queryPos] shifted back against [queryDir].
+         *  - **Flipped** (Offroad wheel-mount steering reads
+         *    `getSignal(pos.relative(left), right)` with `right == left.opposite()`):
+         *    the powered block is [queryPos] shifted ALONG [queryDir], on the
+         *    opposite face.
+         */
+        fun powerForQuery(queryPos: BlockPos, queryDir: Direction): Int {
+            if (signals.isEmpty()) return 0
+            val standard = powerAtFace(queryPos.relative(queryDir.opposite), queryDir)
+            if (standard >= 15) return 15
+            val flipped = powerAtFace(queryPos.relative(queryDir), queryDir.opposite)
+            return if (flipped > standard) flipped else standard
         }
 
         /**
