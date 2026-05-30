@@ -556,6 +556,7 @@ object StockNodeTypes {
         inputs = DEFAULT_SCRIPT_HEADER.inputs,
         outputs = DEFAULT_SCRIPT_HEADER.outputs,
         defaultConfig = { CompoundTag().apply { putString("src", DEFAULT_SCRIPT) } },
+        configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.Script,
         pinReshape = { config ->
             val h = dev.nitka.nodewire.script.lexer.HeaderLexer.parse(config.getString("src"))
             h.inputs to h.outputs

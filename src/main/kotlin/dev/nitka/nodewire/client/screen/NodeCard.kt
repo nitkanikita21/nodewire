@@ -242,12 +242,40 @@ private fun TitleBar(
                 )
             }
         } else {
-            Text(
-                displayTitleOf(node),
-                style = NwTheme.typography.caption.copy(color = NwTheme.colors.onAccent),
-            )
+            Row(
+                verticalAlignment = Alignment.Center,
+                horizontalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2),
+            ) {
+                Text(
+                    displayTitleOf(node),
+                    style = NwTheme.typography.caption.copy(color = NwTheme.colors.onAccent),
+                )
+                ScriptStatusBadge(node)
+            }
         }
     }
+}
+
+/**
+ * Component G badge — a tiny compile-status glyph shown only on `script`
+ * nodes, fed by the server-synced [dev.nitka.nodewire.script.ScriptDiagnostics]
+ * token in the node config: `…` compiling / `✅` ok / `❌` error. Hidden when
+ * the script is empty (no source) or the node isn't a script node. Pure
+ * presentation — reads the last-synced value, never compiles on the client.
+ */
+@Composable
+private fun ScriptStatusBadge(node: Node) {
+    if (node.typeKey.path != "script") return
+    val glyph = when (dev.nitka.nodewire.script.ScriptDiagnostics.readStatus(node.config)) {
+        dev.nitka.nodewire.script.ScriptDiagnostics.STATUS_COMPILING -> "…"
+        dev.nitka.nodewire.script.ScriptDiagnostics.STATUS_OK -> "✅"
+        dev.nitka.nodewire.script.ScriptDiagnostics.STATUS_ERROR -> "❌"
+        else -> return
+    }
+    Text(
+        glyph,
+        style = NwTheme.typography.caption.copy(color = NwTheme.colors.onAccent),
+    )
 }
 
 private const val LEFT_BUTTON = 0

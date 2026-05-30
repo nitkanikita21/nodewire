@@ -248,6 +248,57 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
         return true
     }
 
+    /**
+     * Server-side mutator for the script node: write a new `src` into the
+     * node's config, re-reshape its pins from the script header (via the
+     * registered type's [dev.nitka.nodewire.graph.NodeType.pinsFor] →
+     * `HeaderLexer`), prune any edges whose endpoint pin vanished or no
+     * longer type-converts, and invalidate the cached evaluator so the new
+     * source compiles fresh on the next tick. Returns true if the node was
+     * found and is a `script` node.
+     *
+     * Caller is responsible for the block-update broadcast — this method
+     * only mutates state + setChanged(). Used by
+     * [dev.nitka.nodewire.net.SetScriptSourcePacket.Companion.handle].
+     */
+    fun setScriptSource(nodeId: NodeId, src: String): Boolean {
+        if (!applyScriptSourceToGraph(graph, nodeId, src)) return false
+        invalidateEvaluator()
+        setChanged()
+        return true
+    }
+
+    /**
+     * Component G — server-thread poll of script-node compile status. For every
+     * `script` node, reads [dev.nitka.nodewire.script.ScriptNodeRuntime.statusOf]
+     * (side-effect-free, safe on the tick thread) for its current `src` and, when
+     * the synced token or text differs from what's already in the node config,
+     * stamps the new values into the config via
+     * [dev.nitka.nodewire.script.ScriptDiagnostics]. Returns true if any node's
+     * diagnostics changed (the caller then fires one setChanged + block update).
+     *
+     * Writes only the `__diag_*` keys — `src` is untouched, so neither the pin
+     * reshape nor the compile cache key is affected.
+     */
+    private fun stampScriptDiagnostics(): Boolean {
+        val SD = dev.nitka.nodewire.script.ScriptDiagnostics
+        var changed = false
+        for ((id, node) in graph.nodes) {
+            if (node.typeKey.path != "script") continue
+            val status = dev.nitka.nodewire.script.ScriptNodeRuntime.statusOf(node.config.getString("src"))
+            val token = SD.statusToken(status)
+            val text = SD.diagnosticsText(status)
+            if (SD.readStatus(node.config) == token && SD.readText(node.config) == text) continue
+            val newConfig = node.config.copy().apply {
+                putString(SD.STATUS_KEY, token)
+                putString(SD.TEXT_KEY, text)
+            }
+            graph.nodes[id] = node.copy(config = newConfig)
+            changed = true
+        }
+        return changed
+    }
+
     fun bindingsSnapshot(): List<ChannelBinding> = bindings.toList()
     fun sideBindingsSnapshot(): List<SideBinding> = sideBindings.toList()
     fun remoteRedstoneBindingsSnapshot(): List<RemoteRedstoneBinding> = remoteRedstoneBindings.toList()
@@ -527,6 +578,18 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
         // Dispatch any log()/chat() that script nodes emitted during eval.tick.
         dev.nitka.nodewire.script.ScriptMessageSink.drain().let { msgs ->
             if (msgs.isNotEmpty()) dispatchScriptMessages(level, pos, msgs)
+        }
+
+        // Component G: poll each script node's compile status (computed off the
+        // tick thread in ScriptNodeRuntime) and stamp a compact diagnostics
+        // summary into its config when it changes. Done here, on the server
+        // thread, so the BE mutation + client re-sync stay on-thread (Option A
+        // from the design — no risky off-thread BE writes). The keys ride the
+        // existing Node.CODEC config round-trip, so the badge/editor read them
+        // for free; they never touch `src`, so the compile cache key is intact.
+        if (stampScriptDiagnostics()) {
+            setChanged()
+            level.sendBlockUpdated(pos, state, state, net.minecraft.world.level.block.Block.UPDATE_CLIENTS)
         }
 
         // CC: Tweaked event dispatch — skip everything if the mod isn't
@@ -877,6 +940,60 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
     companion object {
         private const val MAX_NAME_LENGTH = 64
         private val DIRECTIONS_BY_NAME = Direction.entries.associateBy { it.name.lowercase() }
+
+        /**
+         * Pure graph mutation behind [setScriptSource] — extracted so it is
+         * unit-testable without a live BlockEntity. Writes [src] into the
+         * `script` node [nodeId], re-reshapes its pins from the script header
+         * (via the registered type's `pinsFor` → `HeaderLexer`), and prunes
+         * edges to vanished/incompatible pins. Returns true if the node was
+         * found and is a `script` node. Does NOT call `setChanged()` /
+         * `invalidateEvaluator()` — the instance method owns those side effects.
+         */
+        fun applyScriptSourceToGraph(graph: NodeGraph, nodeId: NodeId, src: String): Boolean {
+            val existing = graph.nodes[nodeId] ?: return false
+            if (existing.typeKey.path != "script") return false
+            val type = dev.nitka.nodewire.graph.NodeTypeRegistry.get(existing.typeKey) ?: return false
+            val newConfig = existing.config.copy().apply { putString("src", src) }
+            val (ins, outs) = type.pinsFor(newConfig)
+            graph.nodes[nodeId] = existing.copy(inputs = ins, outputs = outs, config = newConfig)
+            pruneIncompatibleEdges(graph, nodeId)
+            return true
+        }
+
+        /**
+         * Reshape-aware edge pruner — server-side authoritative port of
+         * `EditorState._pruneIncompatibleEdgesInternal`. Drops edges touching
+         * [id] whose endpoint pin no longer exists, or whose endpoint pin type
+         * can no longer convert to/from the other side per
+         * [dev.nitka.nodewire.graph.PinValueConversion.canConvert]. Edges that
+         * still type-check survive (e.g. an output kept at the same pin id and
+         * type after a header edit).
+         */
+        private fun pruneIncompatibleEdges(graph: NodeGraph, id: NodeId) {
+            val node = graph.nodes[id] ?: return
+            val inputById = node.inputs.associateBy { it.id }
+            val outputById = node.outputs.associateBy { it.id }
+            graph.edges.removeAll { e ->
+                val touchesFrom = e.from.node == id
+                val touchesTo = e.to.node == id
+                if (!touchesFrom && !touchesTo) return@removeAll false
+                val ourPinType = when {
+                    touchesFrom -> outputById[e.from.pin]?.type ?: return@removeAll true
+                    else -> inputById[e.to.pin]?.type ?: return@removeAll true
+                }
+                val otherNodeId = if (touchesFrom) e.to.node else e.from.node
+                val otherNode = graph.nodes[otherNodeId] ?: return@removeAll true
+                val otherPinType = if (touchesFrom) {
+                    otherNode.inputs.firstOrNull { it.id == e.to.pin }?.type
+                } else {
+                    otherNode.outputs.firstOrNull { it.id == e.from.pin }?.type
+                } ?: return@removeAll true
+                val (srcType, dstType) = if (touchesFrom) ourPinType to otherPinType
+                    else otherPinType to ourPinType
+                !dev.nitka.nodewire.graph.PinValueConversion.canConvert(srcType, dstType)
+            }
+        }
 
         private fun directionOf(name: String): Direction? =
             DIRECTIONS_BY_NAME[name.lowercase()]

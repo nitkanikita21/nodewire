@@ -23,6 +23,7 @@ import dev.nitka.nodewire.ui.modifier.style.background
 import dev.nitka.nodewire.ui.modifier.style.BackgroundModifier
 import dev.nitka.nodewire.ui.modifier.style.BorderModifier
 import dev.nitka.nodewire.ui.render.Color
+import dev.nitka.nodewire.ui.render.HlSpan
 import dev.nitka.nodewire.ui.render.NwCanvas
 import dev.nitka.nodewire.ui.render.Renderer
 import dev.nitka.nodewire.ui.theme.NwTheme
@@ -50,6 +51,7 @@ fun TextArea(
     modifier: Modifier = Modifier,
     placeholder: String = "",
     enabled: Boolean = true,
+    highlight: ((String) -> List<HlSpan>)? = null,
 ) {
     val focusController = LocalKeyFocus.current
     val font = Minecraft.getInstance().font
@@ -235,6 +237,7 @@ fun TextArea(
             textScale = textScale,
             lineHeightPx = lineHeightPx,
             fontWidth = ::fontWidth,
+            highlight = highlight,
         ),
     )
 }
@@ -252,6 +255,7 @@ private class TextAreaRenderer(
     private val textScale: Float,
     private val lineHeightPx: Int,
     private val fontWidth: (String) -> Int,
+    private val highlight: ((String) -> List<HlSpan>)? = null,
 ) : Renderer {
 
     override fun NwCanvas.render(node: UiNode) {
@@ -279,10 +283,15 @@ private class TextAreaRenderer(
         for (line in lines) {
             if (y + lineHeightPx > h) break
             if (line.isNotEmpty()) {
-                // Truncate per-line text to the visible width so it doesn't
-                // bleed past the right edge either.
-                val visible = truncateToWidth(line, w)
-                drawScaledText(visible, 0, y, textColor)
+                val hl = highlight
+                if (hl == null) {
+                    // Truncate per-line text to the visible width so it doesn't
+                    // bleed past the right edge either.
+                    val visible = truncateToWidth(line, w)
+                    drawScaledText(visible, 0, y, textColor)
+                } else {
+                    drawHighlightedLine(line, y, w, hl(line))
+                }
             }
             y += lineHeightPx
         }
@@ -306,6 +315,39 @@ private class TextAreaRenderer(
                 if (cx < w) fillRect(cx, cy, 1, lineHeightPx, caretColor)
             }
         }
+    }
+
+    /**
+     * Draw one line as coloured segments. [spans] are in this line's local coords
+     * (0 = first char). Plain gaps between spans use [textColor]; each span uses
+     * its kind colour. Each segment's x is computed as the prefix width from the
+     * line start ([fontWidth] of `line[0, segStart)`) — **not** accumulated — so
+     * glyph positions stay pixel-identical to the caret/hit-test math. Segments are
+     * clipped at the node's right edge [w], matching the unhighlighted truncation.
+     */
+    private fun NwCanvas.drawHighlightedLine(line: String, y: Int, w: Int, spans: List<HlSpan>) {
+        val len = line.length
+        // Walk the line as alternating (plain gap, coloured span) pieces. Spans are
+        // ordered & non-overlapping; gaps are implicit plain text.
+        var cursor = 0
+        fun emit(start: Int, end: Int, color: Color) {
+            if (start >= end) return
+            val x = fontWidth(line.substring(0, start))
+            if (x >= w) return
+            val segment = line.substring(start, end)
+            // Clip the segment to the remaining visible width so it never bleeds
+            // past the right edge (mirrors truncateToWidth on the flat path).
+            val visible = truncateToWidth(segment, w - x)
+            if (visible.isNotEmpty()) drawScaledText(visible, x, y, color)
+        }
+        for (span in spans) {
+            val s = span.start.coerceIn(0, len)
+            val e = span.end.coerceIn(0, len)
+            if (s > cursor) emit(cursor, s, textColor) // plain gap
+            emit(s, e, span.kind.color)
+            cursor = maxOf(cursor, e)
+        }
+        if (cursor < len) emit(cursor, len, textColor) // trailing plain text
     }
 
     private fun truncateToWidth(line: String, maxWidth: Int): String {

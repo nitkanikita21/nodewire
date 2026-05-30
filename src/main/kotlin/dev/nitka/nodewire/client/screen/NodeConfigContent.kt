@@ -703,6 +703,35 @@ object NodeConfigContent {
     }
 
     /**
+     * Script: a short read-only preview of `config["src"]` (first few lines)
+     * plus a "📜 Edit" button that opens the full-screen [ScriptEditorScreen].
+     * Edits are applied on the editor's close (apply-on-close); this card only
+     * shows a glance of the current source.
+     */
+    val Script: @Composable (Node) -> Unit = { node ->
+        val editor = LocalEditorState.current
+        val src = node.config.getString("src")
+        val preview = src.lineSequence().take(3).joinToString("\n").ifEmpty { "(empty)" }
+        val nodeName = dev.nitka.nodewire.graph.NodeTypeRegistry.get(node.typeKey)?.displayName ?: "Script"
+        Column(verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2)) {
+            Text(
+                preview,
+                style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceMuted),
+            )
+            Button(
+                onClick = {
+                    val pos = editor?.pos ?: return@Button
+                    net.minecraft.client.Minecraft.getInstance().setScreen(
+                        ScriptEditorScreen(pos, node.id, src, nodeName),
+                    )
+                },
+            ) {
+                Text("📜 Edit")
+            }
+        }
+    }
+
+    /**
      * Sequencer: row of 2/4/8/16 step-count selector buttons. Active count
      * is shown disabled. Clicking another count writes `steps` into the
      * node config.
