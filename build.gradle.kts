@@ -66,6 +66,12 @@ repositories {
     }
 }
 
+// The optional :scripting addon is loaded into core's dev runs (neoForge.mods
+// below) so `./gradlew runClient` exercises the Script Node with the full mod
+// deps (Create/Sable/...) present. Force :scripting to evaluate first so its
+// main sourceSet is available when the mods block reads it.
+evaluationDependsOn(":scripting")
+
 neoForge {
     version = neoForgeVer
 
@@ -81,6 +87,8 @@ neoForge {
             client()
             systemProperty("forge.logging.markers", "REGISTRIES")
             systemProperty("forge.logging.console.level", "debug")
+            // Fire the Script Node JPMS validation probe (see NodewireScripting) in dev.
+            systemProperty("nodewire.scriptprobe", "true")
             // IDE-attached coroutines-debug agent retransforms kotlin.stdlib's
             // DebugProbesKt so it dispatches into kotlinx.coroutines.debug.internal
             // .DebugProbesImpl. Both live in KFF's PLUGIN layer as separate JPMS
@@ -103,6 +111,12 @@ neoForge {
     mods {
         register(modId) {
             sourceSet(sourceSets["main"])
+        }
+        // Optional addon, loaded alongside core in dev runs (cross-project
+        // sourceSet — ModDevGradle puts its output on the dev mod classpath
+        // without a project dependency, so there's no core -> :scripting cycle).
+        register("nodewire_scripting") {
+            sourceSet(project(":scripting").sourceSets.getByName("main"))
         }
     }
 }

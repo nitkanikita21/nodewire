@@ -41,6 +41,12 @@ inline fun <reified T> scriptPinType(): ScriptType = when (T::class) {
  * compiled script once, reads [specsIn]/[specsOut]/[stateCells] for the pin
  * shape, then drives ticks: push inputs → invoke [tickBlock] → pull outputs.
  */
+/** A debug message a script emitted via [ScriptModule.log] / [ScriptModule.chat]. */
+data class ScriptMessage(val text: String, val kind: MessageKind)
+
+/** Where a [ScriptMessage] goes. LOG = server console / mod log; CHAT = nearby players. */
+enum class MessageKind { LOG, CHAT }
+
 abstract class ScriptModule {
     @PublishedApi internal val specsIn = LinkedHashMap<String, PinSpec>()
     @PublishedApi internal val specsOut = LinkedHashMap<String, PinSpec>()
@@ -87,5 +93,35 @@ abstract class ScriptModule {
     fun eval(block: () -> Unit) {
         tickBlock = block
         isTickBody = false
+    }
+
+    // ── Debug messaging ─────────────────────────────────────────────────
+    // Sandbox-safe: a script only appends to this buffer (no net.minecraft
+    // access — the guard denies it). The host drains after each tick and
+    // dispatches — LOG to the mod logger, CHAT to nearby players (wired in the
+    // node evaluator, Layer C). Capped per tick so a runaway loop can't balloon
+    // memory before the CPU/time guard trips.
+    internal val messages = ArrayList<ScriptMessage>()
+
+    /** Debug: write [text] to the server console / mod log (host-dispatched). */
+    fun log(text: String) = addMessage(text, MessageKind.LOG)
+
+    /** Debug: send [text] to nearby players' chat (host-dispatched, server-side). */
+    fun chat(text: String) = addMessage(text, MessageKind.CHAT)
+
+    private fun addMessage(text: String, kind: MessageKind) {
+        if (messages.size < MAX_MESSAGES_PER_TICK) messages.add(ScriptMessage(text, kind))
+    }
+
+    /** Host-side: take and clear the messages emitted since the last drain. */
+    internal fun drainMessages(): List<ScriptMessage> {
+        if (messages.isEmpty()) return emptyList()
+        val copy = ArrayList<ScriptMessage>(messages)
+        messages.clear()
+        return copy
+    }
+
+    companion object {
+        private const val MAX_MESSAGES_PER_TICK = 64
     }
 }

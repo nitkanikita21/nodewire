@@ -32,6 +32,15 @@ import kotlin.script.experimental.jvmhost.createJvmCompilationConfigurationFromT
  */
 object ScriptHost : ScriptCompiler {
 
+    private val BUNDLED_SCRIPT_LIBS = listOf("kotlin-stdlib.jar", "kotlin-script-runtime.jar")
+
+    // Extract the bundled stdlib and set `kotlin.java.stdlib.jar` BEFORE the host
+    // (hence the compiler's lazy KotlinJars stdlib lookup) is constructed, so it
+    // can never resolve+cache a null first.
+    init {
+        bundledScriptLibs()
+    }
+
     private val host = BasicJvmScriptingHost()
 
     /**
@@ -66,8 +75,44 @@ object ScriptHost : ScriptCompiler {
 
         jarOf(ScriptModule::class.java)?.let(::add) // core module — script API lives here
         jarOf(ScriptHost::class.java)?.let(::add) // this addon module
-        jarOf(Unit::class.java)?.let(::add) // kotlin-stdlib
+        jarOf(Unit::class.java)?.let(::add) // kotlin-stdlib (null under NeoForge — union:// CodeSource)
+        addAll(bundledScriptLibs()) // kotlin-stdlib + script-runtime, shipped as resources
     }.distinct()
+
+    /**
+     * The compiled script links against kotlin-stdlib + kotlin-script-runtime.
+     * Under NeoForge the compiler cannot infer the stdlib jar ([Unit]'s CodeSource
+     * is a `union://` URL → [scriptClasspath]'s `jarOf(Unit)` returns null), so we
+     * ship those two jars as plain JAR-FILE resources under `nodewire-script-libs/`
+     * (packed as files, NOT exploded class packages — exploding would split-package
+     * against KFF's `kotlin.stdlib` module). Extract once to a stable per-version
+     * cache dir and hand the real File paths to the script compile classpath.
+     */
+    private fun bundledScriptLibs(): List<File> {
+        val dir = java.io.File(System.getProperty("java.io.tmpdir"), "nodewire-script-libs-2.0.20")
+        dir.mkdirs()
+        val libs = BUNDLED_SCRIPT_LIBS.mapNotNull { name ->
+            val out = java.io.File(dir, name)
+            if (!out.exists() || out.length() == 0L) {
+                val stream = ScriptHost::class.java.classLoader.getResourceAsStream("nodewire-script-libs/$name")
+                    ?: return@mapNotNull null
+                stream.use { input -> out.outputStream().use { input.copyTo(it) } }
+            }
+            out
+        }
+        // The JVM scripting host resolves the stdlib through `KotlinJars` (the
+        // `kotlin.java.stdlib.jar` property, else inference from `java.home`),
+        // INDEPENDENTLY of updateClasspath. Under NeoForge `java.home` has no
+        // kotlin stdlib, so it fails with "Unable to find kotlin stdlib". Point
+        // the property at our extracted jar so the host's own lookup succeeds.
+        libs.firstOrNull { it.name == "kotlin-stdlib.jar" }?.let {
+            System.setProperty("kotlin.java.stdlib.jar", it.absolutePath)
+        }
+        libs.firstOrNull { it.name == "kotlin-script-runtime.jar" }?.let {
+            System.setProperty("kotlin.script.runtime.jar", it.absolutePath)
+        }
+        return libs
+    }
 
     /** The guard the compiled script links against — borrows host Classes by identity. */
     private fun newGuard(): SandboxClassLoader =
