@@ -74,11 +74,17 @@ class ScriptEditorScreen(
 
     /** Commit edits (if changed) + return to the node editor. */
     private fun closeAndApply() {
-        if (src != initialSrc) {
-            PacketDistributor.sendToServer(SetScriptSourcePacket(pos, nodeId, src))
-        }
         val mc = Minecraft.getInstance()
         val be = mc.level?.getBlockEntity(pos) as? LogicBlockEntity
+        if (src != initialSrc) {
+            PacketDistributor.sendToServer(SetScriptSourcePacket(pos, nodeId, src))
+            // Mirror the edit into the CLIENT graph immediately. The server
+            // round-trip hasn't landed yet, and the node editor we re-open saves
+            // the WHOLE graph on close (NodeEditorScreen.removed → SaveGraphPacket).
+            // Without this the stale client graph would clobber the just-sent src
+            // (this also reshapes pins + prunes edges client-side to match).
+            be?.let { LogicBlockEntity.applyScriptSourceToGraph(it.graph, nodeId, src) }
+        }
         mc.setScreen(if (be != null) NodeEditorScreen(pos, be.graph) else null)
     }
 
