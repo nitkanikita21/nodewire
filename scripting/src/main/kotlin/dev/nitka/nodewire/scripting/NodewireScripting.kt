@@ -2,8 +2,8 @@ package dev.nitka.nodewire.scripting
 
 import com.mojang.logging.LogUtils
 import dev.nitka.nodewire.script.ScriptCompilerRegistry
+import dev.nitka.nodewire.script.ScriptEvalResult
 import dev.nitka.nodewire.script.host.ScriptHost
-import kotlin.script.experimental.api.ResultWithDiagnostics
 import net.neoforged.fml.common.Mod
 import org.slf4j.Logger
 
@@ -41,10 +41,10 @@ object NodewireScripting {
     private fun runProbe() {
         try {
             when (val result = ScriptHost.evalSource("1 + 41")) {
-                is ResultWithDiagnostics.Success ->
+                is ScriptEvalResult.Value ->
                     LOG.info("NW-SCRIPT-PROBE ok: 1+41 = {}", result.value)
-                is ResultWithDiagnostics.Failure ->
-                    LOG.error("NW-SCRIPT-PROBE FAILED: {}", result.reports.joinToString { it.message })
+                is ScriptEvalResult.Failure ->
+                    LOG.error("NW-SCRIPT-PROBE FAILED: {}", result.diagnostics.joinToString())
             }
         } catch (t: Throwable) {
             LOG.error("NW-SCRIPT-PROBE THREW", t)

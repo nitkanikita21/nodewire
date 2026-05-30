@@ -6,9 +6,10 @@
 // implements it (ScriptHost) and registers itself on mod init. When this
 // addon is absent, core's Script Node is read-only.
 //
-// Stage 1 of the split: module compiles + depends on core. Shading the
-// compiler into the jar (extractShadedLibs-style) and the JPMS wiring is
-// Stage 3 (Layer B); the multi-mod dev run is Stage 4.
+// The compiler is NOT shaded into the module (that breaks under NeoForge's
+// union:// resource filesystem). Instead it is bundled as REAL jars under
+// nodewire-compiler/ and loaded at runtime by ScriptHost via a dedicated
+// URLClassLoader over the extracted jars (standard embedding pattern).
 
 plugins {
     id("net.neoforged.moddev")
@@ -60,27 +61,23 @@ neoForge {
     }
 }
 
-// Stage 3 (Layer B): SHADE the Kotlin compiler + scripting host into THIS
-// module's own output, exactly the way core shades compose-runtime/yoga.
+// URLClassLoader embedding (standard pattern). The Kotlin compiler is NOT shaded
+// into this module's output (that fails under NeoForge: the compiler does
+// `getResource` on its own classes, and NeoForge serves mod resources from a
+// `union://` filesystem that cannot extract a single `.class`). Instead we ship
+// the whole compiler closure + stdlib/reflect + our backend + the core facade as
+// REAL JAR FILES under `nodewire-compiler/` (a resource dir). At runtime
+// `ScriptHost` extracts them to a temp dir and loads them through a dedicated
+// `URLClassLoader` over those extracted jars, where `getResource` returns normal
+// `jar://` URLs.
 //
-// Why shading (not runtimeOnly): kotlin-compiler-embeddable's BuiltInsLoader is
-// discovered through a ServiceLoader that uses the DEFINING class's classloader
-// (not the thread-context loader). Under NeoForge's module layer that means the
-// impl class AND its `META-INF/services/...BuiltInsLoader` file must live in the
-// SAME module as the caller — i.e. our module output. So we extract the whole
-// compiler closure into build/shadedLibs and add it to the main sourceSet output.
-//
-// `kotlin-scripting-jvm-host` is the single root that drags the full transitive
-// closure: scripting-jvm, scripting-common, scripting-compiler(-impl)-embeddable,
-// kotlin-compiler-embeddable, kotlin-daemon-embeddable, kotlin-script-runtime,
-// trove4j. kotlin-compiler-embeddable 2.0.20 already self-relocates its bundled
-// intellij/guava/asm under org.jetbrains.kotlin.* — no relocation needed here.
-//
-// stdlib + reflect are EXCLUDED: KFF provides those at runtime in their own JPMS
-// module. Shading a second copy of kotlin.* would split-package against KFF and
-// break the module layer.
-val shadedLibs by configurations.creating
-val scriptLibs by configurations.creating { isTransitive = false }
+// `compilerLibs` (transitive) = kotlin-scripting-jvm-host (drags the full closure:
+// scripting-jvm/common, scripting-compiler(-impl)-embeddable, kotlin-compiler-
+// embeddable, kotlin-daemon-embeddable, kotlin-script-runtime, trove4j) +
+// stdlib + reflect + script-runtime. All copied verbatim — no split-package
+// excludes needed, since the compiler lives in its OWN classloader, not the
+// module layer.
+val compilerLibs by configurations.creating
 
 val kotlinScriptVer = "2.0.20"
 
@@ -103,81 +100,87 @@ dependencies {
     compileOnly("org.jetbrains.kotlin:kotlin-scripting-jvm:$kotlinScriptVer")
     compileOnly("org.jetbrains.kotlin:kotlin-scripting-jvm-host:$kotlinScriptVer")
 
-    // The shade root. The jvm-host artifact pulls the whole compiler closure.
-    // Exclude stdlib/reflect — KFF owns those at runtime; a second copy would
-    // JPMS-split against kotlin.* (see note above).
-    shadedLibs("org.jetbrains.kotlin:kotlin-scripting-jvm-host:$kotlinScriptVer") {
-        exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib")
-        exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib-jdk7")
-        exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib-jdk8")
-        exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib-common")
-        exclude(group = "org.jetbrains.kotlin", module = "kotlin-reflect")
-    }
-
-    // kotlin-stdlib + script-runtime the COMPILED SCRIPT links against, shipped as
-    // plain JAR FILES (not module classes — that splits with KFF). Resolved here so
-    // bundleScriptLibs can copy them into the addon resources. isTransitive=false →
-    // only these two jars resolve (no kotlin-stdlib-common/annotations drag-in).
-    scriptLibs("org.jetbrains.kotlin:kotlin-stdlib:$kotlinScriptVer")
-    scriptLibs("org.jetbrains.kotlin:kotlin-script-runtime:$kotlinScriptVer")
+    // The compiler closure that lands under nodewire-compiler/ as real jars and
+    // gets loaded by ScriptHost's URLClassLoader. jvm-host drags the whole
+    // closure; stdlib/reflect/script-runtime are added explicitly so the
+    // extracted dir is self-contained (the URLClassLoader has no parent kotlin.*).
+    compilerLibs("org.jetbrains.kotlin:kotlin-scripting-jvm-host:$kotlinScriptVer")
+    compilerLibs("org.jetbrains.kotlin:kotlin-stdlib:$kotlinScriptVer")
+    compilerLibs("org.jetbrains.kotlin:kotlin-reflect:$kotlinScriptVer")
+    compilerLibs("org.jetbrains.kotlin:kotlin-script-runtime:$kotlinScriptVer")
 
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
-// Extract the compiler closure into the main sourceSet output, mirroring core's
-// extractShadedLibs Sync. CRITICAL: do NOT exclude META-INF/services — the
-// BuiltInsLoader (and the compiler's other ServiceLoader-discovered services)
-// are looked up there. We only strip manifests/maven metadata/jar signatures.
-val extractedShadedLibs = layout.buildDirectory.dir("shadedLibs")
+// ── URLClassLoader payload under nodewire-compiler/ ──────────────────────────
+//
+// Everything the runtime URLClassLoader (and the script compile classpath)
+// needs, packaged as REAL jars under a single resource dir. Three producers:
+//   1. compilerLibs copy — the kotlin compiler closure + stdlib/reflect/runtime.
+//   2. backend.jar       — this module's host/** + sandbox/** classes.
+//   3. script-api.jar    — core's dev.nitka.nodewire.script.** facade.
+// A generated index.txt enumerates every jar (classpath resource dir listing is
+// unreliable under jar/union loaders, so the loader reads the index instead).
+val compilerResDir = layout.buildDirectory.dir("generated/compilerLibs/nodewire-compiler")
 
-val extractShadedLibs = tasks.register<Sync>("extractShadedLibs") {
-    from({ shadedLibs.map { zipTree(it) } })
-    into(extractedShadedLibs)
-    exclude("META-INF/MANIFEST.MF", "META-INF/maven/**", "META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA")
-    // JPMS: NeoForge derives this module's descriptor by scanning package dirs;
-    // any segment that is a Java keyword is rejected ("Invalid package name:
-    // 'native' is not a Java identifier") and the whole module layer fails to
-    // build. The shaded kotlin-compiler ships several `native` packages
-    // (Kotlin/Native target, FIR native backend/checkers, jansi native libs) —
-    // none used by JVM script compilation — so drop every `native` package.
-    exclude("**/native/**")
-    // Same JPMS reason, split-package axis: KFF already ships kotlinx.coroutines
-    // as its own module, so a second copy from the compiler closure fails module
-    // resolution ("Modules kotlinx.coroutines.core and nodewire_scripting export
-    // package kotlinx.coroutines.scheduling"). Drop ours; the compiler links
-    // KFF's copy at runtime (the addon is an automatic module → reads it).
-    exclude("kotlinx/coroutines/**")
-    // compiler-embeddable also bundles a partial kotlin stdlib/reflect
-    // (kotlin.collections/ranges/internal/coroutines/annotation/reflect) — KFF
-    // ships those as the kotlin.stdlib module, so they split-package too. Drop
-    // every kotlin.* package EXCEPT kotlin.script.* (the scripting API, which KFF
-    // does NOT provide and the host needs). The compiler links KFF's stdlib.
-    exclude { e ->
-        e.path.startsWith("kotlin/") &&
-            e.path != "kotlin/script" &&
-            !e.path.startsWith("kotlin/script/")
+// 1. Copy the resolved compiler closure verbatim (normalised names).
+val bundleCompilerLibs = tasks.register<Copy>("bundleCompilerLibs") {
+    from(compilerLibs)
+    into(compilerResDir)
+    rename("""(.+?)-\d.*\.jar""", "$1.jar") // kotlin-compiler-embeddable-2.0.20.jar -> kotlin-compiler-embeddable.jar
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+// 2. backend.jar = the compiler-USING code (loaded by the URLClassLoader).
+// Source from the COMPILE outputs directly (not `classes`/`output`, which pull
+// processResources → the generated compiler dir → a task cycle).
+val backendKotlin = tasks.named(
+    "compileKotlin",
+    org.jetbrains.kotlin.gradle.tasks.KotlinCompile::class,
+)
+val backendJar = tasks.register<Jar>("backendJar") {
+    archiveFileName.set("backend.jar")
+    destinationDirectory.set(compilerResDir)
+    from(backendKotlin.flatMap { it.destinationDirectory }) {
+        include("dev/nitka/nodewire/script/host/**")
+        include("dev/nitka/nodewire/script/sandbox/**")
     }
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+// 3. script-api.jar = core's facade (the script body's compile classpath; core
+// is union:// at runtime so its classes can't be read off the live classpath).
+// Sourced from core's compileKotlin output dir (lazy task ref → no cross-project
+// eager evaluation / circular dependency). The facade is pure Kotlin.
+val coreKotlinClasses = project(":").tasks.named(
+    "compileKotlin",
+    org.jetbrains.kotlin.gradle.tasks.KotlinCompile::class,
+)
+val scriptApiJar = tasks.register<Jar>("scriptApiJar") {
+    archiveFileName.set("script-api.jar")
+    destinationDirectory.set(compilerResDir)
+    from(coreKotlinClasses.flatMap { it.destinationDirectory }) {
+        include("dev/nitka/nodewire/script/**")
+    }
+}
+
+// 4. index.txt = every jar filename under nodewire-compiler/ (one per line).
+val writeCompilerIndex = tasks.register("writeCompilerIndex") {
+    dependsOn(bundleCompilerLibs, backendJar, scriptApiJar)
+    val dir = compilerResDir
+    outputs.file(dir.map { it.file("index.txt") })
+    doLast {
+        val d = dir.get().asFile
+        val names = d.listFiles { f -> f.isFile && f.name.endsWith(".jar") }
+            ?.map { it.name }?.sorted().orEmpty()
+        d.resolve("index.txt").writeText(names.joinToString("\n", postfix = "\n"))
+    }
 }
 
 sourceSets.named("main") {
-    output.dir(mapOf("builtBy" to extractShadedLibs), extractedShadedLibs)
-}
-
-// kotlin-stdlib + script-runtime the COMPILED SCRIPT links against. Shipped
-// as plain JAR FILES (resources) under nodewire-script-libs/ — NOT module
-// classes (that splits with KFF). ScriptHost extracts them at runtime and
-// feeds them to the script compile classpath, because the compiler cannot
-// infer the stdlib under NeoForge (CodeSource of kotlin.Unit is union://).
-val bundleScriptLibs = tasks.register<Copy>("bundleScriptLibs") {
-    from(scriptLibs)
-    into(layout.buildDirectory.dir("generated/scriptLibs/nodewire-script-libs"))
-    rename("""(.+?)-\d.*\.jar""", "$1.jar") // kotlin-stdlib-2.0.20.jar -> kotlin-stdlib.jar
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-}
-sourceSets.named("main") {
-    resources.srcDir(files(layout.buildDirectory.dir("generated/scriptLibs")).builtBy(bundleScriptLibs))
+    resources.srcDir(
+        files(layout.buildDirectory.dir("generated/compilerLibs")).builtBy(writeCompilerIndex),
+    )
 }
 
 // Make the core mod's compile/runtime classpath (Minecraft, graph types, etc.)

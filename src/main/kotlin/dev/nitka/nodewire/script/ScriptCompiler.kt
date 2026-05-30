@@ -11,6 +11,24 @@ package dev.nitka.nodewire.script
  */
 interface ScriptCompiler {
     fun compileToModule(source: String): ScriptCompileResult
+
+    /**
+     * Compile + evaluate a bare expression and return its value. Used by the
+     * startup probe and the smoke test. Result is expressed in core types so
+     * the thin loader (`ScriptHost`) never has to reference
+     * `kotlin.script.experimental.*` (which is loaded only inside the backend's
+     * isolated URLClassLoader).
+     */
+    fun evalSource(source: String): ScriptEvalResult
+}
+
+/**
+ * Result of an [ScriptCompiler.evalSource] request. [Value] carries the boxed
+ * expression value (may be `null`); [Failure] carries human-readable diagnostics.
+ */
+sealed interface ScriptEvalResult {
+    data class Value(val value: Any?) : ScriptEvalResult
+    data class Failure(val diagnostics: List<String>) : ScriptEvalResult
 }
 
 /**

@@ -9,23 +9,29 @@ import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.util.concurrent.atomic.AtomicInteger
-import kotlin.script.experimental.api.ResultWithDiagnostics
-import kotlin.script.experimental.api.valueOrNull
 
 /**
  * Layer-A spike smoke tests (spec §11). These prove scripting **logic,
- * sandbox, binding, type-mapping** in a flat JVM classpath. A green Layer A
- * de-risks the API — NOT the NeoForge JPMS module layer (that is Layer B, the
- * human-run probe).
+ * sandbox, binding, type-mapping** in a flat JVM classpath. After the
+ * URLClassLoader pivot they ALSO exercise the full extract → URLClassLoader →
+ * reflective-backend path: a green run means the compiler loads in isolation
+ * and the returned [ScriptModule] / [PinValue] keep host identity across the
+ * sandbox boundary.
+ *
+ * All assertions go through core types ([ScriptCompileResult] /
+ * [ScriptEvalResult]) — the thin [ScriptHost] loader never exposes
+ * `kotlin.script.experimental.*`.
  */
 class ScriptHostSmokeTest {
 
-    private fun diag(r: ResultWithDiagnostics<*>) = r.reports.joinToString("\n") { rep ->
-        val ex = rep.exception
-        val causes = generateSequence(ex) { it.cause }
-            .joinToString(" <- ") { "${it::class.simpleName}: ${it.message}" }
-        if (ex != null) "${rep.severity} ${rep.message} || CAUSES: $causes" else "${rep.severity} ${rep.message}"
-    }
+    private fun diag(r: ScriptCompileResult): String =
+        (r as? ScriptCompileResult.Failure)?.diagnostics?.joinToString("\n") ?: "(success)"
+
+    private fun diag(r: ScriptEvalResult): String =
+        (r as? ScriptEvalResult.Failure)?.diagnostics?.joinToString("\n") ?: "(value)"
+
+    private fun ScriptCompileResult.moduleOrNull(): ScriptModule? =
+        (this as? ScriptCompileResult.Success)?.module
 
     // #1 — host can compile + eval a trivial expression; measure cold-compile.
     @Test fun compilesAndEvalsTrivialScript() {
@@ -33,8 +39,8 @@ class ScriptHostSmokeTest {
         val r = ScriptHost.evalSource("1 + 41")
         val coldMs = (System.nanoTime() - t0) / 1_000_000
         println("[script-spike] cold compile+eval of '1 + 41' = ${coldMs}ms; reports:\n${diag(r)}")
-        assertTrue(r is ResultWithDiagnostics.Success, "compile/eval failed:\n${diag(r)}")
-        assertEquals(42, r.valueOrNull())
+        assertTrue(r is ScriptEvalResult.Value, "compile/eval failed:\n${diag(r)}")
+        assertEquals(42, (r as ScriptEvalResult.Value).value)
     }
 
     // #2 — the agreed style-A timer drives correct PinValue over 40 ticks.
@@ -52,9 +58,9 @@ class ScriptHostSmokeTest {
             }
         """.trimIndent()
 
-        val compiled = ScriptHost.compileModule(src)
-        assertTrue(compiled is ResultWithDiagnostics.Success, "compile failed:\n${diag(compiled)}")
-        val module = compiled.valueOrNull()!!
+        val compiled = ScriptHost.compileToModule(src)
+        assertTrue(compiled is ScriptCompileResult.Success, "compile failed:\n${diag(compiled)}")
+        val module = compiled.moduleOrNull()!!
 
         // header was read off the live module
         assertEquals(setOf("enable", "period"), module.specsIn.keys)
@@ -75,33 +81,25 @@ class ScriptHostSmokeTest {
             return out["out"]!!
         }
 
-        // period=20 -> ON while t in 1..9, OFF while t in 10..19 (and 0).
-        // t increments BEFORE the comparison, so tick #1 sees t=1.
         val outs = (1..40).map { runOneTick() }
 
-        // phase checks at representative ticks. ON half is t in 0..9 (t<10),
-        // OFF half is t in 10..19. t increments BEFORE the comparison.
-        assertEquals(PinValue.Redstone(15), outs[0], "tick 1 (t=1) should be MAX")   // t=1
-        assertEquals(PinValue.Redstone(15), outs[8], "tick 9 (t=9) should be MAX")   // t=9
-        assertEquals(PinValue.Redstone(0), outs[9], "tick 10 (t=10) should be OFF")  // t=10
-        assertEquals(PinValue.Redstone(0), outs[18], "tick 19 (t=19) should be OFF") // t=19
-        assertEquals(PinValue.Redstone(15), outs[19], "tick 20 (t=0) should be MAX") // t=0 (in ON half)
-        assertEquals(PinValue.Redstone(15), outs[20], "tick 21 (t=1) should be MAX") // t=1 again
+        assertEquals(PinValue.Redstone(15), outs[0], "tick 1 (t=1) should be MAX")
+        assertEquals(PinValue.Redstone(15), outs[8], "tick 9 (t=9) should be MAX")
+        assertEquals(PinValue.Redstone(0), outs[9], "tick 10 (t=10) should be OFF")
+        assertEquals(PinValue.Redstone(0), outs[18], "tick 19 (t=19) should be OFF")
+        assertEquals(PinValue.Redstone(15), outs[19], "tick 20 (t=0) should be MAX")
+        assertEquals(PinValue.Redstone(15), outs[20], "tick 21 (t=1) should be MAX")
 
-        // state actually persisted across ticks
-        assertEquals(0, state.getInt("t")) // after tick 40, t = 40 % 20 = 0
+        assertEquals(0, state.getInt("t"))
 
-        // disabling enable forces OFF
         val state2 = CompoundTag()
         module.loadState(state2)
         module.pushInputs(mapOf("enable" to PinValue.Bool(false), "period" to PinValue.Int(20)))
         module.tickBlock!!.invoke()
         assertEquals(PinValue.Redstone(0), module.pullOutputs()["out"])
 
-        // #2 (cache facet): compiling the SAME source again is a fresh compile here
-        // (ScriptHost has no cache in Layer A) but must still succeed identically.
-        val again = ScriptHost.compileModule(src)
-        assertTrue(again is ResultWithDiagnostics.Success, "recompile failed:\n${diag(again)}")
+        val again = ScriptHost.compileToModule(src)
+        assertTrue(again is ScriptCompileResult.Success, "recompile failed:\n${diag(again)}")
     }
 
     // #2b — a Redstone output clamps when the script over-drives it.
@@ -110,20 +108,20 @@ class ScriptHostSmokeTest {
             val out = output<Redstone>("out")
             tick { out.value = Redstone.of(99) }
         """.trimIndent()
-        val module = ScriptHost.compileModule(src).valueOrNull()
+        val module = ScriptHost.compileToModule(src).moduleOrNull()
         assertNotNull(module, "compile failed")
         module!!.tickBlock!!.invoke()
         assertEquals(PinValue.Redstone(15), module.pullOutputs()["out"])
     }
 
-    // #2c — a threshold script: input<Redstone> -> output<Redstone> (the task's named smoke).
+    // #2c — a threshold script: input<Redstone> -> output<Redstone>.
     @Test fun redstoneThresholdScript() {
         val src = """
             val in_  = input<Redstone>("in")
             val out  = output<Redstone>("out")
             eval { out.value = if (in_.value.power >= 8) Redstone.MAX else Redstone.OFF }
         """.trimIndent()
-        val module = ScriptHost.compileModule(src).valueOrNull()
+        val module = ScriptHost.compileToModule(src).moduleOrNull()
         assertNotNull(module, "compile failed")
 
         fun run(power: Int): PinValue {
@@ -136,22 +134,19 @@ class ScriptHostSmokeTest {
         assertEquals(PinValue.Redstone(15), run(15))
     }
 
-    // #3 — sandbox denies java.io.File. The denied class loads lazily when the
-    // tick body runs (it's not touched during top-level instantiation), so we
-    // drive a tick and assert the sandbox rejection there.
+    // #3 — sandbox denies java.io.File.
     @Test fun sandboxDeniesJavaIoFile() {
         val src = """
             val out = output<Int>("out")
             tick { val f = java.io.File("x"); out.value = f.name.length }
         """.trimIndent()
-        val r = ScriptHost.compileModule(src)
+        val r = ScriptHost.compileToModule(src)
         println("[script-spike] java.io.File compile/instantiate reports:\n${diag(r)}")
-        if (r is ResultWithDiagnostics.Success) {
-            val threw = runCatching { r.value.tickBlock!!.invoke() }.exceptionOrNull()
+        if (r is ScriptCompileResult.Success) {
+            val threw = runCatching { r.module.tickBlock!!.invoke() }.exceptionOrNull()
             assertNotNull(threw, "java.io.File should have thrown when the tick ran")
             assertTrue(isDeniedClassError(threw!!), "expected a sandbox ClassNotFoundException, got: $threw")
         } else {
-            // Compile/instantiate rejection (e.g. narrow classpath) is also a denial.
             assertTrue(
                 sandboxRejected(r),
                 "java.io.File was rejected but not via the sandbox path:\n${diag(r)}",
@@ -168,18 +163,15 @@ class ScriptHostSmokeTest {
                 out.value = c.name.length
             }
         """.trimIndent()
-        val r = ScriptHost.compileModule(src)
+        val r = ScriptHost.compileToModule(src)
         println("[script-spike] Class.forName(Runtime) compile/instantiate reports:\n${diag(r)}")
-        // Class.forName resolves via the caller's loader = the guard. The script
-        // instantiates fine; invoking the tick triggers the denied load. Assert a
-        // denial in BOTH branches so the test can never pass trivially.
         val denied: Boolean = when (r) {
-            is ResultWithDiagnostics.Success -> {
-                val threw = runCatching { r.value.tickBlock!!.invoke() }.exceptionOrNull()
+            is ScriptCompileResult.Success -> {
+                val threw = runCatching { r.module.tickBlock!!.invoke() }.exceptionOrNull()
                 assertNotNull(threw, "Class.forName(Runtime) should have thrown at runtime")
                 isDeniedClassError(threw!!)
             }
-            is ResultWithDiagnostics.Failure -> sandboxRejected(r) // compile-time rejection also counts
+            is ScriptCompileResult.Failure -> sandboxRejected(r)
         }
         assertTrue(denied, "Class.forName(Runtime) must be rejected by the sandbox:\n${diag(r)}")
     }
@@ -193,10 +185,10 @@ class ScriptHostSmokeTest {
                 out.value = kotlin.math.sqrt(16.0).toFloat() + x
             }
         """.trimIndent()
-        val r = ScriptHost.compileModule(src)
+        val r = ScriptHost.compileToModule(src)
         println("[script-spike] kotlin.math+plain reports:\n${diag(r)}")
-        assertTrue(r is ResultWithDiagnostics.Success, "kotlin.math script should compile:\n${diag(r)}")
-        val module = r.valueOrNull()!!
+        assertTrue(r is ScriptCompileResult.Success, "kotlin.math script should compile:\n${diag(r)}")
+        val module = r.moduleOrNull()!!
         module.tickBlock!!.invoke()
         assertEquals(PinValue.Float(5f), module.pullOutputs()["out"])
     }
@@ -233,8 +225,9 @@ class ScriptHostSmokeTest {
 
     // ── helpers ──────────────────────────────────────────────────────────
 
-    private fun sandboxRejected(r: ResultWithDiagnostics<*>): Boolean =
-        r.reports.any { it.message.contains("not permitted") || it.message.contains("ClassNotFound") }
+    private fun sandboxRejected(r: ScriptCompileResult): Boolean =
+        (r as? ScriptCompileResult.Failure)?.diagnostics
+            ?.any { it.contains("not permitted") || it.contains("ClassNotFound") } ?: false
 
     private fun isDeniedClassError(t: Throwable): Boolean {
         var e: Throwable? = t
@@ -244,7 +237,6 @@ class ScriptHostSmokeTest {
                     e.message?.contains("Runtime") == true ||
                     e.message?.contains("java.lang.Runtime") == true
                 ) return true
-                // A bare ClassNotFoundException from the guard is still a denial.
                 return true
             }
             e = e.cause
