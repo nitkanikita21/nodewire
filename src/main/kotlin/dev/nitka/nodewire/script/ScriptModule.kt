@@ -386,6 +386,17 @@ abstract class ScriptModule {
      * Server side this is a deliberate no-op (a server runtime never has a
      * render thread); only a CLIENT runtime drains + replays.
      */
+    /**
+     * A stable video-surface handle named [name]. Deterministic — the SAME handle
+     * on server and client and across reloads — so you can put it on an
+     * `output<Video>` (route that to a Screen block) and `draw()` into it from a
+     * `clientBehavior`. Use a UNIQUE name: the handle is derived from the name
+     * only, so the same name on two nodes shares one surface. Host-side (not
+     * sandboxed), so the UUID derivation is safe.
+     */
+    fun video(name: String): Video =
+        Video(java.util.UUID.nameUUIDFromBytes("nodewire-video:$name".toByteArray(Charsets.UTF_8)))
+
     fun draw(video: Video, block: VideoCanvas.() -> Unit) {
         if (videoDraws.size < MAX_VIDEO_DRAWS_PER_FRAME) {
             videoDraws.add(VideoDrawRequest(video.handle, block))
