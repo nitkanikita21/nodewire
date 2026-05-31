@@ -3,6 +3,7 @@ package dev.nitka.nodewire.client.video
 import com.mojang.blaze3d.pipeline.RenderTarget
 import com.mojang.blaze3d.pipeline.TextureTarget
 import net.minecraft.client.Minecraft
+import org.lwjgl.opengl.GL11
 
 /**
  * Abstraction the [VideoManager] tracks for each Video handle. Deliberately
@@ -48,6 +49,12 @@ class GlVideoSurface(
         var t = renderTarget
         if (t == null) {
             t = TextureTarget(width, height, /* useDepth = */ true, /* onMac = */ false)
+            // NEAREST filtering: the 256² FBO is MAGNIFIED onto the block face, so
+            // LINEAR (the default) interpolates each text texel with its neighbours —
+            // thin glyphs blend into the camera background, producing an ugly
+            // per-glyph colour gradient (red text → blue sky). NEAREST keeps pixels
+            // crisp, like a real low-res monitor.
+            t.setFilterMode(GL11.GL_NEAREST)
             renderTarget = t
         }
         return t
