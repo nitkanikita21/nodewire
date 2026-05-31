@@ -1,5 +1,7 @@
 package dev.nitka.nodewire
 
+import dev.nitka.nodewire.block.CameraBlock
+import dev.nitka.nodewire.block.CameraBlockEntity
 import dev.nitka.nodewire.block.ChannelTargetRegistry
 import dev.nitka.nodewire.block.LogicBlock
 import dev.nitka.nodewire.block.LogicBlockEntity
@@ -46,6 +48,13 @@ object Registry {
     val SCREEN_BLOCK_ITEM: DeferredItem<BlockItem> =
         ITEMS.registerSimpleBlockItem(SCREEN_BLOCK)
 
+    val CAMERA_BLOCK: DeferredBlock<CameraBlock> = BLOCKS.register("camera_block") { _ ->
+        CameraBlock(BlockBehaviour.Properties.ofFullCopy(Blocks.IRON_BLOCK))
+    }
+
+    val CAMERA_BLOCK_ITEM: DeferredItem<BlockItem> =
+        ITEMS.registerSimpleBlockItem(CAMERA_BLOCK)
+
     val LOGIC_BLOCK_BE: DeferredHolder<BlockEntityType<*>, BlockEntityType<LogicBlockEntity>> =
         BLOCK_ENTITIES.register("logic_block") { _ ->
             BlockEntityType.Builder
@@ -60,6 +69,13 @@ object Registry {
                 .build(null)
         }
 
+    val CAMERA_BLOCK_BE: DeferredHolder<BlockEntityType<*>, BlockEntityType<CameraBlockEntity>> =
+        BLOCK_ENTITIES.register("camera_block") { _ ->
+            BlockEntityType.Builder
+                .of(::CameraBlockEntity, CAMERA_BLOCK.get())
+                .build(null)
+        }
+
     fun register(bus: IEventBus) {
         BLOCKS.register(bus)
         ITEMS.register(bus)
@@ -69,6 +85,7 @@ object Registry {
         // input. Registered after blocks so SCREEN_BLOCK.get() is valid.
         bus.addListener<net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent> {
             ChannelTargetRegistry.register(SCREEN_BLOCK.get(), ScreenBlockEntity.CHANNEL_TARGET)
+            ChannelTargetRegistry.register(CAMERA_BLOCK.get(), CameraBlockEntity.CHANNEL_TARGET)
         }
     }
 
@@ -76,6 +93,7 @@ object Registry {
         if (event.tabKey == CreativeModeTabs.REDSTONE_BLOCKS) {
             event.accept(LOGIC_BLOCK_ITEM.get())
             event.accept(SCREEN_BLOCK_ITEM.get())
+            event.accept(CAMERA_BLOCK_ITEM.get())
         }
         if (event.tabKey == CreativeModeTabs.TOOLS_AND_UTILITIES) {
             event.accept(CHANNEL_LINK_TOOL.get())
