@@ -58,8 +58,7 @@ object BlockSensorNode {
                 putString("reading", SensorReading.ITEM_COUNT.name)
             }
         },
-        // configContent stays null here — flipped to NodeConfigContent.BlockSensor
-        // in T8 to avoid a forward reference into UI not yet written.
+        configContent = dev.nitka.nodewire.client.screen.NodeConfigContent.BlockSensor,
         evaluate = Evaluator,
         pinReshape = { config ->
             val readingName = config.getString("reading")

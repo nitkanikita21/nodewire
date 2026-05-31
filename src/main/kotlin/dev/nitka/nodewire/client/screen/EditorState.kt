@@ -703,6 +703,49 @@ class EditorState(val graph: NodeGraph, val pos: net.minecraft.core.BlockPos = n
         }
     }
 
+    /**
+     * Switch a `block_sensor` node's reading selection. Mirrors
+     * [changeAeroChannel]: reshape the output pin via
+     * [dev.nitka.nodewire.integration.sensor.BlockSensorNode.pinsFor],
+     * rewrite `reading` in the config, then prune type-mismatched edges.
+     */
+    fun changeSensorReading(
+        id: dev.nitka.nodewire.graph.NodeId,
+        reading: dev.nitka.nodewire.integration.sensor.SensorReading,
+    ) {
+        mutateGraph(mergeable = false) {
+            _updateNodeInternal(id) { n ->
+                val (ins, outs) = dev.nitka.nodewire.integration.sensor
+                    .BlockSensorNode.pinsFor(reading)
+                val newConfig = n.config.copy().apply {
+                    putString("reading", reading.name)
+                }
+                n.copy(inputs = ins, outputs = outs, config = newConfig)
+            }
+            _pruneIncompatibleEdgesInternal(id)
+        }
+    }
+
+    /**
+     * Set (or clear) a `block_sensor` node's `filter` ItemStack. An empty
+     * stack removes the key; otherwise the stack is serialized into the
+     * config. No pin reshape — the filter only changes which items/fluids
+     * the reading counts.
+     */
+    fun setSensorFilter(
+        id: dev.nitka.nodewire.graph.NodeId,
+        stack: net.minecraft.world.item.ItemStack,
+    ) {
+        val provider = net.minecraft.client.Minecraft.getInstance().level?.registryAccess() ?: return
+        mutateGraph(mergeable = false) {
+            _updateNodeInternal(id) { n ->
+                n.copy(config = n.config.copy().apply {
+                    if (stack.isEmpty) remove("filter") else put("filter", stack.save(provider))
+                })
+            }
+        }
+    }
+
     /** Non-snapshotting inner body — for use inside a [mutateGraph] block. */
     private fun _disconnectAllEdgesInternal(id: dev.nitka.nodewire.graph.NodeId) {
         val before = graph.edges.size

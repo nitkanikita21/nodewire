@@ -10,17 +10,21 @@ import dev.nitka.nodewire.graph.Pin
 import dev.nitka.nodewire.graph.PinType
 import dev.nitka.nodewire.ui.components.Button
 import dev.nitka.nodewire.ui.components.Checkbox
+import dev.nitka.nodewire.ui.components.ItemIcon
 import dev.nitka.nodewire.ui.components.Select
 import dev.nitka.nodewire.ui.components.Text
 import dev.nitka.nodewire.ui.components.TextInput
 import dev.nitka.nodewire.ui.core.Modifier
+import dev.nitka.nodewire.ui.input.PointerEvent
 import dev.nitka.nodewire.ui.layout.Alignment
 import dev.nitka.nodewire.ui.layout.Arrangement
 import dev.nitka.nodewire.ui.layout.Column
 import dev.nitka.nodewire.ui.layout.Box
 import dev.nitka.nodewire.ui.layout.Row
+import dev.nitka.nodewire.ui.modifier.input.pointerInput
 import dev.nitka.nodewire.ui.modifier.layout.fillMaxWidth
 import dev.nitka.nodewire.ui.modifier.layout.padding
+import dev.nitka.nodewire.ui.modifier.layout.size
 import dev.nitka.nodewire.ui.modifier.layout.weight
 import dev.nitka.nodewire.ui.modifier.style.background
 import dev.nitka.nodewire.ui.modifier.style.border
@@ -28,8 +32,11 @@ import dev.nitka.nodewire.ui.render.BorderStroke
 import dev.nitka.nodewire.endpoint.EndpointRef
 import dev.nitka.nodewire.integration.aeronautics.AeroBlockKind
 import dev.nitka.nodewire.integration.aeronautics.AeroChannel
+import dev.nitka.nodewire.integration.sensor.SensorReading
 import dev.nitka.nodewire.ui.theme.NwTheme
+import net.minecraft.client.Minecraft
 import net.minecraft.nbt.NbtOps
+import net.minecraft.world.item.ItemStack
 
 /**
  * Per-NodeType configuration widgets. The factories below are wired into
@@ -545,6 +552,93 @@ object NodeConfigContent {
                 Text(
                     channel.pinType.name.lowercase() +
                         if (channel.writable) "  🔓 rw" else "  🔒 ro",
+                    style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceMuted),
+                )
+            }
+        }
+    }
+
+    /**
+     * BlockSensor: endpoint description (read-only, shows blockPos when bound),
+     * reading Select (all [SensorReading] entries), an optional ghost filter
+     * slot shown only for filtered readings (Press grabs the held item, copying
+     * a single unit; an empty hand clears it), and a derived output-pin-type
+     * label. Mutations call [EditorState.changeSensorReading] /
+     * [EditorState.setSensorFilter]. Mirror of [AeroInput] minus rw/ro.
+     */
+    val BlockSensor: @Composable (Node) -> Unit = { node ->
+        val editor = LocalEditorState.current
+
+        val reading = SensorReading.fromName(
+            node.config.getString("reading").ifEmpty { SensorReading.ITEM_COUNT.name },
+        ) ?: SensorReading.ITEM_COUNT
+
+        // Endpoint description — parsed from config; shown read-only.
+        val endpointDesc = if (node.config.contains("endpoint")) {
+            EndpointRef.CODEC
+                .parse(NbtOps.INSTANCE, node.config.getCompound("endpoint"))
+                .result().orElse(null)
+                ?.payload?.blockPos?.toShortString()
+                ?: "(unbound — use Channel Link Tool)"
+        } else {
+            "(unbound — use Channel Link Tool)"
+        }
+
+        val filterStack = if (node.config.contains("filter")) {
+            val ra = Minecraft.getInstance().level?.registryAccess()
+            if (ra != null) {
+                ItemStack.parse(ra, node.config.getCompound("filter")).orElse(ItemStack.EMPTY)
+            } else {
+                ItemStack.EMPTY
+            }
+        } else {
+            ItemStack.EMPTY
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2)) {
+            LabeledRow("Source") {
+                Text(
+                    endpointDesc,
+                    style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceMuted),
+                )
+            }
+            LabeledRow("Reading") {
+                Select(
+                    options = SensorReading.entries.toList(),
+                    selected = reading,
+                    onSelect = { next ->
+                        editor?.changeSensorReading(node.id, next)
+                    },
+                    label = { it.displayName },
+                )
+            }
+            if (reading.needsFilter) {
+                LabeledRow("Filter") {
+                    Box(
+                        modifier = Modifier
+                            .size(18)
+                            .background(NwTheme.colors.surfaceHover, NwTheme.shapes.small)
+                            .pointerInput { ev, _, _ ->
+                                if (ev is PointerEvent.Press) {
+                                    val held = Minecraft.getInstance().player?.mainHandItem
+                                    if (held != null && !held.isEmpty) {
+                                        editor?.setSensorFilter(node.id, held.copyWithCount(1))
+                                    } else {
+                                        editor?.setSensorFilter(node.id, ItemStack.EMPTY)
+                                    }
+                                    true
+                                } else {
+                                    false
+                                }
+                            },
+                    ) {
+                        ItemIcon(filterStack, Modifier.size(16))
+                    }
+                }
+            }
+            LabeledRow("Output") {
+                Text(
+                    reading.pinType.name.lowercase(),
                     style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceMuted),
                 )
             }
