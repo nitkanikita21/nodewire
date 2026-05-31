@@ -265,6 +265,17 @@ abstract class ScriptModule {
     /** `delay(5.ticks)` ergonomics. */
     val Int.ticks: Int get() = this
 
+    /** Real wall-clock seconds since this behavior's PREVIOUS frame — Unity's
+     *  `Time.deltaTime`. Make any motion frame-rate-independent by scaling it by
+     *  [dt]: `pos += speed * dt()`. On the server clock it is ≈ 0.05 (a 20 Hz
+     *  tick); on the client clock it is the real render-frame delta. 0 on the
+     *  very first frame. Set by the runtime each rendezvous. */
+    fun dt(): Float = frameDeltaSeconds
+
+    /** @suppress runtime-set per-frame delta (seconds) behind [dt]. */
+    @PublishedApi
+    internal var frameDeltaSeconds: Float = 0f
+
     /**
      * Host-side: attach the node's scope + clock and launch the registered
      * behaviors for [side]. Called by ScriptRuntime once, immediately after

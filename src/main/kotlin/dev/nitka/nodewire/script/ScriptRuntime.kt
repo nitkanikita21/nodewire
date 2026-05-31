@@ -179,7 +179,13 @@ class ScriptRuntime(
         pendingDeltas = module.drainReplicatedDeltas()
         // 5. advance: resume the parked behaviors; they run on the worker until their
         //    next park (commit-at-suspend). The server returns immediately (no wait).
-        lastAdvanceNanos = System.nanoTime()
+        val nowNanos = System.nanoTime()
+        // Per-frame delta for ScriptModule.dt() (Unity Time.deltaTime): time since
+        // the previous resume. Computed from the prior lastAdvanceNanos before it's
+        // overwritten.
+        module.frameDeltaSeconds =
+            if (lastAdvanceNanos != 0L) ((nowNanos - lastAdvanceNanos) / 1_000_000_000.0).toFloat() else 0f
+        lastAdvanceNanos = nowNanos
         clock.advance()
         return out
     }
@@ -232,7 +238,13 @@ class ScriptRuntime(
         // render thread; we only hand off the buffered closures here.
         pendingVideoDraws = module.drainVideoDraws()
         // Advance: resume the parked clientBehaviors on the worker; return at once.
-        lastAdvanceNanos = System.nanoTime()
+        val nowNanos = System.nanoTime()
+        // Per-frame delta for ScriptModule.dt() (Unity Time.deltaTime): time since
+        // the previous resume. Computed from the prior lastAdvanceNanos before it's
+        // overwritten.
+        module.frameDeltaSeconds =
+            if (lastAdvanceNanos != 0L) ((nowNanos - lastAdvanceNanos) / 1_000_000_000.0).toFloat() else 0f
+        lastAdvanceNanos = nowNanos
         clock.advance()
     }
 
