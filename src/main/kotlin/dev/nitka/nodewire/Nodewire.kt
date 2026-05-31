@@ -34,6 +34,14 @@ object Nodewire {
         if (net.neoforged.fml.ModList.get().isLoaded("computercraft")) {
             dev.nitka.nodewire.integration.cctweaked.NwPeripheralCapability.register(MOD_BUS)
         }
+        // Coarse server-side teardown: cancel every server script coroutine when
+        // the (integrated or dedicated) server stops. Per-BE setRemoved handles
+        // the common case, but a server stop without unloading each BE would leave
+        // per-node scopes lingering on the shared daemon pool until GC; cancel them
+        // up-front so a singleplayer quit→rejoin in the same JVM starts clean.
+        FORGE_BUS.addListener<net.neoforged.neoforge.event.server.ServerStoppingEvent> {
+            dev.nitka.nodewire.script.ScriptNodeRuntime.cancelAll()
+        }
         FORGE_BUS.addListener(HighlightServerCommand::register)
         FORGE_BUS.addListener(dev.nitka.nodewire.integration.tweakedcontroller.ControllerBindHandler::onRightClickItem)
         FORGE_BUS.addListener(dev.nitka.nodewire.integration.tweakedcontroller.ControllerBindHandler::onRightClickBlock)
