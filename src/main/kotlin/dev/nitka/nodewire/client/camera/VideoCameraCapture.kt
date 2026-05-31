@@ -88,6 +88,13 @@ object VideoCameraCapture {
         val oldCameraType = mc.options.cameraType
         val oldMain: RenderTarget = mc.mainRenderTarget
         val oldTransparency = lr.transparencyChain
+        // Fabulous-graphics targets: non-null only under Fabulous. renderLevel
+        // resizes whatever is bound to the capture FBO size, so they must be
+        // nulled during capture and restored after — else the player's main
+        // frame composites against mis-sized targets (broken translucency).
+        val oldTranslucent = lr.translucentTarget
+        val oldItemEntity = lr.itemEntityTarget
+        val oldWeather = lr.weatherTarget
         val oldEyeH = camera.eyeHeight
         val oldEyeHO = camera.eyeHeightOld
         val oldPlayerX = player.x
@@ -109,6 +116,9 @@ object VideoCameraCapture {
         camera.eyeHeight = standEye
         camera.eyeHeightOld = standEye
         lr.transparencyChain = null
+        lr.translucentTarget = null
+        lr.itemEntityTarget = null
+        lr.weatherTarget = null
         mc.renderBuffers().bufferSource().endBatch()
 
         VideoManager.beginCapture()
@@ -171,6 +181,9 @@ object VideoCameraCapture {
             mc.mainRenderTarget = oldMain
             oldMain.bindWrite(true)
             lr.transparencyChain = oldTransparency
+            lr.translucentTarget = oldTranslucent
+            lr.itemEntityTarget = oldItemEntity
+            lr.weatherTarget = oldWeather
             VideoManager.endCapture()
         }
     }
