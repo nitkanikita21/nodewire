@@ -10,7 +10,9 @@
     "tc.MixinTweakedControllerAxisPacket",
     "tc.MixinTweakedControllerButtonPacket"
   ],
-  "client": [],
+  "client": [
+    "camera.MixinGameRenderer"
+  ],
   "server": [],
   "injectors": {
     "defaultRequire": 1
