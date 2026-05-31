@@ -5,7 +5,13 @@ import dev.nitka.nodewire.graph.PinType
 import dev.nitka.nodewire.graph.PinValue
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
+import net.minecraft.core.HolderLookup
+import net.minecraft.nbt.CompoundTag
+import net.minecraft.network.protocol.Packet
+import net.minecraft.network.protocol.game.ClientGamePacketListener
+import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket
 import net.minecraft.world.level.Level
+import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.entity.BlockEntity
 import net.minecraft.world.level.block.state.BlockState
 import java.util.UUID
@@ -63,12 +69,41 @@ class ScreenBlockEntity(pos: BlockPos, state: BlockState) :
      * handle changes.
      */
     override fun writeChannelInput(name: String, value: PinValue) {
+        val changed = channelInputs[name] != value
         channelInputs[name] = value
         setChanged()
-        if (level?.isClientSide == true && name == SCREEN_CHANNEL) {
+        if (name != SCREEN_CHANNEL) return
+        val lvl = level
+        if (lvl != null && !lvl.isClientSide) {
+            // The handle the BER reads lives on the CLIENT, but delivery runs on
+            // the SERVER — push a BE update so the client Screen learns the handle.
+            if (changed) lvl.sendBlockUpdated(blockPos, blockState, blockState, Block.UPDATE_CLIENTS)
+        } else {
             retargetClientRefcount()
         }
     }
+
+    // ── client sync: the delivered VIDEO handle must reach the client BER ──
+    override fun saveAdditional(tag: CompoundTag, registries: HolderLookup.Provider) {
+        super.saveAdditional(tag, registries)
+        videoHandle()?.let { tag.putUUID(SCREEN_CHANNEL, it) }
+    }
+
+    override fun loadAdditional(tag: CompoundTag, registries: HolderLookup.Provider) {
+        super.loadAdditional(tag, registries)
+        if (tag.hasUUID(SCREEN_CHANNEL)) {
+            channelInputs[SCREEN_CHANNEL] = PinValue.Video(tag.getUUID(SCREEN_CHANNEL))
+        } else {
+            channelInputs.remove(SCREEN_CHANNEL)
+        }
+        if (level?.isClientSide == true) retargetClientRefcount()
+    }
+
+    override fun getUpdateTag(registries: HolderLookup.Provider): CompoundTag =
+        CompoundTag().also { saveAdditional(it, registries) }
+
+    override fun getUpdatePacket(): Packet<ClientGamePacketListener>? =
+        ClientboundBlockEntityDataPacket.create(this)
 
     override fun onLoad() {
         super.onLoad()
