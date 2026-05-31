@@ -92,6 +92,8 @@ class NwCanvasVideoCanvas(
     }
 
     override fun image(video: Video, x: Int, y: Int, w: Int, h: Int) {
+        // Nil handle (unbound / not-yet-replicated input) — nothing to show.
+        if (video.handle == UUID(0L, 0L)) return
         // Self-blit would sample + write the same FBO — skip.
         if (video.handle == destHandle) return
         val r = VideoDrawClamps.rect(x, y, w, h, size)

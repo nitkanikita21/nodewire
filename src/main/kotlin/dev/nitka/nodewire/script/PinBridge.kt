@@ -42,6 +42,16 @@ internal fun ScriptModule.pushInputs(incoming: Map<String, PinValue>) {
         val converted = PinValueConversion.convert(raw, pinType)
         inputs[name] = unbox(converted)
     }
+    // SERVER: push each VIDEO input into its hidden replicated mirror cell so the
+    // normal replication path carries the handle to the client (where
+    // applyVideoInputMirrors copies it back into inputs for clientBehavior).
+    for (cell in stateCells) {
+        if (!cell.key.startsWith(ScriptModule.VIDEO_MIRROR_PREFIX)) continue
+        val inName = cell.key.substring(ScriptModule.VIDEO_MIRROR_PREFIX.length)
+        val v = inputs[inName] ?: continue
+        @Suppress("UNCHECKED_CAST")
+        (cell as StateCell<Any?>).value = v
+    }
 }
 
 /** script-facing outputs -> PinValue map. Unwritten outputs fill from [PinValue.default]. */

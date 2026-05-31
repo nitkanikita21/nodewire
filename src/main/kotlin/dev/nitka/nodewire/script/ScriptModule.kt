@@ -178,9 +178,31 @@ abstract class ScriptModule {
     inline fun <reified T> input(name: String, default: T? = null): Input<T> {
         specsIn[name] = PinSpec(name, scriptPinType<T>(), default != null)
         if (name !in inputs) inputs[name] = default
+        // A VIDEO input is inherently client-consumed (image()), but clientBehavior
+        // can't read graph inputs — only replicated state. So auto-mirror it into a
+        // hidden replicated cell that rides the normal replication path (delta +
+        // late-join piggyback + persist), and is copied back into inputs on the
+        // client. This makes `input<Video>(name).value` just work in clientBehavior.
+        if (T::class == Video::class) registerVideoInputMirror(name)
         return object : Input<T> {
             @Suppress("UNCHECKED_CAST")
             override val value: T get() = inputs[name] as T
+        }
+    }
+
+    /** Ensure a hidden replicated [StateCell] mirrors the VIDEO input [name]. */
+    @PublishedApi internal fun registerVideoInputMirror(name: String) {
+        val key = videoMirrorKey(name)
+        if (stateCells.any { it.key == key }) return
+        stateCells += StateCell(key, Video(java.util.UUID(0L, 0L)), StateKind.VIDEO, replicated = true)
+    }
+
+    /** CLIENT: copy each mirrored VIDEO cell back into [inputs] so the input
+     *  handle returns the replicated value. Called after [ScriptModuleReplication.applyCells]. */
+    @PublishedApi internal fun applyVideoInputMirrors() {
+        for (cell in stateCells) {
+            if (!cell.key.startsWith(VIDEO_MIRROR_PREFIX)) continue
+            inputs[cell.key.substring(VIDEO_MIRROR_PREFIX.length)] = cell.value
         }
     }
 
@@ -465,5 +487,10 @@ abstract class ScriptModule {
 
         /** Cap buffered draw requests per frame so a runaway loop can't balloon the list. */
         private const val MAX_VIDEO_DRAWS_PER_FRAME = 64
+
+        /** Hidden-cell key prefix for auto-mirrored VIDEO inputs (never user-visible). */
+        @PublishedApi internal const val VIDEO_MIRROR_PREFIX = "__vin."
+
+        @PublishedApi internal fun videoMirrorKey(name: String) = "$VIDEO_MIRROR_PREFIX$name"
     }
 }

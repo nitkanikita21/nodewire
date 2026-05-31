@@ -231,6 +231,9 @@ class ScriptRuntime(
         // Load the latest replicated cell values so clientBehavior reads them this
         // frame (before advance resumes the behaviors). Race-free: fully parked.
         ScriptModuleReplication.applyCells(module, replicatedState)
+        // Copy auto-mirrored VIDEO inputs out of their hidden cells into `inputs`,
+        // so input<Video>(name).value works in clientBehavior with no manual bridge.
+        module.applyVideoInputMirrors()
         // Drain client logs (CHAT dropped by the sink).
         module.drainMessages().let { if (it.isNotEmpty()) messageSink(it) }
         // Drain video draws buffered by the last resume (fully-parked => race-free,
