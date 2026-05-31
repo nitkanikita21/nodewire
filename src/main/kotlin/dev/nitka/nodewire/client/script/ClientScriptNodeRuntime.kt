@@ -50,8 +50,12 @@ object ClientScriptNodeRuntime {
      * stable per node). [java.util.IdentityHashMap] so equal-but-distinct tags
      * don't collide; wrapped for concurrent access.
      */
-    private val runtimes: MutableMap<CompoundTag, ScriptRuntime> =
+    private val runtimes: MutableMap<CompoundTag, NodeRuntime> =
         java.util.Collections.synchronizedMap(java.util.IdentityHashMap())
+
+    /** A node's live client runtime + the [src] it was built from, so an edit
+     *  (new src on the same node) rebuilds it instead of replaying the old one. */
+    private class NodeRuntime(val src: String, val rt: ScriptRuntime)
 
     /** Off-thread compile pool — daemon. Overridable for tests. MUST be off the
      *  render thread so the first ~1-2 s compile never freezes a frame. */
@@ -100,13 +104,20 @@ object ClientScriptNodeRuntime {
         }
         val ready = entry as? Entry.Ready ?: return
 
-        val rt = runtimes.getOrPut(replicatedState) {
+        // Rebuild the per-node runtime if the source changed (an in-world edit):
+        // the runtimes map is keyed by the stable node tag, so without this the
+        // OLD compiled clientBehavior keeps running and the screen goes stale.
+        val existing = runtimes[replicatedState]
+        val rt = if (existing != null && existing.src == src) {
+            existing.rt
+        } else {
+            existing?.rt?.cancel()
             // A FRESH module per node (never shared). Mark it client-side BEFORE
             // attach so a non-replicated read throws (spec §5.7), and attach with
             // Side.CLIENT + the tight resume budget (hardening #1).
             val module = ready.factory().also { it.setClientSide(true) }
             val d = nodeDispatcher
-            if (d != null) {
+            val newRt = if (d != null) {
                 ScriptRuntime(module, d, maxStrikes, ScriptModule.Side.CLIENT, resumeBudgetMs)
             } else {
                 ScriptRuntime(
@@ -117,6 +128,8 @@ object ClientScriptNodeRuntime {
                     resumeBudgetMs,
                 )
             }
+            runtimes[replicatedState] = NodeRuntime(src, newRt)
+            newRt
         }
         rt.clientRendezvous(replicatedState, ClientScriptLog::drain)
         replayVideoDraws(rt)
@@ -153,13 +166,13 @@ object ClientScriptNodeRuntime {
 
     /** Cancel + drop the per-node runtime for a node (its client-state tag). */
     fun cancelForState(replicatedState: CompoundTag) {
-        runtimes.remove(replicatedState)?.cancel()
+        runtimes.remove(replicatedState)?.rt?.cancel()
     }
 
     /** Cancel ALL client runtimes (kill-switch OFF / level-unload / logout). */
     fun cancelAll() {
         synchronized(runtimes) {
-            runtimes.values.forEach { it.cancel() }
+            runtimes.values.forEach { it.rt.cancel() }
             runtimes.clear()
         }
     }
