@@ -50,13 +50,29 @@ object VideoManager {
     internal var factory: SurfaceFactory = GlSurfaceFactory
 
     /**
-     * Camera-readiness hook (Component 4, NOT implemented here). The Screen BER
-     * refuses to draw while a Camera capture is in progress to avoid screen-in-
-     * screen recursion. Inert (always `false`) until a Camera exists; defined now
-     * so the Screen is correct the day the Camera lands, with zero Camera code.
+     * Camera-readiness / recursion guard. The Camera capture loop renders the
+     * world into a feed's FBO; while that is in progress the Screen BER and
+     * [VideoFrameRenderer] must refuse to draw, otherwise a Screen visible in
+     * the captured POV would recurse (screen-in-screen). The capture loop wraps
+     * its render with [beginCapture]/[endCapture]; consumers early-return on
+     * [isCapturing]. `@Volatile` because [beginCapture]/[endCapture] run on the
+     * render thread and the flag is read across capture sub-steps.
      */
+    @Volatile
+    private var capturing: Boolean = false
+
     @JvmStatic
-    fun isCapturing(): Boolean = false
+    fun isCapturing(): Boolean = capturing
+
+    @JvmStatic
+    fun beginCapture() {
+        capturing = true
+    }
+
+    @JvmStatic
+    fun endCapture() {
+        capturing = false
+    }
 
     private class Entry(
         var refs: Int,
@@ -191,6 +207,7 @@ object VideoManager {
         entries.clear()
         warnedUnknownRelease.clear()
         tick = 0L
+        capturing = false
         factory = GlSurfaceFactory
     }
 }
