@@ -590,6 +590,9 @@ object StockNodeTypes {
         NodeTypeRegistry.register(
             dev.nitka.nodewire.integration.aeronautics.AeroInputNode.AERONAUTICS_INPUT,
         )
+        NodeTypeRegistry.register(
+            dev.nitka.nodewire.integration.sensor.BlockSensorNode.BLOCK_SENSOR,
+        )
     }
 
     private fun nodeType(
