@@ -82,6 +82,8 @@ neoForge {
 
     validateAccessTransformers = true
 
+    accessTransformers { from("src/main/resources/META-INF/accesstransformer.cfg") }
+
     runs {
         register("client") {
             client()
