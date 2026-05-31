@@ -698,24 +698,35 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
             }
         }
 
-        val aeroSnap = dev.nitka.nodewire.integration.aeronautics.AeroStatePipeline
+        val sensorSnap = dev.nitka.nodewire.integration.sensor.SensorStatePipeline
             .snapshot(level, graph)
-        val prevAero = dev.nitka.nodewire.integration.aeronautics.AeroStatePipeline
+        val prevSensor = dev.nitka.nodewire.integration.sensor.SensorStatePipeline
             .currentValues.get()
-        dev.nitka.nodewire.integration.aeronautics.AeroStatePipeline
-            .currentValues.set(aeroSnap)
+        dev.nitka.nodewire.integration.sensor.SensorStatePipeline
+            .currentValues.set(sensorSnap)
         val result = try {
-            val tcNode = dev.nitka.nodewire.integration.tweakedcontroller.ControllerInputNode
-            val prevTcState = tcNode.currentState.get()
-            tcNode.currentState.set(receivedControllerState)
+            val aeroSnap = dev.nitka.nodewire.integration.aeronautics.AeroStatePipeline
+                .snapshot(level, graph)
+            val prevAero = dev.nitka.nodewire.integration.aeronautics.AeroStatePipeline
+                .currentValues.get()
+            dev.nitka.nodewire.integration.aeronautics.AeroStatePipeline
+                .currentValues.set(aeroSnap)
             try {
-                eval.tick(external)
+                val tcNode = dev.nitka.nodewire.integration.tweakedcontroller.ControllerInputNode
+                val prevTcState = tcNode.currentState.get()
+                tcNode.currentState.set(receivedControllerState)
+                try {
+                    eval.tick(external)
+                } finally {
+                    tcNode.currentState.set(prevTcState)
+                }
             } finally {
-                tcNode.currentState.set(prevTcState)
+                dev.nitka.nodewire.integration.aeronautics.AeroStatePipeline
+                    .currentValues.set(prevAero)
             }
         } finally {
-            dev.nitka.nodewire.integration.aeronautics.AeroStatePipeline
-                .currentValues.set(prevAero)
+            dev.nitka.nodewire.integration.sensor.SensorStatePipeline
+                .currentValues.set(prevSensor)
         }
 
         // Dispatch any log()/chat() that script nodes emitted during eval.tick.
