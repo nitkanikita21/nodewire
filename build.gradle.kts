@@ -312,6 +312,13 @@ dependencies {
         exclude(group = "org.jetbrains.kotlin")
         exclude(group = "org.jetbrains.kotlinx")
     }
+    // Script-coroutine runtime (NwTickClock) uses BroadcastFrameClock/withFrameNanos
+    // on the core test classpath — compose.runtime is compileOnly for prod (shaded
+    // into the mod jar), so it must be added explicitly for :test.
+    testImplementation("org.jetbrains.compose.runtime:runtime:1.7.0") {
+        exclude(group = "org.jetbrains.kotlin")
+        exclude(group = "org.jetbrains.kotlinx")
+    }
     compileOnly("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.0")
 

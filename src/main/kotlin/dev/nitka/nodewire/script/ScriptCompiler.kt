@@ -33,11 +33,24 @@ sealed interface ScriptEvalResult {
 
 /**
  * Result of a compile request. [Success] carries the live [ScriptModule] (its
- * top-level declarations already ran, registering pins/state); [Failure]
- * carries human-readable diagnostics for the node card.
+ * top-level declarations already ran, registering pins/state) PLUS a [factory]
+ * that re-evaluates the SAME compiled script against a FRESH [ScriptModule] —
+ * the per-node-instance hook (spec D-cache). [Failure] carries human-readable
+ * diagnostics for the node card.
+ *
+ * Why the factory: the coroutine runtime keeps live behaviors + plain vars +
+ * per-node `inputs`/`outputs`/`stateCells` on the module, so two nodes running
+ * the same source MUST NOT share one [ScriptModule] instance. Core caches the
+ * [factory] per source and builds a fresh module per node. [module] is the
+ * first instance (used for the pin shape / status); subsequent nodes come from
+ * [factory]. The factory re-runs the compiled body's top-level declarations
+ * only (no recompile) — cheap.
  */
 sealed interface ScriptCompileResult {
-    data class Success(val module: ScriptModule) : ScriptCompileResult
+    data class Success(
+        val module: ScriptModule,
+        val factory: () -> ScriptModule = { module },
+    ) : ScriptCompileResult
     data class Failure(val diagnostics: List<String>) : ScriptCompileResult
 }
 

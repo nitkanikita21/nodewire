@@ -166,6 +166,11 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
 
     fun invalidateEvaluator() {
         serverEvaluator = null
+        // Drop the per-node script runtimes too: the evaluator is rebuilt with
+        // fresh `state` tags, so the old (identity-keyed) runtimes would leak
+        // their scopes. Coarse (global) but correct — live nodes rebuild from
+        // NBT next tick (spec D10).
+        dev.nitka.nodewire.script.ScriptNodeRuntime.cancelAll()
     }
 
     /**
@@ -756,6 +761,10 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
                 }
             }
         }
+        // Cancel this BE's per-node script coroutine scopes on unload/removal
+        // (spec D10). Global cancel is acceptable Phase-1 behavior: any still-live
+        // node rebuilds its runtime from persisted NBT on the next server tick.
+        dev.nitka.nodewire.script.ScriptNodeRuntime.cancelAll()
         super.setRemoved()
     }
 

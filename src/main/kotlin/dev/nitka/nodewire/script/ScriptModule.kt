@@ -1,5 +1,7 @@
 package dev.nitka.nodewire.script
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import kotlin.properties.PropertyDelegateProvider
 import kotlin.properties.ReadWriteProperty
 import kotlin.reflect.KProperty
@@ -68,6 +70,37 @@ abstract class ScriptModule {
     /** True when the body builder used `tick {}` (stateful) vs `eval {}` (pure). */
     @PublishedApi internal var isTickBody: Boolean = false
 
+    // ── Coroutine "setup + behaviors" model (additive — spec D1-D7) ──────────
+    //
+    // `output.value =` writes into the live [outputs] BUFFER (no per-write
+    // suspend). At each suspend point (tick()/delay/end of sync{}/end of tick{}
+    // body) the behavior calls [commitFrame], copying the buffer into the
+    // per-node PENDING FRAME — the snapshot the server reads when it owns the
+    // node. Multiple writes between two suspends thus batch into ONE frame
+    // automatically (last-write-wins per pin). Until the first commit the frame
+    // is null → the server falls back to type-defaults / the live buffer.
+
+    /** Pending behavior bodies registered during setup; realized by [attachScope]. */
+    @PublishedApi internal val behaviorSpecs = ArrayList<suspend () -> Unit>()
+
+    /** The node's tick clock, set by [attachScope]; tick()/delay()/sync park on it. */
+    private var tickClock: NwTickClock? = null
+
+    /** The last committed output frame (a snapshot of [outputs] at a suspend), or
+     *  null before the first commit. The server reads this when it owns the node. */
+    private var pendingFrame: Map<String, Any?>? = null
+
+    /** Copy the buffered writes into the pending frame as ONE atomic frame. Called
+     *  at every suspend point so a run of writes commits exactly once (spec D7). */
+    @PublishedApi internal fun commitFrame() {
+        pendingFrame = LinkedHashMap(outputs)
+    }
+
+    /** Host-side: the committed pending frame, or the live buffer if nothing has
+     *  committed yet (first-tick / legacy [tickBlock] path). Used by the per-node
+     *  [pullOutputs] bridge so the server reads a fully-committed frame (spec D6/D7). */
+    @PublishedApi internal fun committedOutputs(): Map<String, Any?> = pendingFrame ?: outputs
+
     inline fun <reified T> input(name: String, default: T? = null): Input<T> {
         specsIn[name] = PinSpec(name, scriptPinType<T>(), default != null)
         if (name !in inputs) inputs[name] = default
@@ -87,16 +120,95 @@ abstract class ScriptModule {
         }
     }
 
-    /** Register a stateful per-tick body. Persists [state] across ticks. */
+    /**
+     * Launch a concurrent behavior on this node's confined dispatcher. Many may
+     * coexist; they interleave only at suspend points (tick()/delay/sync), so plain
+     * vars shared between behaviors of the SAME node are lock-free (spec D5).
+     * During setup the scope isn't attached yet → enqueue; [attachScope] launches.
+     */
+    fun behavior(block: suspend () -> Unit) {
+        behaviorSpecs += block
+    }
+
+    /**
+     * Per-behavior identity token used for park accounting. It MUST travel with the
+     * coroutine across suspension/resumption (a behavior can resume on a different
+     * pool thread), so it is carried in the coroutine context — NOT a ThreadLocal.
+     * [attachScope] installs a `BehaviorToken` context element per launched behavior;
+     * [tick] reads it from `coroutineContext`.
+     */
+    @PublishedApi internal class BehaviorToken :
+        kotlin.coroutines.AbstractCoroutineContextElement(Key) {
+        companion object Key : kotlin.coroutines.CoroutineContext.Key<BehaviorToken>
+    }
+
+    /** Commit the buffered writes as ONE output frame, then suspend until the next
+     *  server tick. The commit + the awaiter registration happen before the park. */
+    suspend fun tick() {
+        commitFrame()
+        val clock = tickClock ?: error("tick() called before scope attached")
+        val token = kotlin.coroutines.coroutineContext[ScriptModule.BehaviorToken.Key]
+            ?: error("tick() called outside a behavior")
+        clock.await(token)
+    }
+
+    /** Suspend for [ticks] server ticks (commits a frame at each park). */
+    suspend fun delay(ticks: Int) {
+        repeat(ticks) { tick() }
+    }
+
+    /** Batch + commit + advance one tick: run [block] (its output.value= writes
+     *  accumulate in the buffer), commit ONE frame, then park (spec D4/D7). */
+    suspend fun sync(block: () -> Unit) {
+        block()
+        tick()
+    }
+
+    /** `delay(5.ticks)` ergonomics. */
+    val Int.ticks: Int get() = this
+
+    /**
+     * Host-side: attach the node's scope + clock and launch all registered
+     * behaviors. Called by ScriptRuntime once, immediately after body-eval
+     * (setup), mirroring `NwUiOwner` building its scope around the clock.
+     */
+    @PublishedApi internal fun attachScope(scope: CoroutineScope, clock: NwTickClock) {
+        tickClock = clock
+        for (spec in behaviorSpecs) {
+            val token = BehaviorToken() // per-behavior identity, carried in context
+            clock.onBehaviorLaunched() // live until its first await() (single-owner gate)
+            // The token rides the coroutine context so tick()/await() identify THIS
+            // behavior regardless of which pool thread it resumes on (NOT a ThreadLocal).
+            scope.launch(token) {
+                try {
+                    spec()
+                } finally {
+                    clock.onBehaviorCompleted(token) // completes → no longer live
+                }
+            }
+        }
+    }
+
+    /**
+     * Stateful per-tick body. Sugar for `behavior { while(true){ block(); <commit>; tick() } }`
+     * (spec D4). Additive — multiple `tick {}` calls each launch a behavior. The body's
+     * output.value= writes batch into one frame, committed at the tick().
+     *
+     * The lambda is ALSO retained in [tickBlock] so the legacy synchronous evalTick
+     * path keeps running the body byte-for-byte unchanged until the per-node
+     * [ScriptRuntime] rendezvous (a later task) attaches a scope. ABI-stable (Q3).
+     */
     fun tick(block: () -> Unit) {
         tickBlock = block
         isTickBody = true
+        behavior { while (true) { block(); tick() } } // tick() commits the buffered frame
     }
 
-    /** Register a pure per-tick body — identical mechanics; the evaluator slot differs (spec §4). */
+    /** Pure per-tick body — same desugaring; the slot semantics differ (spec D4). */
     fun eval(block: () -> Unit) {
         tickBlock = block
         isTickBody = false
+        behavior { while (true) { block(); tick() } }
     }
 
     /**
@@ -111,7 +223,7 @@ abstract class ScriptModule {
      * `var x by …` has no dispatch receiver, so the provider/property MUST accept
      * a null `thisRef`.
      */
-    fun <T> state(init: T): PropertyDelegateProvider<Any?, ReadWriteProperty<Any?, T>> {
+    fun <T> state(init: T, replicated: Boolean = false): PropertyDelegateProvider<Any?, ReadWriteProperty<Any?, T>> {
         val kind = when (init) {
             is Int -> StateKind.INT
             is Float -> StateKind.FLOAT
@@ -123,7 +235,7 @@ abstract class ScriptModule {
             )
         }
         return PropertyDelegateProvider { _, prop ->
-            val cell = StateCell<T>(prop.name, init, kind).also { stateCells += it }
+            val cell = StateCell<T>(prop.name, init, kind, replicated).also { stateCells += it }
             object : ReadWriteProperty<Any?, T> {
                 override fun getValue(thisRef: Any?, property: KProperty<*>): T = cell.value
                 override fun setValue(thisRef: Any?, property: KProperty<*>, value: T) { cell.value = value }

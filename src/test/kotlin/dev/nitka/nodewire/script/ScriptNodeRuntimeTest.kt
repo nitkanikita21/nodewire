@@ -28,9 +28,18 @@ class ScriptNodeRuntimeTest {
 
     private val outPins = listOf(Pin("out", "out", PinType.REDSTONE))
 
+    @org.junit.jupiter.api.BeforeEach
+    fun setup() {
+        // Deterministic rendezvous: behaviors run to their first park inline, so
+        // each evalTick owns the node and the committed frame advances by one.
+        ScriptNodeRuntime.nodeDispatcher = kotlinx.coroutines.Dispatchers.Unconfined
+    }
+
     @AfterEach
     fun reset() {
         ScriptCompilerRegistry.compiler = null
+        ScriptNodeRuntime.cancelAll()
+        ScriptNodeRuntime.nodeDispatcher = null
         ScriptMessageSink.drain()
     }
 

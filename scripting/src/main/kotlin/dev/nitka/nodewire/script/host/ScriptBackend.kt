@@ -60,10 +60,26 @@ class ScriptBackend : ScriptCompiler {
     // ── core SPI ─────────────────────────────────────────────────────────
 
     override fun compileToModule(source: String): ScriptCompileResult {
-        val r = compileModule(source)
-        val module = r.valueOrNull()
-        return if (module != null) ScriptCompileResult.Success(module)
-        else ScriptCompileResult.Failure(r.reports.map { it.message })
+        // Compile ONCE; the resulting CompiledScript is re-evaluated against a
+        // fresh ScriptModule per node (spec D-cache — per-node instances). The
+        // factory closes over the compiled script so it never recompiles.
+        val compiled = compile(source)
+        val script = compiled.valueOrNull()
+            ?: return ScriptCompileResult.Failure(compiled.reports.map { it.message })
+
+        // Build the first instance eagerly (for the pin shape / status).
+        val first = evalModule(script)
+        val module = first.valueOrNull()
+            ?: return ScriptCompileResult.Failure(first.reports.map { it.message })
+
+        // Per-node factory: re-run the compiled body's top-level declarations
+        // against a brand-new module so live behaviors + plain vars + per-node
+        // inputs/outputs/stateCells never leak across nodes.
+        val factory: () -> ScriptModule = {
+            evalModule(script).valueOrNull()
+                ?: error("script re-instantiation failed (was OK on first compile)")
+        }
+        return ScriptCompileResult.Success(module, factory)
     }
 
     override fun evalSource(source: String): ScriptEvalResult {
@@ -137,13 +153,21 @@ class ScriptBackend : ScriptCompiler {
         val compiled = compile(source)
         val script = compiled.valueOrNull()
             ?: return ResultWithDiagnostics.Failure(compiled.reports)
+        return evalModule(script)
+    }
 
+    /**
+     * Evaluate an already-[compile]d script against a FRESH [ScriptModule]
+     * (its top-level declarations run, registering pins/state/behaviors). This
+     * is the per-node-instance primitive: each call yields an independent module
+     * so two nodes running the same source never share buffers (spec D-cache).
+     */
+    fun evalModule(script: CompiledScript): ResultWithDiagnostics<ScriptModule> {
         val module = NwScriptInstance()
         val evalConfig = ScriptEvaluationConfiguration {
             implicitReceivers(module)
             jvm { baseClassLoader(newGuard()) }
         }
-
         val evalResult = withModuleTccl {
             host.runInCoroutineContext { host.evaluator(script, evalConfig) }
         }

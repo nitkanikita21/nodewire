@@ -45,10 +45,14 @@ internal fun ScriptModule.pushInputs(incoming: Map<String, PinValue>) {
 
 /** script-facing outputs -> PinValue map. Unwritten outputs fill from [PinValue.default]. */
 internal fun ScriptModule.pullOutputs(): Map<String, PinValue> {
+    // Read the COMMITTED frame (the behaviors' last commit-at-suspend), falling
+    // back to the live buffer when nothing has committed yet (first tick, or the
+    // legacy tickBlock path that never commits). See ScriptModule.commitFrame.
+    val frame = committedOutputs()
     val out = LinkedHashMap<String, PinValue>(specsOut.size)
     for ((name, spec) in specsOut) {
         val pinType = spec.type.toPinType()
-        val written = outputs[name]
+        val written = frame[name]
         out[name] = if (written == null) PinValue.default(pinType) else box(written, pinType)
     }
     return out
