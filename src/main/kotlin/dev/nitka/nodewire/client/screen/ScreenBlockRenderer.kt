@@ -12,6 +12,7 @@ import dev.nitka.nodewire.client.video.VideoManager
 import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.client.renderer.RenderStateShard
 import net.minecraft.client.renderer.RenderType
+import net.minecraft.client.renderer.LightTexture
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderer
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider
 import net.minecraft.client.renderer.texture.OverlayTexture
@@ -58,11 +59,16 @@ class ScreenBlockRenderer(
 
         poseStack.pushPose()
         val matrix = poseStack.last().pose()
-        // Lit texture: blit the content modulated by the block's environment light
-        // (the lightmap coords the BER is handed for this position), so the screen
-        // dims with the surrounding light like a normal lit face rather than glowing
-        // at full brightness. A screen in the dark therefore reads dark.
-        emitFace(consumer, matrix, facing, light)
+        // Lit texture WITH a self-emission floor: a monitor glows, so clamp the
+        // block-light component up to MIN_BLOCK_LIGHT before blitting. The screen
+        // still brightens with environment light (sky component kept) but never
+        // dims below readable in shadow — full lightmap modulation made the whole
+        // content (camera feed included) almost invisible in dim areas.
+        val lit = LightTexture.pack(
+            maxOf(LightTexture.block(light), MIN_BLOCK_LIGHT),
+            LightTexture.sky(light),
+        )
+        emitFace(consumer, matrix, facing, lit)
         poseStack.popPose()
     }
 
@@ -144,6 +150,9 @@ class ScreenBlockRenderer(
     }
 
     companion object {
+        /** Self-emission floor (block-light units, 0..15) so a screen stays
+         *  readable in the dark while still brightening with environment light. */
+        private const val MIN_BLOCK_LIGHT = 10
         /**
          * A textured, lit render type bound to a **raw GL texture id**. The setup
          * shard binds the FBO colour attachment to sampler 0; the clear shard is a
