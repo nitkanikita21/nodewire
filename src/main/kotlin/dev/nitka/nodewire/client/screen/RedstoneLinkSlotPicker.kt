@@ -65,37 +65,60 @@ fun RedstoneLinkFrequencySlots(node: Node, editor: EditorState?) {
 
 @Composable
 private fun FrequencySlot(node: Node, editor: EditorState?, slotKey: String) {
-    var pickerOpen by remember { mutableStateOf(false) }
-    var anchor by remember { mutableStateOf<LayoutCoordinates?>(null) }
-    var hovered by remember { mutableStateOf(false) }
-    val canvas = LocalCanvasState.current
     val currentStack = run {
         val ra = net.minecraft.client.Minecraft.getInstance().level?.registryAccess()
             ?: return@run ItemStack.EMPTY
         ItemStack.parse(ra, node.config.getCompound(slotKey)).orElse(ItemStack.EMPTY)
     }
+    ItemPickerSlot(
+        current = currentStack,
+        onSet = { setSlot(node, editor, slotKey, it) },
+        // Publish the slot rect so the JEI/EMI ghost-drag handlers can hit-test it.
+        onPositioned = { coords ->
+            RedstoneLinkSlotRegistry.update(node.id, slotKey, coords) { stack ->
+                setSlot(node, editor, slotKey, stack)
+            }
+        },
+    )
+}
+
+/**
+ * A reusable ghost item slot: shows [current], LMB opens an inline player-
+ * inventory / registry picker popover ([InventoryPickerPopover]), RMB clears.
+ * Every pick/clear calls [onSet]. Used by the redstone-link frequency slots and
+ * the Block Sensor filter slot — same UX everywhere.
+ */
+@Composable
+fun ItemPickerSlot(
+    current: ItemStack,
+    onSet: (ItemStack) -> Unit,
+    modifier: Modifier = Modifier,
+    onPositioned: ((LayoutCoordinates) -> Unit)? = null,
+) {
+    var pickerOpen by remember { mutableStateOf(false) }
+    var anchor by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    var hovered by remember { mutableStateOf(false) }
+    val canvas = LocalCanvasState.current
 
     Box(
-        modifier = Modifier
+        modifier = modifier
             .size(18)
             .background(NwTheme.colors.surface)
             .border(BorderStroke(1, NwTheme.colors.border))
             .onPositioned { coords ->
                 anchor = coords
-                RedstoneLinkSlotRegistry.update(node.id, slotKey, coords) { stack ->
-                    setSlot(node, editor, slotKey, stack)
-                }
+                onPositioned?.invoke(coords)
             }
             .onHover { hovered = it }
             .clickable { pickerOpen = true }
             .pointerInput { ev, _, _ ->
                 if (ev is PointerEvent.Press && ev.button == 1) {
-                    setSlot(node, editor, slotKey, ItemStack.EMPTY)
+                    onSet(ItemStack.EMPTY)
                     true
                 } else false
             },
     ) {
-        ItemSlotIcon(currentStack)
+        ItemSlotIcon(current)
     }
 
     if (hovered && !pickerOpen) {
@@ -103,7 +126,7 @@ private fun FrequencySlot(node: Node, editor: EditorState?, slotKey: String) {
         if (a != null) {
             val (px, py) = tooltipScreenAnchor(a, canvas)
             Popup(position = PopupPosition.AtScreen(px, py)) {
-                SlotTooltipPanel(currentStack)
+                SlotTooltipPanel(current)
             }
         }
     }
@@ -119,7 +142,7 @@ private fun FrequencySlot(node: Node, editor: EditorState?, slotKey: String) {
             ) {
                 InventoryPickerPopover(
                     onPick = { picked ->
-                        setSlot(node, editor, slotKey, picked)
+                        onSet(picked)
                         pickerOpen = false
                     },
                 )

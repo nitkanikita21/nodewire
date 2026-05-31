@@ -614,26 +614,12 @@ object NodeConfigContent {
             }
             if (reading.needsFilter) {
                 LabeledRow("Filter") {
-                    Box(
-                        modifier = Modifier
-                            .size(18)
-                            .background(NwTheme.colors.surfaceHover, NwTheme.shapes.small)
-                            .pointerInput { ev, _, _ ->
-                                if (ev is PointerEvent.Press) {
-                                    val held = Minecraft.getInstance().player?.mainHandItem
-                                    if (held != null && !held.isEmpty) {
-                                        editor?.setSensorFilter(node.id, held.copyWithCount(1))
-                                    } else {
-                                        editor?.setSensorFilter(node.id, ItemStack.EMPTY)
-                                    }
-                                    true
-                                } else {
-                                    false
-                                }
-                            },
-                    ) {
-                        ItemIcon(filterStack, Modifier.size(16))
-                    }
+                    // Same item-picker UX as the redstone-link frequency slots:
+                    // LMB opens an inline inventory/registry picker, RMB clears.
+                    ItemPickerSlot(
+                        current = filterStack,
+                        onSet = { editor?.setSensorFilter(node.id, it) },
+                    )
                 }
             }
             LabeledRow("Output") {
