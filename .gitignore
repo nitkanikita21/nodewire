@@ -27,4 +27,5 @@ mods/
 
 # AI-driven design docs (kept privately, see CLAUDE.md)
 docs/superpowers/
+docs/research/
 .superpowers/
