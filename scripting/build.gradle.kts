@@ -164,16 +164,18 @@ val scriptApiJar = tasks.register<Jar>("scriptApiJar") {
     }
 }
 
-// Convenience: drop the freshly-built script-api.jar into the standalone IDE
+// Convenience: drop the freshly-built script-api.jar into a standalone IDE
 // authoring template so a user can open that folder in IntelliJ and get
-// autocomplete for *.nw.kts scripts. The template lives as a SIBLING of the mod
-// repo (../script-template), not nested inside it — keeps it out of the mod's
-// git + Gradle/IDE scope. Not wired into the mod build — run explicitly:
-//   ./gradlew :scripting:exportScriptApi
+// autocomplete for *.nw.kts scripts. The destination is NOT hardcoded — point it
+// at your template's libs dir via a Gradle property (CLI or ~/.gradle/gradle.properties):
+//   ./gradlew :scripting:exportScriptApi -PscriptApiExportDir=/path/to/template/libs
+// Defaults to this module's build/script-api (machine-independent, stays in-repo).
 tasks.register<Copy>("exportScriptApi") {
     dependsOn(scriptApiJar)
     from(scriptApiJar.flatMap { it.archiveFile })
-    into(rootProject.layout.projectDirectory.asFile.parentFile.resolve("script-template/libs"))
+    val exportDir = providers.gradleProperty("scriptApiExportDir")
+        .orElse(layout.buildDirectory.dir("script-api").map { it.asFile.absolutePath })
+    into(exportDir)
 }
 
 // 4. index.txt = every jar filename under nodewire-compiler/ (one per line).
