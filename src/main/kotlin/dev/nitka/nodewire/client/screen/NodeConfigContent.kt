@@ -188,7 +188,7 @@ object NodeConfigContent {
             }
             LabeledRow("Type") {
                 Select(
-                    options = CHANNEL_TYPES,
+                    options = PinType.CHANNEL_TYPES,
                     selected = type,
                     onSelect = { next ->
                         editor?.changeChannelType(node.id, next)
@@ -204,11 +204,6 @@ object NodeConfigContent {
         val editor = LocalEditorState.current
         RedstoneLinkFrequencySlots(node, editor)
     }
-
-    private val CHANNEL_TYPES = listOf(
-        PinType.BOOL, PinType.INT, PinType.FLOAT, PinType.REDSTONE,
-        PinType.STRING, PinType.VEC2, PinType.VEC3, PinType.QUAT,
-    )
 
     @Composable
     private fun IntField(node: Node, key: String, label: String, editor: EditorState?) {

@@ -9,7 +9,16 @@ package dev.nitka.nodewire.graph
  * type appends an entry; never reorder or rename existing ones without a
  * data-migration step.
  */
-enum class PinType {
+enum class PinType(
+    /**
+     * True for a concrete type that can be carried by a channel / picked in a
+     * type selector. The single source of truth for "selectable types" — a new
+     * concrete type (e.g. [VIDEO]) shows up everywhere [CHANNEL_TYPES] is used
+     * with no per-UI list edit. [ANY] is the wildcard, not a concrete channel
+     * type, so it is NOT routable.
+     */
+    val routable: Boolean = true,
+) {
     BOOL,
     INT,
     FLOAT,
@@ -33,9 +42,16 @@ enum class PinType {
      * Task 2) for the implicit-conversion rules used everywhere ANY is
      * NOT involved.
      */
-    ANY;
+    ANY(routable = false);
 
     companion object {
+        /**
+         * All concrete (routable) types, in declaration order — the dynamic
+         * registry every type selector / channel picker should use instead of a
+         * hardcoded list, so new types appear automatically.
+         */
+        val CHANNEL_TYPES: List<PinType> = entries.filter { it.routable }
+
         /** Defensive lookup — falls back to [BOOL] if the saved key is unknown (forward-compat load). */
         fun fromName(name: String): PinType =
             entries.firstOrNull { it.name == name } ?: BOOL
