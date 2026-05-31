@@ -5,16 +5,21 @@ import dev.nitka.nodewire.block.LogicBlockEntity
 import dev.nitka.nodewire.client.screen.AeroChannelPickerScreen
 import dev.nitka.nodewire.client.screen.AeroTargetPickerScreen
 import dev.nitka.nodewire.client.screen.ChannelPickerScreen
+import dev.nitka.nodewire.client.screen.SensorReadingPickerScreen
+import dev.nitka.nodewire.client.screen.SensorTargetPickerScreen
 import dev.nitka.nodewire.endpoint.EndpointRef
 import dev.nitka.nodewire.graph.PinType
 import dev.nitka.nodewire.integration.aeronautics.AeroBlockKind
 import dev.nitka.nodewire.integration.aeronautics.AeroChannel
+import dev.nitka.nodewire.integration.sensor.SensorReading
 import dev.nitka.nodewire.net.BindAeroSourcePacket
 import dev.nitka.nodewire.net.BindCameraSourcePacket
 import dev.nitka.nodewire.net.BindChannelPacket
 import dev.nitka.nodewire.net.BindRemoteRedstonePacket
+import dev.nitka.nodewire.net.BindSensorSourcePacket
 import dev.nitka.nodewire.net.BindSideChannelPacket
 import net.neoforged.fml.ModList
+import net.neoforged.neoforge.capabilities.Capabilities
 import net.neoforged.neoforge.network.PacketDistributor
 import net.minecraft.ChatFormatting
 import net.minecraft.client.Minecraft
@@ -74,6 +79,8 @@ class ChannelLinkToolItem(props: Properties) : Item(props) {
                     // Order: Aero → RemoteRedstone → classic ChannelOutput target.
                     val tag = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag()
                     when {
+                        tag.contains(NBT_SENSOR_SOURCE) ->
+                            openSensorTargetPicker(stack, be, tag.getCompound(NBT_SENSOR_SOURCE))
                         tag.contains(NBT_AERO_SOURCE) ->
                             openAeroTargetPicker(stack, be, tag.getCompound(NBT_AERO_SOURCE))
                         tag.contains(NBT_CAMERA_SOURCE_POS) ->
@@ -134,6 +141,52 @@ class ChannelLinkToolItem(props: Properties) : Item(props) {
             stack.set(DataComponents.CUSTOM_DATA, CustomData.of(newTag))
             actionBar("Camera source: (${pos.x},${pos.y},${pos.z}) — right-click a Screen to bind", false)
             return InteractionResult.SUCCESS
+        }
+
+        // Branch 1a': Block Sensor source-set — sneak + RMB on any world block
+        // that exposes an item/fluid cap or a comparator analog signal. Runs
+        // BEFORE RemoteRedstone (which also claims a generic world block),
+        // mirroring the Camera-branch precedence.
+        if (level.isClientSide && player.isShiftKeyDown) {
+            val side = ctx.clickedFace
+            val hasItems = level.getCapability(Capabilities.ItemHandler.BLOCK, pos, side) != null ||
+                level.getCapability(Capabilities.ItemHandler.BLOCK, pos, null) != null
+            val hasFluids = level.getCapability(Capabilities.FluidHandler.BLOCK, pos, side) != null ||
+                level.getCapability(Capabilities.FluidHandler.BLOCK, pos, null) != null
+            val hasComparator = level.getBlockState(pos).hasAnalogOutputSignal()
+            if (hasItems || hasFluids || hasComparator) {
+                val be2 = level.getBlockEntity(pos)
+                val supported = SensorReading.supportedBy(be2).ifEmpty {
+                    // Comparator-only blocks (no BE caps) still offer COMPARATOR.
+                    if (hasComparator) listOf(SensorReading.COMPARATOR) else emptyList()
+                }
+                if (supported.isEmpty()) {
+                    actionBar("Nothing readable here", true)
+                    return InteractionResult.SUCCESS
+                }
+                val endpoint = EndpointRef.from(level, pos)
+                Minecraft.getInstance().setScreen(
+                    SensorReadingPickerScreen(supported, endpoint) { ep, reading ->
+                        val newTag = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag()
+                        val sensorTag = CompoundTag()
+                        val endpointNbt = EndpointRef.CODEC.encodeStart(NbtOps.INSTANCE, ep)
+                            .result().orElse(null) as? CompoundTag
+                        if (endpointNbt != null) sensorTag.put("endpoint", endpointNbt)
+                        sensorTag.putString("reading", reading.name)
+                        sensorTag.putString("side", side.name)
+                        newTag.put(NBT_SENSOR_SOURCE, sensorTag)
+                        // Mutual exclusion with the other source modes.
+                        newTag.remove(NBT_AERO_SOURCE)
+                        newTag.remove(NBT_CAMERA_SOURCE_POS)
+                        newTag.remove(NBT_REDSTONE_SOURCE_POS)
+                        newTag.remove(NBT_SOURCE_POS)
+                        newTag.remove(NBT_SOURCE_NAME)
+                        stack.set(DataComponents.CUSTOM_DATA, CustomData.of(newTag))
+                        actionBar("Sensor source: ${reading.displayName}", false)
+                    },
+                )
+                return InteractionResult.SUCCESS
+            }
         }
 
         // Branch 1b: RemoteRedstone source-set — sneak + RMB on any non-Aero,
@@ -235,6 +288,40 @@ class ChannelLinkToolItem(props: Properties) : Item(props) {
                 newTag.remove(NBT_AERO_SOURCE)
                 stack.set(DataComponents.CUSTOM_DATA, CustomData.of(newTag))
                 actionBar("Aero bound → ${be.blockPos}", false)
+            },
+        )
+    }
+
+    private fun openSensorTargetPicker(stack: ItemStack, be: LogicBlockEntity, sensorTag: CompoundTag) {
+        val readingName = sensorTag.getString("reading")
+        val reading = SensorReading.fromName(readingName)
+        if (reading == null) {
+            actionBar("Unknown reading '$readingName' in stack", true)
+            return
+        }
+        Minecraft.getInstance().setScreen(
+            SensorTargetPickerScreen(be, reading.pinType) { nodeId ->
+                val endpoint = EndpointRef.CODEC
+                    .parse(NbtOps.INSTANCE, sensorTag.getCompound("endpoint"))
+                    .result().orElse(null)
+                if (endpoint == null) {
+                    actionBar("Failed to parse sensor source endpoint", true)
+                    return@SensorTargetPickerScreen
+                }
+                PacketDistributor.sendToServer(
+                    BindSensorSourcePacket(
+                        targetPos = be.blockPos,
+                        nodeId = nodeId,
+                        endpoint = endpoint,
+                        reading = readingName,
+                        side = sensorTag.getString("side"),
+                        filter = ItemStack.EMPTY,
+                    ),
+                )
+                val newTag = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag()
+                newTag.remove(NBT_SENSOR_SOURCE)
+                stack.set(DataComponents.CUSTOM_DATA, CustomData.of(newTag))
+                actionBar("Sensor bound → ${be.blockPos}", false)
             },
         )
     }
@@ -478,5 +565,6 @@ class ChannelLinkToolItem(props: Properties) : Item(props) {
         private const val NBT_AERO_SOURCE = "aeroSource"
         private const val NBT_REDSTONE_SOURCE_POS = "redstoneSourcePos"
         private const val NBT_CAMERA_SOURCE_POS = "cameraSourcePos"
+        private const val NBT_SENSOR_SOURCE = "sensorSource"
     }
 }
