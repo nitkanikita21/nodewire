@@ -6,6 +6,7 @@ import dev.nitka.nodewire.Nodewire
 import dev.nitka.nodewire.block.CameraBlockEntity
 import dev.nitka.nodewire.block.ChannelInputSink
 import dev.nitka.nodewire.block.ChannelTargetRegistry
+import dev.nitka.nodewire.block.LogicBlockEntity
 import dev.nitka.nodewire.block.TargetSlot
 import dev.nitka.nodewire.endpoint.EndpointRef
 import dev.nitka.nodewire.graph.PinType
@@ -40,6 +41,9 @@ import org.slf4j.Logger
 data class BindCameraSourcePacket(
     val cameraPos: BlockPos,
     val target: EndpointRef,
+    /** For a LogicBlock target: the VIDEO `channel_input` name. Empty for a
+     *  graphless sink (Screen), where the server auto-picks the VIDEO slot. */
+    val targetChannelName: String,
 ) : CustomPacketPayload {
 
     override fun type(): CustomPacketPayload.Type<BindCameraSourcePacket> = TYPE
@@ -57,6 +61,7 @@ data class BindCameraSourcePacket(
                 i.group(
                     BlockPos.CODEC.fieldOf("cam_pos").forGetter(BindCameraSourcePacket::cameraPos),
                     EndpointRef.CODEC.fieldOf("target").forGetter(BindCameraSourcePacket::target),
+                    com.mojang.serialization.Codec.STRING.fieldOf("tgt_ch").forGetter(BindCameraSourcePacket::targetChannelName),
                 ).apply(i, ::BindCameraSourcePacket)
             }
 
@@ -79,13 +84,28 @@ data class BindCameraSourcePacket(
                 notify(player, "Camera block missing at ${packet.cameraPos.toShortString()}"); return
             }
 
-            val sink = packet.target.resolve(level) as? ChannelInputSink
+            val pos = packet.target.payload.blockPos
+            val state = level.getBlockState(pos)
+            val resolved = packet.target.resolve(level)
+
+            // LogicBlock target: persistent binding, re-delivered each server tick
+            // into the named VIDEO channel_input (handle is stable but the graph
+            // re-reads externalChannelInputs every tick).
+            if (resolved is LogicBlockEntity) {
+                if (resolved.addCameraSourceBinding(packet.targetChannelName, packet.cameraPos)) {
+                    level.sendBlockUpdated(pos, state, state, Block.UPDATE_CLIENTS)
+                } else {
+                    notify(player, "No VIDEO channel input '${packet.targetChannelName}' on target")
+                }
+                return
+            }
+
+            // Graphless sink (Screen): one-shot write of the stable handle into
+            // the VIDEO slot. No per-tick delivery needed.
+            val sink = resolved as? ChannelInputSink
             if (sink == null) {
                 notify(player, "Target is not a video sink"); return
             }
-
-            val pos = packet.target.payload.blockPos
-            val state = level.getBlockState(pos)
             val slot = ChannelTargetRegistry.lookup(state)
                 .slotsFor(level, pos, state, Direction.NORTH)
                 .filterIsInstance<TargetSlot.Channel>()
@@ -93,7 +113,6 @@ data class BindCameraSourcePacket(
             if (slot == null) {
                 notify(player, "Target has no video channel slot"); return
             }
-
             sink.writeChannelInput(slot.name, PinValue.Video(camBe.videoHandle()))
             // Belt-and-braces: ensure the consumer's chunk re-syncs even if the
             // sink's own writeChannelInput didn't push an update for this slot.

@@ -76,6 +76,8 @@ class ChannelLinkToolItem(props: Properties) : Item(props) {
                     when {
                         tag.contains(NBT_AERO_SOURCE) ->
                             openAeroTargetPicker(stack, be, tag.getCompound(NBT_AERO_SOURCE))
+                        tag.contains(NBT_CAMERA_SOURCE_POS) ->
+                            openCameraLogicTargetPicker(stack, be, NbtUtils.readBlockPos(tag, NBT_CAMERA_SOURCE_POS).orElse(null))
                         tag.contains(NBT_REDSTONE_SOURCE_POS) ->
                             openRemoteRedstoneTargetPicker(stack, be, NbtUtils.readBlockPos(tag, NBT_REDSTONE_SOURCE_POS).orElse(null))
                         else -> openTargetPicker(stack, be)
@@ -334,7 +336,8 @@ class ChannelLinkToolItem(props: Properties) : Item(props) {
             return
         }
         val targetRef = dev.nitka.nodewire.endpoint.EndpointRef.from(ctx.level, targetPos)
-        PacketDistributor.sendToServer(BindCameraSourcePacket(cameraPos, targetRef))
+        // Empty channel name → server auto-picks the sink's VIDEO slot.
+        PacketDistributor.sendToServer(BindCameraSourcePacket(cameraPos, targetRef, ""))
         val newTag = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag()
         newTag.remove(NBT_CAMERA_SOURCE_POS)
         stack.set(DataComponents.CUSTOM_DATA, CustomData.of(newTag))
@@ -342,6 +345,51 @@ class ChannelLinkToolItem(props: Properties) : Item(props) {
             "Bound camera (${cameraPos.x},${cameraPos.y},${cameraPos.z}) → " +
                 "(${targetPos.x},${targetPos.y},${targetPos.z})",
             false,
+        )
+    }
+
+    /**
+     * Camera source + right-click a LogicBlock: pick one of its VIDEO
+     * `channel_input` nodes and fire a persistent [BindCameraSourcePacket]
+     * binding `camera.handle → channel_input`, re-delivered each server tick.
+     */
+    private fun openCameraLogicTargetPicker(stack: ItemStack, be: LogicBlockEntity, cameraPos: BlockPos?) {
+        if (cameraPos == null) {
+            actionBar("Invalid camera source stored", true)
+            return
+        }
+        if (cameraPos == be.blockPos) {
+            actionBar("Source and target must differ", true)
+            return
+        }
+        val options = be.graph.nodes.values
+            .filter { it.typeKey.path == "channel_input" }
+            .mapNotNull { node ->
+                val name = node.config.getString("name")
+                if (name.isEmpty()) return@mapNotNull null
+                val type = PinType.fromName(node.config.getString("type"))
+                if (!dev.nitka.nodewire.graph.PinValueConversion
+                        .canConvert(PinType.VIDEO, type)) return@mapNotNull null
+                ChannelPickerScreen.Option(name, type)
+            }
+        if (options.isEmpty()) {
+            actionBar("No video channel inputs on this block.", true)
+            return
+        }
+        val targetPos = be.blockPos
+        Minecraft.getInstance().setScreen(
+            ChannelPickerScreen("Target channel (video)", options) { picked ->
+                val targetRef = dev.nitka.nodewire.endpoint.EndpointRef.from(be.level!!, targetPos)
+                PacketDistributor.sendToServer(BindCameraSourcePacket(cameraPos, targetRef, picked))
+                val newTag = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag()
+                newTag.remove(NBT_CAMERA_SOURCE_POS)
+                stack.set(DataComponents.CUSTOM_DATA, CustomData.of(newTag))
+                actionBar(
+                    "Bound camera (${cameraPos.x},${cameraPos.y},${cameraPos.z}) → " +
+                        "(${targetPos.x},${targetPos.y},${targetPos.z})/$picked",
+                    false,
+                )
+            },
         )
     }
 

@@ -63,6 +63,13 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
      */
     private val remoteRedstoneBindings: MutableList<RemoteRedstoneBinding> = mutableListOf()
 
+    /**
+     * Bindings from a [dev.nitka.nodewire.block.CameraBlockEntity] into a named
+     * VIDEO `channel_input` on this BE. Each server tick the camera's stable
+     * handle is delivered into [externalChannelInputs] (Sable-aware resolve).
+     */
+    private val cameraSourceBindings: MutableList<CameraSourceBinding> = mutableListOf()
+
     private var blockName: String = ""
 
     fun getBlockName(): String = blockName
@@ -418,6 +425,33 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
     }
 
     /**
+     * Bind a [CameraBlockEntity] at [cameraPos] to a named VIDEO `channel_input`
+     * on this BE. Returns false if the channel is missing or not VIDEO-coercible.
+     * Duplicates (same channel + camera pos) replace the existing entry.
+     */
+    fun addCameraSourceBinding(targetChannelName: String, cameraPos: BlockPos): Boolean {
+        if (targetChannelName.isEmpty()) return false
+        val lvl = level ?: return false
+        val tgtNode = graph.nodes.values.firstOrNull {
+            it.typeKey.path == "channel_input"
+                && it.config.getString("name") == targetChannelName
+        } ?: return false
+        val tgtType = PinType.fromName(tgtNode.config.getString("type"))
+        if (!dev.nitka.nodewire.graph.PinValueConversion.canConvert(PinType.VIDEO, tgtType)) return false
+        cameraSourceBindings.removeAll {
+            it.targetChannelName == targetChannelName
+                && it.source.payload.blockPos == cameraPos
+        }
+        cameraSourceBindings.add(
+            CameraSourceBinding(targetChannelName, dev.nitka.nodewire.endpoint.EndpointRef.from(lvl, cameraPos)),
+        )
+        setChanged()
+        return true
+    }
+
+    fun cameraSourceBindingsSnapshot(): List<CameraSourceBinding> = cameraSourceBindings.toList()
+
+    /**
      * Delete one channel-binding tuple. Returns true if a matching entry
      * was removed. The block is marked dirty + a client update is pushed
      * by the caller on success.
@@ -624,6 +658,21 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
             for (rrb in remoteRedstoneBindings) {
                 val sigLevel = level.getBestNeighborSignal(rrb.source.payload.blockPos)
                 externalChannelInputs[rrb.targetChannelName] = PinValue.Redstone(sigLevel)
+            }
+        }
+
+        if (cameraSourceBindings.isNotEmpty()) {
+            val before = cameraSourceBindings.size
+            cameraSourceBindings.removeAll { isCameraSourceStale(it, level) }
+            if (cameraSourceBindings.size != before) {
+                setChanged()
+                level.sendBlockUpdated(pos, state, state, net.minecraft.world.level.block.Block.UPDATE_CLIENTS)
+            }
+            // Deliver each camera's stable handle into its channel_input. Resolve
+            // is Sable-aware so a camera on a sub-level routes correctly.
+            for (csb in cameraSourceBindings) {
+                val cam = csb.source.resolve(level) as? CameraBlockEntity ?: continue
+                externalChannelInputs[csb.targetChannelName] = PinValue.Video(cam.videoHandle())
             }
         }
 
@@ -929,6 +978,14 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
                     .orElseThrow { IllegalStateException("remote_redstone_bindings encode failed") },
             )
         }
+        if (cameraSourceBindings.isNotEmpty()) {
+            tag.put(
+                "camera_source_bindings",
+                CameraSourceBinding.CODEC.listOf()
+                    .encodeStart(NbtOps.INSTANCE, cameraSourceBindings.toList()).result()
+                    .orElseThrow { IllegalStateException("camera_source_bindings encode failed") },
+            )
+        }
         if (blockName.isNotEmpty()) {
             tag.putString("name", blockName)
         }
@@ -966,6 +1023,13 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
                 .parse(NbtOps.INSTANCE, tag.get("remote_redstone_bindings")).result()
                 .orElse(emptyList())
             remoteRedstoneBindings.addAll(list)
+        }
+        cameraSourceBindings.clear()
+        if (tag.contains("camera_source_bindings")) {
+            val list = CameraSourceBinding.CODEC.listOf()
+                .parse(NbtOps.INSTANCE, tag.get("camera_source_bindings")).result()
+                .orElse(emptyList())
+            cameraSourceBindings.addAll(list)
         }
         // Phase 2b.3b: CLIENT-only — consume the late-joiner replicated-state
         // piggyback from getUpdateTag, staging current values BEFORE any client
@@ -1044,6 +1108,22 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
         // (channel just stays at last value); only air means it was broken.
         val state = level.getBlockState(rrb.source.payload.blockPos)
         if (state.isAir) return true
+        return false
+    }
+
+    private fun isCameraSourceStale(csb: CameraSourceBinding, level: Level): Boolean {
+        // Target channel must still exist + accept VIDEO.
+        val tgtNode = graph.nodes.values.firstOrNull {
+            it.typeKey.path == "channel_input"
+                && it.config.getString("name") == csb.targetChannelName
+        } ?: return true
+        val tgtType = PinType.fromName(tgtNode.config.getString("type"))
+        if (!dev.nitka.nodewire.graph.PinValueConversion.canConvert(PinType.VIDEO, tgtType)) return true
+        // Source must still be a camera. Tolerate unloaded chunks (resolve null →
+        // keep the binding, channel just holds its last value); only a loaded
+        // non-camera block means the camera was removed/replaced.
+        val be = level.getBlockEntity(csb.source.payload.blockPos)
+        if (be != null && be !is CameraBlockEntity) return true
         return false
     }
 
