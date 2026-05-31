@@ -66,7 +66,11 @@ class ScreenBlockRenderer(
 
         poseStack.pushPose()
         val matrix = poseStack.last().pose()
-        emitFace(consumer, matrix, facing, light)
+        // FULL_BRIGHT: the screen is self-illuminated (a monitor), so the video is
+        // shown at full colour regardless of the block's environment light —
+        // otherwise the entity-solid shader multiplies it by the lightmap and a
+        // screen in shadow renders black even though the FBO has content.
+        emitFace(consumer, matrix, facing, net.minecraft.client.renderer.LightTexture.FULL_BRIGHT)
         poseStack.popPose()
     }
 
