@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "facing=north": { "model": "nodewire:block/screen_block" },
+    "facing=south": { "model": "nodewire:block/screen_block", "y": 180 },
+    "facing=west": { "model": "nodewire:block/screen_block", "y": 270 },
+    "facing=east": { "model": "nodewire:block/screen_block", "y": 90 }
+  }
+}

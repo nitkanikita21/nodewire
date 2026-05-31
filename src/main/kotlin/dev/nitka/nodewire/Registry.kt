@@ -1,7 +1,10 @@
 package dev.nitka.nodewire
 
+import dev.nitka.nodewire.block.ChannelTargetRegistry
 import dev.nitka.nodewire.block.LogicBlock
 import dev.nitka.nodewire.block.LogicBlockEntity
+import dev.nitka.nodewire.block.ScreenBlock
+import dev.nitka.nodewire.block.ScreenBlockEntity
 import dev.nitka.nodewire.item.ChannelLinkToolItem
 import net.minecraft.core.registries.Registries
 import net.minecraft.world.item.BlockItem
@@ -36,10 +39,24 @@ object Registry {
         ChannelLinkToolItem(Item.Properties().stacksTo(1))
     }
 
+    val SCREEN_BLOCK: DeferredBlock<ScreenBlock> = BLOCKS.register("screen_block") { _ ->
+        ScreenBlock(BlockBehaviour.Properties.ofFullCopy(Blocks.IRON_BLOCK))
+    }
+
+    val SCREEN_BLOCK_ITEM: DeferredItem<BlockItem> =
+        ITEMS.registerSimpleBlockItem(SCREEN_BLOCK)
+
     val LOGIC_BLOCK_BE: DeferredHolder<BlockEntityType<*>, BlockEntityType<LogicBlockEntity>> =
         BLOCK_ENTITIES.register("logic_block") { _ ->
             BlockEntityType.Builder
                 .of(::LogicBlockEntity, LOGIC_BLOCK.get())
+                .build(null)
+        }
+
+    val SCREEN_BLOCK_BE: DeferredHolder<BlockEntityType<*>, BlockEntityType<ScreenBlockEntity>> =
+        BLOCK_ENTITIES.register("screen_block") { _ ->
+            BlockEntityType.Builder
+                .of(::ScreenBlockEntity, SCREEN_BLOCK.get())
                 .build(null)
         }
 
@@ -48,11 +65,17 @@ object Registry {
         ITEMS.register(bus)
         BLOCK_ENTITIES.register(bus)
         bus.addListener(::onBuildTabs)
+        // Channel Link Tool target: the Screen offers a single VIDEO "screen"
+        // input. Registered after blocks so SCREEN_BLOCK.get() is valid.
+        bus.addListener<net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent> {
+            ChannelTargetRegistry.register(SCREEN_BLOCK.get(), ScreenBlockEntity.CHANNEL_TARGET)
+        }
     }
 
     private fun onBuildTabs(event: BuildCreativeModeTabContentsEvent) {
         if (event.tabKey == CreativeModeTabs.REDSTONE_BLOCKS) {
             event.accept(LOGIC_BLOCK_ITEM.get())
+            event.accept(SCREEN_BLOCK_ITEM.get())
         }
         if (event.tabKey == CreativeModeTabs.TOOLS_AND_UTILITIES) {
             event.accept(CHANNEL_LINK_TOOL.get())

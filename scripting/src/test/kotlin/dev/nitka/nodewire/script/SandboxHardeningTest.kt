@@ -216,4 +216,34 @@ class SandboxHardeningTest {
             assertDoesNotThrow({ guard.loadClass(kept) }, "$kept must remain loadable")
         }
     }
+
+    // Video draw API (Phase B): the script-facing facade resolves VIA_MOD (it
+    // lives under the allowlisted `dev.nitka.nodewire.script.` prefix), while the
+    // GL-backed impl + every engine type it hides stays DENY'd — so a script can
+    // name `VideoCanvas` (to receive one) but can never reach the canvas's GL
+    // internals, the bind/unbind renderer, or GuiGraphics/Minecraft/TextureTarget.
+    @Test fun videoCanvasFacadeAllowedImplDenied() {
+        val guard = SandboxClassLoader(javaClass.classLoader)
+
+        // KEPT — the sandbox-facing facade the runtime hands the script.
+        assertDoesNotThrow({ guard.loadClass("dev.nitka.nodewire.script.VideoCanvas") }) {
+            "VideoCanvas facade must be loadable (script.* allowlist)"
+        }
+
+        // DENIED — the GL-backed impl, the bind/draw/unbind renderer, the cadence
+        // gate, and the underlying engine types are all outside `script.*`.
+        for (denied in listOf(
+            "dev.nitka.nodewire.client.video.NwCanvasVideoCanvas",
+            "dev.nitka.nodewire.client.video.VideoFrameRenderer",
+            "dev.nitka.nodewire.client.video.VideoManager",
+            "dev.nitka.nodewire.client.video.GlVideoSurface",
+            "net.minecraft.client.gui.GuiGraphics",
+            "net.minecraft.client.Minecraft",
+            "com.mojang.blaze3d.pipeline.TextureTarget",
+        )) {
+            assertThrows(ClassNotFoundException::class.java, {
+                guard.loadClass(denied)
+            }, "$denied must be denied by the sandbox loader")
+        }
+    }
 }

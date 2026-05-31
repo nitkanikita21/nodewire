@@ -356,6 +356,50 @@ abstract class ScriptModule {
         }
     }
 
+    // ── Video draw (client-only; spec §2 / Video subsystem Phase B) ──────
+    //
+    // Sandbox-safe by construction: `draw {}` only BUFFERS the (handle, closure)
+    // pair — it touches NO GL, no `client.video.*`, no engine type (all DENY'd
+    // by SandboxClassLoader). The host drains the buffer at the client
+    // rendezvous (fully-parked, race-free, exactly like `messages`) and replays
+    // each closure ON THE RENDER THREAD against a real GL-backed VideoCanvas via
+    // VideoFrameRenderer (the bind/draw/unbind dance, outside the sandbox). The
+    // script never holds the GL canvas across the boundary — only the closure
+    // is captured, and it's invoked later with the runtime-supplied facade.
+    //
+    // Cadence is the runtime's (VideoCadence), NOT the script's: a frame() that
+    // calls draw() every frame is throttled host-side, so it can't force
+    // unbounded GL passes (Finding F8).
+
+    /** One buffered draw request: which video, and the closure to run against its canvas. */
+    @PublishedApi internal class VideoDrawRequest(val handle: java.util.UUID, val block: VideoCanvas.() -> Unit)
+
+    private val videoDraws = ArrayList<VideoDrawRequest>()
+
+    /**
+     * Buffer a draw into [video]'s surface. Call from a `clientBehavior {}`
+     * `frame()` body. The [block] receives a [VideoCanvas] (clamped pure-2D
+     * verbs only) when the host replays it on the render thread. Last write per
+     * handle per frame wins is NOT enforced here — each call is one request, but
+     * the host's cadence gate caps how often a given handle is actually drawn.
+     *
+     * Server side this is a deliberate no-op (a server runtime never has a
+     * render thread); only a CLIENT runtime drains + replays.
+     */
+    fun draw(video: Video, block: VideoCanvas.() -> Unit) {
+        if (videoDraws.size < MAX_VIDEO_DRAWS_PER_FRAME) {
+            videoDraws.add(VideoDrawRequest(video.handle, block))
+        }
+    }
+
+    /** Host-side: take and clear the draw requests buffered since the last drain. */
+    @PublishedApi internal fun drainVideoDraws(): List<VideoDrawRequest> {
+        if (videoDraws.isEmpty()) return emptyList()
+        val copy = ArrayList<VideoDrawRequest>(videoDraws)
+        videoDraws.clear()
+        return copy
+    }
+
     // ── Debug messaging ─────────────────────────────────────────────────
     // Sandbox-safe: a script only appends to this buffer (no net.minecraft
     // access — the guard denies it). The host drains after each tick and
@@ -384,5 +428,8 @@ abstract class ScriptModule {
 
     companion object {
         private const val MAX_MESSAGES_PER_TICK = 64
+
+        /** Cap buffered draw requests per frame so a runaway loop can't balloon the list. */
+        private const val MAX_VIDEO_DRAWS_PER_FRAME = 64
     }
 }

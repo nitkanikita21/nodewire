@@ -1,11 +1,14 @@
 package dev.nitka.nodewire.client.script
 
+import dev.nitka.nodewire.client.video.VideoCadence
+import dev.nitka.nodewire.client.video.VideoFrameRenderer
 import dev.nitka.nodewire.script.ScriptCompileResult
 import dev.nitka.nodewire.script.ScriptCompilerRegistry
 import dev.nitka.nodewire.script.ScriptDispatchers
 import dev.nitka.nodewire.script.ScriptModule
 import dev.nitka.nodewire.script.ScriptRuntime
 import net.minecraft.nbt.CompoundTag
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
@@ -75,6 +78,9 @@ object ClientScriptNodeRuntime {
 
     private val LOG = com.mojang.logging.LogUtils.getLogger()
 
+    /** The "no video bound" handle (matches `Video.NONE`); never allocate a surface for it. */
+    private val NIL_VIDEO_HANDLE = UUID(0L, 0L)
+
     /**
      * Drive one CLIENT frame of the script [src], reading the node's staged
      * [replicatedState] tag (the BE's `clientReplicatedState` slot). Compiles
@@ -113,7 +119,34 @@ object ClientScriptNodeRuntime {
             }
         }
         rt.clientRendezvous(replicatedState, ClientScriptLog::drain)
+        replayVideoDraws(rt)
     }
+
+    /**
+     * Replay the script's buffered video draw requests ON THE RENDER THREAD
+     * (this method runs from the [ClientScriptDriver]'s render-stage callback).
+     * Each request is cadence-gated ([VideoCadence]) so a `frame()` that calls
+     * `draw()` every frame cannot force unbounded full-surface GL passes, then
+     * the closure runs against a real GL-backed canvas via [VideoFrameRenderer]
+     * (bind/draw/unbind in try/finally — GL state never leaks).
+     *
+     * The script's closure NEVER ran here on the worker — only the closure was
+     * captured; we invoke it now with the runtime-supplied [VideoCanvas] facade.
+     */
+    private fun replayVideoDraws(rt: ScriptRuntime) {
+        val draws = rt.takeVideoDraws()
+        if (draws.isEmpty()) return
+        val now = videoTick++
+        for (req in draws) {
+            // Skip the nil handle (an unbound Video) — never allocate a surface for it.
+            if (req.handle == NIL_VIDEO_HANDLE) continue
+            if (!VideoCadence.shouldDraw(req.handle, now)) continue
+            VideoFrameRenderer.drawInto(req.handle) { canvas -> req.block(canvas) }
+        }
+    }
+
+    /** Monotonic client-frame counter for the cadence gate. Render-thread only. */
+    private var videoTick: Long = 0L
 
     /** Cancel + drop the per-node runtime for a node (its client-state tag). */
     fun cancelForState(replicatedState: CompoundTag) {

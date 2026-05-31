@@ -82,6 +82,17 @@ class ScriptRuntime(
     fun takeReplicatedDeltas(): List<ScriptModule.ReplicatedDelta> =
         pendingDeltas.also { pendingDeltas = emptyList() }
 
+    /** Video draw requests buffered on the last owned CLIENT rendezvous (the
+     *  fully-parked, race-free point). Empty on a skipped frame / server path. */
+    private var pendingVideoDraws: List<ScriptModule.VideoDrawRequest> = emptyList()
+
+    /** Take + clear the video draw requests buffered on the last owned client
+     *  frame. The CLIENT frame driver replays them on the render thread (via
+     *  VideoFrameRenderer) — never the worker. Empty if the node skipped. */
+    @PublishedApi
+    internal fun takeVideoDraws(): List<ScriptModule.VideoDrawRequest> =
+        pendingVideoDraws.also { pendingVideoDraws = emptyList() }
+
     /** Realize the body's behaviors. Idempotent; called on first rendezvous.
      *  Launches THIS runtime's [side] list (SERVER → behavior{}, CLIENT →
      *  clientBehavior{}). */
@@ -216,6 +227,10 @@ class ScriptRuntime(
         ScriptModuleReplication.applyCells(module, replicatedState)
         // Drain client logs (CHAT dropped by the sink).
         module.drainMessages().let { if (it.isNotEmpty()) messageSink(it) }
+        // Drain video draws buffered by the last resume (fully-parked => race-free,
+        // same guarantee as drainMessages). The frame driver replays them on the
+        // render thread; we only hand off the buffered closures here.
+        pendingVideoDraws = module.drainVideoDraws()
         // Advance: resume the parked clientBehaviors on the worker; return at once.
         lastAdvanceNanos = System.nanoTime()
         clock.advance()

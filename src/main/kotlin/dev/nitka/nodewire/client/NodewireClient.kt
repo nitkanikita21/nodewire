@@ -5,7 +5,9 @@ import com.mojang.logging.LogUtils
 import dev.nitka.nodewire.client.command.HighlightCommand
 import dev.nitka.nodewire.client.highlight.BlockHighlightRenderer
 import dev.nitka.nodewire.client.script.ClientScriptCommand
+import dev.nitka.nodewire.client.screen.ScreenBlockRenderer
 import dev.nitka.nodewire.client.script.ClientScriptDriver
+import dev.nitka.nodewire.client.video.VideoManager
 import dev.nitka.nodewire.client.wire.WireWorldRenderer
 import dev.nitka.nodewire.ui.dev.DemoScreen
 import net.minecraft.client.KeyMapping
@@ -43,6 +45,13 @@ object NodewireClient {
 
     fun registerOnModBus(bus: IEventBus) {
         bus.addListener<RegisterKeyMappingsEvent> { it.register(OPEN_DEMO_KEY) }
+        // First BER in the repo: the video Screen face. MOD bus.
+        bus.addListener<net.neoforged.neoforge.client.event.EntityRenderersEvent.RegisterRenderers> { event ->
+            event.registerBlockEntityRenderer(
+                dev.nitka.nodewire.Registry.SCREEN_BLOCK_BE.get(),
+                ::ScreenBlockRenderer,
+            )
+        }
         FORGE_BUS.addListener(::onClientTick)
         FORGE_BUS.addListener<RenderLevelStageEvent>(WireWorldRenderer::render)
         FORGE_BUS.addListener<RenderLevelStageEvent>(BlockHighlightRenderer::onRender)
@@ -56,6 +65,9 @@ object NodewireClient {
     }
 
     private fun onClientTick(event: ClientTickEvent.Post) {
+        // Video handle GC sweep — runs every client tick regardless of whether a
+        // screen is open (the early-return below only gates the dev keybind).
+        VideoManager.onClientTick()
         if (Minecraft.getInstance().screen != null) return
         if (OPEN_DEMO_KEY.consumeClick()) {
             LOG.info("Opening DemoScreen")

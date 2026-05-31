@@ -1,5 +1,6 @@
 {
   "block.nodewire.logic_block": "Logic Block",
+  "block.nodewire.screen_block": "Screen Block",
   "item.nodewire.channel_link_tool": "Channel Link Tool",
 
   "key.categories.nodewire": "Nodewire",

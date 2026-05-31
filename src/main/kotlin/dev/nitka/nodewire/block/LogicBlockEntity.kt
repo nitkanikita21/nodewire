@@ -43,7 +43,7 @@ import net.neoforged.fml.ModList
  * runtime — no NBT round-trip; sources will re-populate on the next tick.
  */
 class LogicBlockEntity(pos: BlockPos, state: BlockState) :
-    BlockEntity(Registry.LOGIC_BLOCK_BE.get(), pos, state) {
+    BlockEntity(Registry.LOGIC_BLOCK_BE.get(), pos, state), ChannelInputSink {
 
     var graph: NodeGraph = NodeGraph()
 
@@ -792,11 +792,20 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
         if (bindings.isNotEmpty()) {
             for (binding in bindings) {
                 val value = perChannelValueCache[binding.sourceChannelName] ?: continue
-                val target = binding.target.resolve(level) as? LogicBlockEntity ?: continue
-                // Key by target's input name — they may differ from the
-                // source channel's name. The target reads this slot on its
-                // own next tick when it processes channel_input nodes.
-                target.externalChannelInputs[binding.targetChannelName] = value
+                val resolved = binding.target.resolve(level)
+                when (resolved) {
+                    // Logic→Logic: byte-identical legacy path (direct slot write).
+                    // Key by target's input name — they may differ from the
+                    // source channel's name. The target reads this slot on its
+                    // own next tick when it processes channel_input nodes.
+                    is LogicBlockEntity ->
+                        resolved.externalChannelInputs[binding.targetChannelName] = value
+                    // Additive: endpoint consumers that own no graph (e.g. the
+                    // video Screen) receive the same value via ChannelInputSink.
+                    is ChannelInputSink ->
+                        resolved.writeChannelInput(binding.targetChannelName, value)
+                    else -> {}
+                }
             }
         }
     }
@@ -1005,7 +1014,14 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
             it.typeKey.path == "channel_output"
                 && it.config.getString("name") == binding.sourceChannelName
         } ?: return true
-        val target = binding.target.resolve(level) as? LogicBlockEntity ?: return true
+        val resolved = binding.target.resolve(level)
+        // Graphless endpoint consumer (e.g. the video Screen): it has no
+        // channel_input node to match against — the binding is live as long as
+        // the source channel_output exists and the target BE is present.
+        if (resolved !is LogicBlockEntity) {
+            return resolved !is ChannelInputSink
+        }
+        val target = resolved
         val tgtNode = target.graph.nodes.values.firstOrNull {
             it.typeKey.path == "channel_input"
                 && it.config.getString("name") == binding.targetChannelName
@@ -1061,6 +1077,11 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
     internal fun nwWriteChannelInput(name: String, value: dev.nitka.nodewire.graph.PinValue) {
         externalChannelInputs[name] = value
         setChanged()
+    }
+
+    /** [ChannelInputSink] — delegates to the existing channel-input writer. */
+    override fun writeChannelInput(name: String, value: dev.nitka.nodewire.graph.PinValue) {
+        nwWriteChannelInput(name, value)
     }
 
     companion object {
