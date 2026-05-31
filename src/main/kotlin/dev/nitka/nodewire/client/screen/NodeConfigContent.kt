@@ -703,31 +703,22 @@ object NodeConfigContent {
     }
 
     /**
-     * Script: a short read-only preview of `config["src"]` (first few lines)
-     * plus a "📜 Edit" button that opens the full-screen [ScriptEditorScreen].
-     * Edits are applied on the editor's close (apply-on-close); this card only
-     * shows a glance of the current source.
+     * Script: just a "📜 Edit" button that opens the full-screen
+     * [ScriptEditorScreen]. The source lives server-side; edits apply on the
+     * editor's close (apply-on-close). No on-card source preview.
      */
     val Script: @Composable (Node) -> Unit = { node ->
         val editor = LocalEditorState.current
-        val src = node.config.getString("src")
-        val preview = src.lineSequence().take(3).joinToString("\n").ifEmpty { "(empty)" }
         val nodeName = dev.nitka.nodewire.graph.NodeTypeRegistry.get(node.typeKey)?.displayName ?: "Script"
-        Column(verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2)) {
-            Text(
-                preview,
-                style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceMuted),
-            )
-            Button(
-                onClick = {
-                    val pos = editor?.pos ?: return@Button
-                    net.minecraft.client.Minecraft.getInstance().setScreen(
-                        ScriptEditorScreen(pos, node.id, src, nodeName),
-                    )
-                },
-            ) {
-                Text("📜 Edit")
-            }
+        Button(
+            onClick = {
+                val pos = editor?.pos ?: return@Button
+                net.minecraft.client.Minecraft.getInstance().setScreen(
+                    ScriptEditorScreen(pos, node.id, node.config.getString("src"), nodeName),
+                )
+            },
+        ) {
+            Text("📜 Edit")
         }
     }
 
