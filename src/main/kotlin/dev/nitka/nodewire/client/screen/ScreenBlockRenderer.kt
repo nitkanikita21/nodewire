@@ -152,7 +152,7 @@ class ScreenBlockRenderer(
     companion object {
         /** Self-emission floor (block-light units, 0..15) so a screen stays
          *  readable in the dark while still brightening with environment light. */
-        private const val MIN_BLOCK_LIGHT = 10
+        private const val MIN_BLOCK_LIGHT = 14
         /**
          * A textured, lit render type bound to a **raw GL texture id**. The setup
          * shard binds the FBO colour attachment to sampler 0; the clear shard is a
