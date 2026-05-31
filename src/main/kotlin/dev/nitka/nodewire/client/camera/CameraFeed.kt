@@ -95,6 +95,16 @@ class CameraFeed(private val be: CameraBlockEntity) {
         return center to lookToYawPitch(localForward)
     }
 
+    /**
+     * The camera's **world-space** eye centre (Sable-aware, partial-tick smooth),
+     * or null if unresolvable. Used by the capture loop to skip rendering a feed
+     * the player is far from — see [VideoCameraCapture]'s distance gate. On a
+     * Sable sub-level this tracks the carrier, so a camera on the aircraft the
+     * player is riding stays "near" and keeps rendering.
+     */
+    fun worldEye(level: Level, deltaTracker: DeltaTracker): Vec3? =
+        worldPose(level, deltaTracker)?.first
+
     /** Facing yaw of the BE block (north=0), combined with the channel yaw offset. */
     private fun facingYawDeg(): Double {
         val dir = be.blockState.getValue(dev.nitka.nodewire.block.CameraBlock.FACING)

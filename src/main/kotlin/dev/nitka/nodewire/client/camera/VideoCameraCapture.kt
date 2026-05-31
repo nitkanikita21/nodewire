@@ -45,6 +45,17 @@ object VideoCameraCapture {
     /** Square capture FBO is 1:1; the window is forced to this during capture. */
     private const val CAPTURE_WINDOW = 100
 
+    /**
+     * Only render a feed whose camera is within this many blocks of the player.
+     * Rendering the world from a camera POV near the edge of (or beyond) the
+     * player's render distance thrashes the chunk render dispatcher and makes
+     * the player's own chunks flicker, so far cameras are skipped entirely.
+     * Measured against the camera's Sable-aware world centre, so a camera on a
+     * sub-level the player rides stays in range.
+     */
+    private const val MAX_CAPTURE_DISTANCE = 16.0
+    private const val MAX_CAPTURE_DISTANCE_SQ = MAX_CAPTURE_DISTANCE * MAX_CAPTURE_DISTANCE
+
     /** Wall-clock time (GLFW seconds) of the last frame on which we rendered any feed. */
     @Volatile
     private var lastFrameRenderedSec: Double = 0.0
@@ -73,6 +84,14 @@ object VideoCameraCapture {
         var budget = Mth.ceil(FPS_CAP * (all.size + 1).toDouble() / mc.fps.toDouble())
         val active = all.asSequence()
             .filter { now >= it.lastActiveTimeSec + FRAME_INTERVAL }
+            // Distance gate (Sable-aware): skip cameras the player is far from —
+            // rendering their POV near the render-distance edge flickers the
+            // player's own chunks. Unresolvable pose (sub-level gone) -> skip.
+            .filter { feed ->
+                feed.worldEye(level, deltaTracker)?.let {
+                    player.distanceToSqr(it) <= MAX_CAPTURE_DISTANCE_SQ
+                } ?: false
+            }
             .filter { it.hasFrameInFrustum(playerFrustum) }
             .take(MAX_ACTIVE)
             .filter { budget-- > 0 }
