@@ -432,7 +432,22 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
                 && it.target.payload.blockPos == targetPos
                 && it.targetChannelName == targetChannelName
         }
-        if (removed) setChanged()
+        if (removed) {
+            setChanged()
+            // If the target is a non-Logic channel sink (e.g. a video Screen),
+            // clear its slot so it blanks on unbind — its transient input is
+            // otherwise never reset (delivery just stops, leaving the last value).
+            val lvl = level
+            val tgt = lvl?.getBlockEntity(targetPos)
+            if (tgt is ChannelInputSink && tgt !is LogicBlockEntity) {
+                val state = lvl.getBlockState(targetPos)
+                val type = ChannelTargetRegistry.lookup(state)
+                    .slotsFor(lvl, targetPos, state, net.minecraft.core.Direction.NORTH)
+                    .firstOrNull { it.name == targetChannelName }?.type
+                    ?: dev.nitka.nodewire.graph.PinType.VIDEO
+                tgt.writeChannelInput(targetChannelName, dev.nitka.nodewire.graph.PinValue.default(type))
+            }
+        }
         return removed
     }
 
