@@ -186,6 +186,9 @@ abstract class ScriptModule {
 
     inline fun <reified T> output(name: String): Output<T> {
         specsOut[name] = PinSpec(name, scriptPinType<T>(), false)
+        // A video output auto-carries a stable handle (per pin name) so the pin
+        // emits a real surface and draw(out){…} works with no manual minting.
+        if (T::class == Video::class && name !in outputs) outputs[name] = video(name)
         return object : Output<T> {
             override var value: T
                 @Suppress("UNCHECKED_CAST")
@@ -396,6 +399,14 @@ abstract class ScriptModule {
      */
     fun video(name: String): Video =
         Video(java.util.UUID.nameUUIDFromBytes("nodewire-video:$name".toByteArray(Charsets.UTF_8)))
+
+    /**
+     * Draw into the video surface of [out] — a specific `output<Video>` pin. The
+     * handle [out] already carries (auto-assigned at declaration) flows out the pin
+     * to a Screen, so a node can have several video outputs and `draw()` each
+     * independently: `draw(left){…}` / `draw(right){…}`. Call from a `clientBehavior`.
+     */
+    fun draw(out: Output<Video>, block: VideoCanvas.() -> Unit) = draw(out.value, block)
 
     fun draw(video: Video, block: VideoCanvas.() -> Unit) {
         if (videoDraws.size < MAX_VIDEO_DRAWS_PER_FRAME) {
