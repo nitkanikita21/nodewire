@@ -1,5 +1,6 @@
 package dev.nitka.nodewire.item
 
+import dev.nitka.nodewire.block.CameraBlockEntity
 import dev.nitka.nodewire.block.LogicBlockEntity
 import dev.nitka.nodewire.client.screen.AeroChannelPickerScreen
 import dev.nitka.nodewire.client.screen.AeroTargetPickerScreen
@@ -9,6 +10,7 @@ import dev.nitka.nodewire.graph.PinType
 import dev.nitka.nodewire.integration.aeronautics.AeroBlockKind
 import dev.nitka.nodewire.integration.aeronautics.AeroChannel
 import dev.nitka.nodewire.net.BindAeroSourcePacket
+import dev.nitka.nodewire.net.BindCameraSourcePacket
 import dev.nitka.nodewire.net.BindChannelPacket
 import dev.nitka.nodewire.net.BindRemoteRedstonePacket
 import dev.nitka.nodewire.net.BindSideChannelPacket
@@ -102,7 +104,8 @@ class ChannelLinkToolItem(props: Properties) : Item(props) {
                         aeroTag.putString("blockKind", k.name)
                         aeroTag.putString("channel", ch.name)
                         newTag.put(NBT_AERO_SOURCE, aeroTag)
-                        // Mutual exclusion: clear the classic source if set.
+                        // Mutual exclusion: clear the classic + camera source if set.
+                        newTag.remove(NBT_CAMERA_SOURCE_POS)
                         newTag.remove(NBT_SOURCE_POS)
                         newTag.remove(NBT_SOURCE_NAME)
                         stack.set(DataComponents.CUSTOM_DATA, CustomData.of(newTag))
@@ -111,6 +114,24 @@ class ChannelLinkToolItem(props: Properties) : Item(props) {
                 )
                 return InteractionResult.SUCCESS
             }
+        }
+
+        // Branch 1a: Camera source-set — sneak + RMB on a Camera block makes it a
+        // VIDEO source. Must run BEFORE the RemoteRedstone branch, which would
+        // otherwise claim the camera as a generic redstone source.
+        if (level.isClientSide && player.isShiftKeyDown &&
+            level.getBlockEntity(pos) is CameraBlockEntity
+        ) {
+            val newTag = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag()
+            newTag.put(NBT_CAMERA_SOURCE_POS, NbtUtils.writeBlockPos(pos))
+            // Mutual exclusion with the other source modes.
+            newTag.remove(NBT_AERO_SOURCE)
+            newTag.remove(NBT_REDSTONE_SOURCE_POS)
+            newTag.remove(NBT_SOURCE_POS)
+            newTag.remove(NBT_SOURCE_NAME)
+            stack.set(DataComponents.CUSTOM_DATA, CustomData.of(newTag))
+            actionBar("Camera source: (${pos.x},${pos.y},${pos.z}) — right-click a Screen to bind", false)
+            return InteractionResult.SUCCESS
         }
 
         // Branch 1b: RemoteRedstone source-set — sneak + RMB on any non-Aero,
@@ -122,6 +143,7 @@ class ChannelLinkToolItem(props: Properties) : Item(props) {
             newTag.put(NBT_REDSTONE_SOURCE_POS, NbtUtils.writeBlockPos(pos))
             // Mutual exclusion with the other source modes.
             newTag.remove(NBT_AERO_SOURCE)
+            newTag.remove(NBT_CAMERA_SOURCE_POS)
             newTag.remove(NBT_SOURCE_POS)
             newTag.remove(NBT_SOURCE_NAME)
             stack.set(DataComponents.CUSTOM_DATA, CustomData.of(newTag))
@@ -133,7 +155,12 @@ class ChannelLinkToolItem(props: Properties) : Item(props) {
         // source. Shift+RMB here does nothing (no source to set on this
         // kind of block).
         if (level.isClientSide && !player.isShiftKeyDown) {
-            handleNonLogicTarget(stack, ctx)
+            val tag = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag()
+            if (tag.contains(NBT_CAMERA_SOURCE_POS)) {
+                handleCameraTarget(stack, ctx)
+            } else {
+                handleNonLogicTarget(stack, ctx)
+            }
         }
         return InteractionResult.sidedSuccess(level.isClientSide)
     }
@@ -280,6 +307,44 @@ class ChannelLinkToolItem(props: Properties) : Item(props) {
         }
     }
 
+    /**
+     * Right-click a block while a Camera source is set in the stack. If the
+     * target exposes a VIDEO channel slot (e.g. a Screen), fire a
+     * [BindCameraSourcePacket] one-shot binding `camera.handle → target slot`
+     * and clear the stored source.
+     */
+    private fun handleCameraTarget(stack: ItemStack, ctx: UseOnContext) {
+        val tag = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag()
+        val cameraPos = NbtUtils.readBlockPos(tag, NBT_CAMERA_SOURCE_POS).orElse(null) ?: run {
+            actionBar("Invalid camera source stored", true)
+            return
+        }
+        val targetPos = ctx.clickedPos
+        if (targetPos == cameraPos) {
+            actionBar("Right-click a Screen, not the camera itself", true)
+            return
+        }
+        val state = ctx.level.getBlockState(targetPos)
+        val acceptsVideo = dev.nitka.nodewire.block.ChannelTargetRegistry.lookup(state)
+            .slotsFor(ctx.level, targetPos, state, ctx.clickedFace)
+            .filterIsInstance<dev.nitka.nodewire.block.TargetSlot.Channel>()
+            .any { it.type == PinType.VIDEO }
+        if (!acceptsVideo) {
+            actionBar("Nothing here accepts a video channel", true)
+            return
+        }
+        val targetRef = dev.nitka.nodewire.endpoint.EndpointRef.from(ctx.level, targetPos)
+        PacketDistributor.sendToServer(BindCameraSourcePacket(cameraPos, targetRef))
+        val newTag = stack.getOrDefault(DataComponents.CUSTOM_DATA, CustomData.EMPTY).copyTag()
+        newTag.remove(NBT_CAMERA_SOURCE_POS)
+        stack.set(DataComponents.CUSTOM_DATA, CustomData.of(newTag))
+        actionBar(
+            "Bound camera (${cameraPos.x},${cameraPos.y},${cameraPos.z}) → " +
+                "(${targetPos.x},${targetPos.y},${targetPos.z})",
+            false,
+        )
+    }
+
     private fun openSourcePicker(stack: ItemStack, be: LogicBlockEntity) {
         val mc = Minecraft.getInstance()
         val srcPos = be.blockPos
@@ -364,5 +429,6 @@ class ChannelLinkToolItem(props: Properties) : Item(props) {
         private const val NBT_SOURCE_NAME = "source_name"
         private const val NBT_AERO_SOURCE = "aeroSource"
         private const val NBT_REDSTONE_SOURCE_POS = "redstoneSourcePos"
+        private const val NBT_CAMERA_SOURCE_POS = "cameraSourcePos"
     }
 }

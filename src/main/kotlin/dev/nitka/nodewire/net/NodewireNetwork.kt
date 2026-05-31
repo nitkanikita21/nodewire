@@ -25,6 +25,7 @@ object NodewireNetwork {
         registrar.playToServer(BindAeroSourcePacket.TYPE, BindAeroSourcePacket.STREAM_CODEC, BindAeroSourcePacket::handle)
         registrar.playToServer(BindSideChannelPacket.TYPE, BindSideChannelPacket.STREAM_CODEC, BindSideChannelPacket::handle)
         registrar.playToServer(BindRemoteRedstonePacket.TYPE, BindRemoteRedstonePacket.STREAM_CODEC, BindRemoteRedstonePacket::handle)
+        registrar.playToServer(BindCameraSourcePacket.TYPE, BindCameraSourcePacket.STREAM_CODEC, BindCameraSourcePacket::handle)
         registrar.playToServer(RemoveBindingPacket.TYPE, RemoveBindingPacket.STREAM_CODEC, RemoveBindingPacket::handle)
         registrar.playToServer(SetBlockNamePacket.TYPE, SetBlockNamePacket.STREAM_CODEC, SetBlockNamePacket::handle)
         registrar.playToServer(SetSideBindingNamePacket.TYPE, SetSideBindingNamePacket.STREAM_CODEC, SetSideBindingNamePacket::handle)
