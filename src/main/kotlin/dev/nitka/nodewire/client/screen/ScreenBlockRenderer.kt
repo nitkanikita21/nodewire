@@ -86,10 +86,13 @@ class ScreenBlockRenderer(
         // textured front faces outward along the facing normal.
         val (a, b, c, d) = faceCorners(facing, o)
         // (u,v) per corner: bottom-left, bottom-right, top-right, top-left.
-        vertex(consumer, matrix, a, 0f, 1f, facing, light)
-        vertex(consumer, matrix, b, 1f, 1f, facing, light)
-        vertex(consumer, matrix, c, 1f, 0f, facing, light)
-        vertex(consumer, matrix, d, 0f, 0f, facing, light)
+        // The GuiGraphics ortho (top-left origin, y-down) draws an UPRIGHT image
+        // into the FBO; sampled with v=0 at the face bottom it shows upright, so
+        // the face's bottom edge takes v=0 and the top edge v=1.
+        vertex(consumer, matrix, a, 0f, 0f, facing, light)
+        vertex(consumer, matrix, b, 1f, 0f, facing, light)
+        vertex(consumer, matrix, c, 1f, 1f, facing, light)
+        vertex(consumer, matrix, d, 0f, 1f, facing, light)
     }
 
     private fun vertex(
