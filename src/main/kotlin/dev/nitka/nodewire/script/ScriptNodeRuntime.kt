@@ -158,6 +158,7 @@ object ScriptNodeRuntime {
 
     private fun compile(src: String) {
         val compiler = ScriptCompilerRegistry.compiler
+        val t0 = System.nanoTime()
         val entry = if (compiler == null) {
             Entry.Failed(listOf("Nodewire Scripting addon not installed"))
         } else {
@@ -169,9 +170,10 @@ object ScriptNodeRuntime {
             }.getOrElse { Entry.Failed(listOf("compiler threw: ${it::class.simpleName}: ${it.message}")) }
         }
         cache[src] = entry
+        val ms = (System.nanoTime() - t0) / 1_000_000
         when (entry) {
-            is Entry.Failed -> LOG.warn("NW-SCRIPT compile FAILED: {}", entry.diagnostics.joinToString(" | "))
-            is Entry.Ready -> LOG.info("NW-SCRIPT compiled OK")
+            is Entry.Failed -> LOG.warn("NW-SCRIPT compile FAILED ({} ms): {}", ms, entry.diagnostics.joinToString(" | "))
+            is Entry.Ready -> LOG.info("NW-SCRIPT compiled OK in {} ms", ms)
             else -> {}
         }
     }
