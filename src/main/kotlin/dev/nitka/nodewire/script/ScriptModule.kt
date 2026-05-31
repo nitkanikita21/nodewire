@@ -350,8 +350,9 @@ abstract class ScriptModule {
             is Boolean -> StateKind.BOOL
             is String -> StateKind.STRING
             is Redstone -> StateKind.REDSTONE
+            is Video -> StateKind.VIDEO
             else -> throw ScriptDeclException(
-                "state var must be Int/Float/Boolean/String/Redstone (got ${init?.let { it::class.simpleName } ?: "null"})",
+                "state var must be Int/Float/Boolean/String/Redstone/Video (got ${init?.let { it::class.simpleName } ?: "null"})",
             )
         }
         return PropertyDelegateProvider { _, prop ->

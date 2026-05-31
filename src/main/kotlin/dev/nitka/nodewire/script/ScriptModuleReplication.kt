@@ -19,6 +19,7 @@ object ScriptModuleReplication {
             StateKind.BOOL -> tag.putBoolean(delta.key, delta.value as Boolean)
             StateKind.STRING -> tag.putString(delta.key, delta.value as String)
             StateKind.REDSTONE -> tag.putInt(delta.key, (delta.value as Redstone).power)
+            StateKind.VIDEO -> tag.putUUID(delta.key, (delta.value as Video).handle)
         }
         return tag
     }

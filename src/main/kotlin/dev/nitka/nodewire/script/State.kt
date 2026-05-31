@@ -8,4 +8,4 @@ package dev.nitka.nodewire.script
 class StateCell<T>(val key: String, var value: T, val kind: StateKind, val replicated: Boolean = false)
 
 /** The NBT-persistable allowlist for `state(...)` cells. */
-enum class StateKind { INT, FLOAT, BOOL, STRING, REDSTONE }
+enum class StateKind { INT, FLOAT, BOOL, STRING, REDSTONE, VIDEO }

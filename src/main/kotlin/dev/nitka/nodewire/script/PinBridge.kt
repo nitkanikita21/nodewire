@@ -71,6 +71,7 @@ internal fun ScriptModule.loadState(tag: CompoundTag) {
             StateKind.BOOL -> tag.getBoolean(cell.key)
             StateKind.STRING -> tag.getString(cell.key)
             StateKind.REDSTONE -> Redstone.of(tag.getInt(cell.key))
+            StateKind.VIDEO -> Video(tag.getUUID(cell.key))
         }
     }
 }
@@ -84,6 +85,7 @@ internal fun ScriptModule.saveState(tag: CompoundTag) {
             StateKind.BOOL -> tag.putBoolean(cell.key, cell.value as Boolean)
             StateKind.STRING -> tag.putString(cell.key, cell.value as String)
             StateKind.REDSTONE -> tag.putInt(cell.key, (cell.value as Redstone).power)
+            StateKind.VIDEO -> tag.putUUID(cell.key, (cell.value as Video).handle)
         }
     }
 }
