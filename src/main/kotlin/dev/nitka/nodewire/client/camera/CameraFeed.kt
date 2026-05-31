@@ -40,6 +40,11 @@ class CameraFeed(private val be: CameraBlockEntity) {
     var removed: Boolean = false
         private set
 
+    /** Consecutive `renderLevel` failures — used to throttle the error log and
+     *  detect a persistently-broken feed without dropping it after one hiccup. */
+    @Volatile
+    var renderFailures: Int = 0
+
     fun markForRemoval() {
         removed = true
     }

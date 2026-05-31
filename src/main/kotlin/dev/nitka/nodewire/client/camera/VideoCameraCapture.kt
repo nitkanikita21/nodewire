@@ -166,9 +166,17 @@ object VideoCameraCapture {
                     mc.gameRenderer.renderLevel(DeltaTracker.ONE)
 
                     feed.lastActiveTimeSec = now
+                    if (feed.renderFailures != 0) {
+                        LOG.info("[NW-CAMERA] feed {} recovered after {} failures", feed.handle, feed.renderFailures)
+                        feed.renderFailures = 0
+                    }
                 } catch (t: Throwable) {
-                    LOG.warn("camera feed {} capture failed; dropping", feed.handle, t)
-                    feed.markForRemoval()
+                    // Do NOT drop the feed on a single failure — the FBO would be
+                    // stuck at its (white) clear colour forever. Retry each frame,
+                    // throttle the log so a persistent error is visible but not spam.
+                    if (feed.renderFailures++ % 100 == 0) {
+                        LOG.warn("[NW-CAMERA] feed {} renderLevel failed (attempt {})", feed.handle, feed.renderFailures, t)
+                    }
                 }
             }
         } finally {
