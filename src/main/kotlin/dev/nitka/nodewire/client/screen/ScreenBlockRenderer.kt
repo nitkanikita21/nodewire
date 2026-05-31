@@ -48,17 +48,9 @@ class ScreenBlockRenderer(
         // capture pass is in flight. Inert until Component 4 exists.
         if (VideoManager.isCapturing()) return
 
-        val handle = be.videoHandle()
-        dev.nitka.nodewire.client.video.VideoDebug.log("ber@${be.blockPos.toShortString()}") {
-            "handle=${handle?.toString()?.take(8) ?: "null"}"
-        }
-        if (handle == null) return
-        val surface = VideoManager.getOrCreate(handle) as? GlVideoSurface ?: run {
-            dev.nitka.nodewire.client.video.VideoDebug.log("ber-surf") { "no GL surface for ${handle.toString().take(8)}" }
-            return
-        }
+        val handle = be.videoHandle() ?: return
+        val surface = VideoManager.getOrCreate(handle) as? GlVideoSurface ?: return
         val texId = surface.colorTextureId()
-        dev.nitka.nodewire.client.video.VideoDebug.log("ber-tex") { "render ${handle.toString().take(8)} texId=$texId facing=${be.blockState.getValue(ScreenBlock.FACING)}" }
 
         val facing = be.blockState.getValue(ScreenBlock.FACING)
         val type = renderTypeFor(texId)

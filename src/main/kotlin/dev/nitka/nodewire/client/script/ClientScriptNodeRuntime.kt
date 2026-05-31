@@ -154,10 +154,7 @@ object ClientScriptNodeRuntime {
             // Skip the nil handle (an unbound Video) — never allocate a surface for it.
             if (req.handle == NIL_VIDEO_HANDLE) continue
             if (!VideoCadence.shouldDraw(req.handle, now)) continue
-            val ok = VideoFrameRenderer.drawInto(req.handle) { canvas -> req.block(canvas) }
-            dev.nitka.nodewire.client.video.VideoDebug.log("replay") {
-                "drew into ${req.handle.toString().take(8)} ok=$ok (${draws.size} req this frame)"
-            }
+            VideoFrameRenderer.drawInto(req.handle) { canvas -> req.block(canvas) }
         }
     }
 
