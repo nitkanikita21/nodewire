@@ -355,6 +355,29 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
         return changed
     }
 
+    /**
+     * Bind this BE's [sourceChannelName] (`channel_output`) to a non-Logic
+     * [ChannelInputSink] target's named slot (e.g. a video Screen). The delivery
+     * loop writes the value via [ChannelInputSink.writeChannelInput]. Returns
+     * false if the source channel_output is missing; TYPE compatibility is the
+     * caller's job (validated against the target's [TargetSlot]).
+     */
+    fun addSinkBinding(sourceChannelName: String, target: EndpointRef, targetChannelName: String): Boolean {
+        if (sourceChannelName.isEmpty() || targetChannelName.isEmpty()) return false
+        val hasSource = graph.nodes.values.any {
+            it.typeKey.path == "channel_output" && it.config.getString("name") == sourceChannelName
+        }
+        if (!hasSource) return false
+        bindings.removeAll {
+            it.sourceChannelName == sourceChannelName &&
+                it.target.payload.blockPos == target.payload.blockPos &&
+                it.targetChannelName == targetChannelName
+        }
+        bindings.add(ChannelBinding(sourceChannelName, target, targetChannelName))
+        setChanged()
+        return true
+    }
+
     fun bindingsSnapshot(): List<ChannelBinding> = bindings.toList()
     fun sideBindingsSnapshot(): List<SideBinding> = sideBindings.toList()
     fun remoteRedstoneBindingsSnapshot(): List<RemoteRedstoneBinding> = remoteRedstoneBindings.toList()

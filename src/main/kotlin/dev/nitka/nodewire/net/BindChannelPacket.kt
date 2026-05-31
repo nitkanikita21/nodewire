@@ -71,7 +71,13 @@ data class BindChannelPacket(
                 notify(player as net.minecraft.server.level.ServerPlayer, "Source block missing at ${packet.sourcePos.toShortString()}")
                 return
             }
-            val tgtBe = packet.target.resolve(level) as? LogicBlockEntity
+            val tgtResolved = packet.target.resolve(level)
+            // Non-Logic channel sink (e.g. a video Screen) — bind to its named slot.
+            if (tgtResolved is dev.nitka.nodewire.block.ChannelInputSink && tgtResolved !is LogicBlockEntity) {
+                handleSinkTarget(level, player as net.minecraft.server.level.ServerPlayer, srcBe, packet)
+                return
+            }
+            val tgtBe = tgtResolved as? LogicBlockEntity
             if (tgtBe == null) {
                 LOG.warn("Bind rejected: target BE missing at {}", packet.target)
                 notify(player as net.minecraft.server.level.ServerPlayer, "Target block missing at ${packet.target.payload.blockPos.toShortString()}")
@@ -102,6 +108,40 @@ data class BindChannelPacket(
                     )
                     notify(player as net.minecraft.server.level.ServerPlayer, "Type mismatch: ${res.srcType.name.lowercase()} → ${res.tgtType.name.lowercase()}")
                 }
+            }
+        }
+
+        /** Bind a channel_output to a non-Logic [ChannelInputSink]'s named slot
+         *  (e.g. a video Screen). Validates the slot exists + the source type can
+         *  convert to it, then records a ChannelBinding the delivery loop honours. */
+        private fun handleSinkTarget(
+            level: net.minecraft.world.level.Level,
+            player: net.minecraft.server.level.ServerPlayer,
+            srcBe: LogicBlockEntity,
+            packet: BindChannelPacket,
+        ) {
+            val pos = packet.target.payload.blockPos
+            val state = level.getBlockState(pos)
+            val slot = dev.nitka.nodewire.block.ChannelTargetRegistry.lookup(state)
+                .slotsFor(level, pos, state, net.minecraft.core.Direction.NORTH)
+                .filterIsInstance<dev.nitka.nodewire.block.TargetSlot.Channel>()
+                .firstOrNull { it.name == packet.targetChannelName }
+            if (slot == null) {
+                notify(player, "Target has no channel slot '${packet.targetChannelName}'"); return
+            }
+            val srcType = srcBe.graph.nodes.values.firstOrNull {
+                it.typeKey.path == "channel_output" && it.config.getString("name") == packet.sourceChannelName
+            }?.let { dev.nitka.nodewire.graph.PinType.fromName(it.config.getString("type")) }
+            if (srcType == null) {
+                notify(player, "Source channel '${packet.sourceChannelName}' missing"); return
+            }
+            if (!dev.nitka.nodewire.graph.PinValueConversion.canConvert(srcType, slot.type)) {
+                notify(player, "Type ${srcType.name.lowercase()} → ${slot.type.name.lowercase()} can't connect"); return
+            }
+            if (srcBe.addSinkBinding(packet.sourceChannelName, packet.target, packet.targetChannelName)) {
+                level.sendBlockUpdated(packet.sourcePos, srcBe.blockState, srcBe.blockState, net.minecraft.world.level.block.Block.UPDATE_CLIENTS)
+            } else {
+                notify(player, "Bind failed")
             }
         }
 

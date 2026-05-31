@@ -245,20 +245,39 @@ class ChannelLinkToolItem(props: Properties) : Item(props) {
             return
         }
         val sourceType = PinType.fromName(sourceNode.config.getString("type"))
-        if (sourceType != PinType.BOOL && sourceType != PinType.INT && sourceType != PinType.REDSTONE) {
-            actionBar("Channel type ${sourceType.name.lowercase()} can't drive a redstone side", true)
+        val targetPos = ctx.clickedPos
+        val state = ctx.level.getBlockState(targetPos)
+        // Ask the target block what it accepts. A ChannelTargetProvider (e.g. the
+        // video Screen) offers named channel slots; any other block falls back to
+        // a redstone side. Keep only slots the source type can drive.
+        val targetRef = dev.nitka.nodewire.endpoint.EndpointRef.from(mc.level!!, targetPos)
+        val slots = dev.nitka.nodewire.block.ChannelTargetRegistry.lookup(state)
+            .slotsFor(ctx.level, targetPos, state, ctx.clickedFace)
+            .filter { dev.nitka.nodewire.graph.PinValueConversion.canConvert(sourceType, it.type) }
+        if (slots.isEmpty()) {
+            actionBar("Nothing here accepts a ${sourceType.name.lowercase()} channel", true)
             return
         }
-        val targetPos = ctx.clickedPos
-        val targetSide = ctx.clickedFace
-        // No adjacency requirement — virtual signals travel via VirtualSignalMap
-        // surfaced through a Level mixin, so the source can be anywhere.
-        val targetRef = dev.nitka.nodewire.endpoint.EndpointRef.from(mc.level!!, targetPos)
-        PacketDistributor.sendToServer(BindSideChannelPacket(sourcePos, sourceName, targetRef, targetSide))
-        actionBar(
-            "Bound (${sourcePos.x},${sourcePos.y},${sourcePos.z})/$sourceName → (${targetPos.x},${targetPos.y},${targetPos.z}) ${targetSide.name.lowercase()}",
-            false,
-        )
+        fun bind(slot: dev.nitka.nodewire.block.TargetSlot) {
+            when (slot) {
+                is dev.nitka.nodewire.block.TargetSlot.Channel ->
+                    PacketDistributor.sendToServer(
+                        dev.nitka.nodewire.net.BindChannelPacket(sourcePos, sourceName, targetRef, slot.name),
+                    )
+                is dev.nitka.nodewire.block.TargetSlot.Side ->
+                    PacketDistributor.sendToServer(BindSideChannelPacket(sourcePos, sourceName, targetRef, slot.face))
+            }
+            actionBar("Bound $sourceName → (${targetPos.x},${targetPos.y},${targetPos.z})/${slot.name}", false)
+        }
+        if (slots.size == 1) {
+            bind(slots[0])
+        } else {
+            mc.setScreen(
+                ChannelPickerScreen("Target slot", slots.map { ChannelPickerScreen.Option(it.name, it.type) }) { picked ->
+                    slots.firstOrNull { it.name == picked }?.let(::bind)
+                },
+            )
+        }
     }
 
     private fun openSourcePicker(stack: ItemStack, be: LogicBlockEntity) {
