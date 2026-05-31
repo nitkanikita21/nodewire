@@ -55,6 +55,7 @@ fun WireLayer() {
             PinType.VEC2 to c.pinVec2,
             PinType.VEC3 to c.pinVec3,
             PinType.QUAT to c.pinQuat,
+            PinType.VIDEO to c.pinVideo,
             PinType.ANY to c.pinAny,
         )
     }
