@@ -50,7 +50,9 @@ class StockNodeTypesTest {
         // Algorithm nodes (v0.3.0): if_then_else, switch, sample_hold,
         // latch_sr, latch_d, sequencer, clamp, map, lerp, smooth, pid
         // added (+11 → 36).
-        assertEquals(36, NodeTypeRegistry.all().size)
+        // Script node (Layer C): script added (+1 → 37).
+        // Block Sensor: block_sensor added (+1 → 38).
+        assertEquals(38, NodeTypeRegistry.all().size)
     }
 
     @Test
