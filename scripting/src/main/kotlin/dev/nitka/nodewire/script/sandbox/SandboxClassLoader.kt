@@ -38,18 +38,26 @@ class SandboxClassLoader(private val modLoader: ClassLoader) : ClassLoader(null)
      * broadly permitted.
      *
      * NOTE (empirically derived, spec §6.2 / §13.2): `kotlin.reflect.*` is NOT
-     * denied — the reified `scriptPinType<T>()` (`T::class`) and the
+     * broadly denied — the reified `scriptPinType<T>()` (`T::class`) and the
      * `var x by state(…)` delegated-property references compile to
-     * `kotlin.reflect.jvm.internal.*` / `KProperty` machinery, so denying it
-     * yields `ArrayStoreException` / `ExceptionInInitializerError` at link time.
-     * It loads VIA_MOD (host identity). Residual to tighten later:
-     * `kotlin.reflect.full.*` is the *calling* surface and could be denied
-     * separately once a finer split is wired.
+     * `kotlin.reflect.jvm.internal.*` / `KProperty` machinery, so denying the
+     * whole package yields `ArrayStoreException` / `ExceptionInInitializerError`
+     * at link time. The basic surface loads VIA_MOD (host identity).
+     *
+     * Hardening #2: `kotlin.reflect.full.*` IS now denied. That sub-package is
+     * the *reflective calling* surface (`KClass.memberFunctions`,
+     * `.declaredMemberProperties`, `.createInstance()`, `.callSuspend(…)`, …) —
+     * the part an author would use to reach private/host internals or invoke
+     * arbitrary members. It is NOT touched by `T::class`, `KProperty`
+     * delegation, or `reified` codegen (those stay in `kotlin.reflect` /
+     * `kotlin.reflect.jvm.internal`), so denying `kotlin.reflect.full.` leaves
+     * state-delegates + reified pin types working while closing the call path.
      */
     private val deniedKotlin = listOf(
         "kotlin.io.",
         "kotlin.concurrent.",
         "kotlin.system.",
+        "kotlin.reflect.full.",
     )
 
     private val deniedJava = listOf(
@@ -57,12 +65,54 @@ class SandboxClassLoader(private val modLoader: ClassLoader) : ClassLoader(null)
         "java.nio.",
         "java.net.",
         "java.lang.reflect.",
+        "java.lang.invoke.MethodHandles",
+        // Adversarial-review additions (Phase 2c security pass). The broad
+        // `java.*`/`javax.*` → VIA_PLATFORM delegation (classify) is a CAPABILITY
+        // sieve: every one of these would otherwise load and hand untrusted author
+        // code a full escape. None is touched by benign codegen / lambda-indy
+        // (verified: lambdas keep working with all of these denied — they bootstrap
+        // via the JVM-supplied LambdaMetafactory/MethodType/MethodHandle, none of
+        // which match these prefixes).
+        //
+        //  - System: System.exit / load / loadLibrary (native) / get|setProperty.
+        //  - ClassLoader: ClassLoader.getSystemClassLoader() returns the REAL app
+        //    loader, whose loadClass bypasses this guard entirely → total defeat.
+        //  - java.lang.foreign.*: Panama FFI (Linker/MemorySegment) = native
+        //    downcalls = arbitrary native code on JDK 21.
+        //  - ProcessHandle: enumerate / signal-kill OS processes.
+        //  - java.lang.invoke.{VarHandle,MethodHandleProxies,ConstantBootstraps}:
+        //    low-level field/array pokes + handle-proxy synthesis; deny for defense
+        //    in depth (the MethodHandles factory + Lookup are already denied, while
+        //    MethodHandle/MethodType/LambdaMetafactory stay allowed for lambda indy).
+        //  - java.security.*: AccessController.doPrivileged, Policy, Permission.
+        //  - javax.script.*: spin up another (unsandboxed) ScriptEngine.
+        //  - java.util.ServiceLoader: load arbitrary service providers.
+        //  - java.lang.ref.*: Cleaner / Reference finalization hooks.
+        //  - java.lang.SecurityManager / java.lang.Shutdown / java.lang.Module:
+        //    privilege + JPMS reflection surface (Module.implAddReads etc.).
+        "java.lang.System",
+        "java.lang.ClassLoader",
+        "java.lang.foreign.",
+        "java.lang.ProcessHandle",
+        "java.lang.invoke.VarHandle",
+        "java.lang.invoke.MethodHandleProxies",
+        "java.lang.invoke.ConstantBootstraps",
+        "java.lang.SecurityManager",
+        "java.lang.Shutdown",
+        "java.lang.Module",
+        "java.lang.ModuleLayer",
         "java.lang.Runtime",
         "java.lang.ProcessBuilder",
         "java.lang.Process",
         "java.lang.Thread",
+        "java.security.",
+        "javax.script.",
+        "java.util.ServiceLoader",
+        "java.lang.ref.",
         "sun.",
         "jdk.internal.",
+        "jdk.",
+        "com.sun.",
         "net.minecraft.",
         "net.neoforged.",
     )

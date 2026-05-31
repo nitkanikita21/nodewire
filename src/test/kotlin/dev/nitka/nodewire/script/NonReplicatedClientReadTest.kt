@@ -1,25 +1,36 @@
 package dev.nitka.nodewire.script
 
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 
 /**
- * CONTRACT test for the non-replicated client-read throw (spec §5.7 / D2). Pinned
- * here in 2b so the contract is recorded, but the client-side `state` read
- * accessor + the client-mode flag land in Phase 2c — so this stays @Disabled
- * until then. Do NOT enable without the 2c client read accessor.
+ * The non-replicated client-read throw (spec §5.7 / D2). `setup` runs on BOTH
+ * sides → the client knows every cell + its `replicated` flag, so reading a
+ * `replicated = false` cell on the CLIENT is decidably an error and throws with
+ * the spec's exact wording. Enabled in Phase 2c with the client-side flag.
  */
-@Disabled("enabled in Phase 2c with the client read accessor")
 class NonReplicatedClientReadTest {
     private class M : ScriptModule() {
         var local by state(0, replicated = false)
+        var synced by state(0, replicated = true)
     }
 
     @Test fun `reading a non-replicated cell on the client throws a clear error`() {
         val m = M()
-        // m.setClientSide(true)   // 2c client-mode flag
+        m.setClientSide(true)
         val ex = runCatching { @Suppress("UNUSED_EXPRESSION") m.local }.exceptionOrNull()
-        assertTrue(ex?.message?.contains("not replicated") == true)
+        assertTrue(ex?.message?.contains("not replicated") == true) { "got: ${ex?.message}" }
+    }
+
+    @Test fun `reading a replicated cell on the client is fine`() {
+        val m = M()
+        m.setClientSide(true)
+        assertEquals(0, m.synced)
+    }
+
+    @Test fun `the server reads non-replicated cells without throwing`() {
+        val m = M() // clientSide defaults false
+        assertEquals(0, m.local)
     }
 }

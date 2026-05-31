@@ -38,9 +38,28 @@ class ScriptRuntime(
      * even possible — spec R10).
      */
     private val maxStrikes: Int = 200,
+    /**
+     * Which side launches behaviors at [attachScope] (spec D1). SERVER →
+     * `behavior {}` on the tick clock; CLIENT → `clientBehavior {}` on the frame
+     * clock. Defaults SERVER so the Phase-1 caller is byte-identical (additive).
+     */
+    private val side: ScriptModule.Side = ScriptModule.Side.SERVER,
+    /**
+     * Hardening #1 (client): wall-clock budget (ms) for a SINGLE resume. `0`
+     * disables the budget → the server path is unchanged. When > 0, a skip-tick
+     * whose elapsed wall-clock since the last [NwTickClock.advance] exceeds this
+     * budget disables the node IMMEDIATELY (in ADDITION to the strike count), so a
+     * pure-CPU runaway is killed fast. The render thread never waits regardless
+     * (single-owner skip) — this only speeds the disable of a pinned worker.
+     */
+    private val resumeBudgetMs: Long = 0,
 ) {
     val clock = NwTickClock()
     private val scope = CoroutineScope(dispatcher + clock.frameClock + SupervisorJob())
+
+    /** Wall-clock nanos at the last [NwTickClock.advance] (the start of the live
+     *  resume). Used only when [resumeBudgetMs] > 0 to bound a single resume. */
+    private var lastAdvanceNanos = 0L
 
     @Volatile
     var disabled = false
@@ -63,12 +82,29 @@ class ScriptRuntime(
     fun takeReplicatedDeltas(): List<ScriptModule.ReplicatedDelta> =
         pendingDeltas.also { pendingDeltas = emptyList() }
 
-    /** Realize the body's behaviors. Idempotent; called on first rendezvous. */
+    /** Realize the body's behaviors. Idempotent; called on first rendezvous.
+     *  Launches THIS runtime's [side] list (SERVER → behavior{}, CLIENT →
+     *  clientBehavior{}). */
     private fun ensureAttached() {
         if (!attached) {
-            module.attachScope(scope, clock)
+            module.attachScope(scope, clock, side)
             attached = true
         }
+    }
+
+    /**
+     * Hardening #1 budget check, invoked on a SKIP tick (a behavior is mid-run on
+     * the worker). When [resumeBudgetMs] > 0 and the wall-clock since the last
+     * resume exceeds it, disable the node immediately. No-op when the budget is 0
+     * (server path). Returns true iff the node was disabled by the budget.
+     */
+    private fun overBudget(): Boolean {
+        if (resumeBudgetMs <= 0 || lastAdvanceNanos == 0L) return false
+        val elapsedMs = (System.nanoTime() - lastAdvanceNanos) / 1_000_000L
+        if (elapsedMs < resumeBudgetMs) return false
+        disable()
+        stampRunawayDiagnostic()
+        return true
     }
 
     /**
@@ -103,8 +139,10 @@ class ScriptRuntime(
         ensureAttached()
 
         // Single-owner gate. NOT fully parked => SKIP (backpressure): reuse last
-        // outputs, touch nothing, never wait. Count a strike for the runaway guard.
+        // outputs, touch nothing, never wait. Count a strike for the runaway guard
+        // AND (client) check the wall-clock resume budget.
         if (!clock.isNodeFullyParked()) {
+            if (overBudget()) return defaults(outputPins)
             if (++strikes >= maxStrikes) {
                 disable()
                 stampRunawayDiagnostic()
@@ -130,8 +168,57 @@ class ScriptRuntime(
         pendingDeltas = module.drainReplicatedDeltas()
         // 5. advance: resume the parked behaviors; they run on the worker until their
         //    next park (commit-at-suspend). The server returns immediately (no wait).
+        lastAdvanceNanos = System.nanoTime()
         clock.advance()
         return out
+    }
+
+    /**
+     * CLIENT-frame rendezvous (spec §6 / hardening #1). Structurally identical to
+     * [rendezvous] (single-owner, never-waits, strike + wall-clock budget), but:
+     *  - LOADS the staged [replicatedState] into the module BEFORE advancing, so a
+     *    `clientBehavior` reads up-to-date replicated cells (spec §5.6 ordering).
+     *  - drains `log()`/`chat()` via [messageSink] (→ the CLIENT console) instead
+     *    of [ScriptMessageSink].
+     *  - has NO output pins (the client side only logs / reads in this slice — the
+     *    video draw path is a later subsystem).
+     *
+     * Called once per render frame by the frame driver, ON the client thread. The
+     * behaviors themselves run on the worker pool — the render thread only loads
+     * the tag, drains logs, and advances the clock; it NEVER runs a behavior body
+     * and NEVER waits (single-owner skip). That is hardening #1: worker + budget,
+     * not render-thread confine.
+     */
+    fun clientRendezvous(
+        replicatedState: CompoundTag,
+        messageSink: (List<ScriptMessage>) -> Unit,
+    ) {
+        if (disabled) return
+        // The module is marked client-side by the host before the first attach.
+        ensureAttached()
+
+        // Single-owner gate. NOT fully parked => SKIP: never wait. Strike + budget.
+        if (!clock.isNodeFullyParked()) {
+            if (overBudget()) return
+            if (++strikes >= maxStrikes) {
+                disable()
+                messageSink(
+                    listOf(ScriptMessage("client script disabled: behavior never yielded (runaway)", MessageKind.LOG)),
+                )
+            }
+            return
+        }
+
+        // Fully parked => the client driver OWNS the node (no behavior running).
+        strikes = 0
+        // Load the latest replicated cell values so clientBehavior reads them this
+        // frame (before advance resumes the behaviors). Race-free: fully parked.
+        ScriptModuleReplication.applyCells(module, replicatedState)
+        // Drain client logs (CHAT dropped by the sink).
+        module.drainMessages().let { if (it.isNotEmpty()) messageSink(it) }
+        // Advance: resume the parked clientBehaviors on the worker; return at once.
+        lastAdvanceNanos = System.nanoTime()
+        clock.advance()
     }
 
     private fun stampRunawayDiagnostic() {

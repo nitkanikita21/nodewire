@@ -4,6 +4,8 @@ import com.mojang.blaze3d.platform.InputConstants
 import com.mojang.logging.LogUtils
 import dev.nitka.nodewire.client.command.HighlightCommand
 import dev.nitka.nodewire.client.highlight.BlockHighlightRenderer
+import dev.nitka.nodewire.client.script.ClientScriptCommand
+import dev.nitka.nodewire.client.script.ClientScriptDriver
 import dev.nitka.nodewire.client.wire.WireWorldRenderer
 import dev.nitka.nodewire.ui.dev.DemoScreen
 import net.minecraft.client.KeyMapping
@@ -14,6 +16,7 @@ import net.neoforged.neoforge.client.event.RegisterClientCommandsEvent
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent
 import net.neoforged.neoforge.client.settings.KeyConflictContext
+import net.neoforged.neoforge.event.level.LevelEvent
 import org.lwjgl.glfw.GLFW
 import thedarkcolour.kotlinforforge.neoforge.forge.FORGE_BUS
 
@@ -43,6 +46,11 @@ object NodewireClient {
         FORGE_BUS.addListener(::onClientTick)
         FORGE_BUS.addListener<RenderLevelStageEvent>(WireWorldRenderer::render)
         FORGE_BUS.addListener<RenderLevelStageEvent>(BlockHighlightRenderer::onRender)
+        // Phase 2c — CLIENT script frame driver (ONE stage; guards double-fire
+        // internally) + the `/nodewire clientscripts <on|off>` kill-switch.
+        FORGE_BUS.addListener<RenderLevelStageEvent>(ClientScriptDriver::onRenderLevelStage)
+        FORGE_BUS.addListener<RegisterClientCommandsEvent>(ClientScriptCommand::register)
+        FORGE_BUS.addListener(::onLevelUnload)
         FORGE_BUS.addListener<RegisterClientCommandsEvent>(HighlightCommand::register)
         LOG.info("Nodewire client handlers registered (MOD bus + FORGE bus)")
     }
@@ -53,5 +61,16 @@ object NodewireClient {
             LOG.info("Opening DemoScreen")
             Minecraft.getInstance().setScreen(DemoScreen())
         }
+    }
+
+    /**
+     * Phase 2c — cancel all CLIENT script runtimes when the client level
+     * unloads (dimension change / disconnect). Per-BE unload is handled in
+     * [dev.nitka.nodewire.block.LogicBlockEntity.setRemoved]; this is the
+     * coarse level-wide net so nothing leaks across a level swap.
+     */
+    private fun onLevelUnload(event: LevelEvent.Unload) {
+        if (!event.level.isClientSide) return
+        ClientScriptDriver.onLevelUnload()
     }
 }

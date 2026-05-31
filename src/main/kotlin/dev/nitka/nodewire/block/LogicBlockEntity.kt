@@ -176,6 +176,31 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
     /** Read-only view of a node's current client replicated state (2c will consume). */
     fun clientReplicatedStateOf(nodeId: NodeId): CompoundTag? = clientReplicatedState[nodeId]
 
+    /**
+     * Phase 2c — CLIENT frame driver enumeration. For each `script` node on this
+     * BE's client graph copy, yields `(src, stateTag)` where [stateTag] is the
+     * node's client replicated-state slot. The slot is created lazily here (via
+     * [getOrPut]) so its **identity is stable** across frames — the client
+     * runtime keys its per-node [dev.nitka.nodewire.script.ScriptRuntime] on that
+     * tag instance ([ClientScriptNodeRuntime.frameTick]), so a node whose server
+     * hasn't yet pushed a delta still gets a stable (empty) tag rather than a new
+     * one each frame. Client-thread only. Skips nodes with a blank `src`.
+     */
+    fun clientScriptNodes(): List<Pair<String, CompoundTag>> {
+        val out = ArrayList<Pair<String, CompoundTag>>()
+        for ((id, node) in graph.nodes) {
+            if (node.typeKey.path != "script") continue
+            val src = node.config.getString("src")
+            if (src.isBlank()) continue
+            val slot = clientReplicatedState.getOrPut(id) { CompoundTag() }
+            out.add(src to slot)
+        }
+        return out
+    }
+
+    /** All client replicated-state tags currently held (for unload-cancel). */
+    fun clientReplicatedStateTags(): Collection<CompoundTag> = clientReplicatedState.values
+
     fun invalidateEvaluator() {
         serverEvaluator = null
         // Drop the per-node script runtimes too: the evaluator is rebuilt with
@@ -786,6 +811,11 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
     override fun setRemoved() {
         if (level?.isClientSide == true) {
             dev.nitka.nodewire.client.wire.ClientLogicBlockTracker.unregister(this)
+            // Phase 2c — cancel this BE's per-node CLIENT script scopes on unload
+            // so an unloaded chunk's client behaviors stop running (spec §6.3).
+            for (tag in clientReplicatedStateTags()) {
+                dev.nitka.nodewire.client.script.ClientScriptNodeRuntime.cancelForState(tag)
+            }
         } else {
             val lvl = level
             if (lvl != null) {

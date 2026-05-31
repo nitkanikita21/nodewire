@@ -55,6 +55,11 @@ data class ScriptMessage(val text: String, val kind: MessageKind)
 enum class MessageKind { LOG, CHAT }
 
 abstract class ScriptModule {
+    /** Which side a runtime drives. setup runs on BOTH sides and declares everything;
+     *  [attachScope] launches ONLY this side's behaviors (SERVER → [behaviorSpecs],
+     *  CLIENT → [clientBehaviorSpecs]). Spec D1. */
+    enum class Side { SERVER, CLIENT }
+
     @PublishedApi internal val specsIn = LinkedHashMap<String, PinSpec>()
     @PublishedApi internal val specsOut = LinkedHashMap<String, PinSpec>()
 
@@ -131,11 +136,29 @@ abstract class ScriptModule {
     // automatically (last-write-wins per pin). Until the first commit the frame
     // is null → the server falls back to type-defaults / the live buffer.
 
-    /** Pending behavior bodies registered during setup; realized by [attachScope]. */
+    /** Pending SERVER behavior bodies registered during setup; realized by [attachScope]
+     *  on the SERVER side (run on the server tick clock; suspend on tick()/delay). */
     @PublishedApi internal val behaviorSpecs = ArrayList<suspend () -> Unit>()
+
+    /** Pending CLIENT behavior bodies registered during setup; realized by [attachScope]
+     *  on the CLIENT side (run on the client frame clock; suspend on frame()/frameDelay).
+     *  SEPARATE from [behaviorSpecs] so a single-JVM (singleplayer) runtime never aliases
+     *  server behavior{} with client clientBehavior{} on the same source. Spec D1. */
+    @PublishedApi internal val clientBehaviorSpecs = ArrayList<suspend () -> Unit>()
 
     /** The node's tick clock, set by [attachScope]; tick()/delay()/sync park on it. */
     private var tickClock: NwTickClock? = null
+
+    /**
+     * True when this module instance backs a CLIENT runtime (set by the client
+     * runtime BEFORE first attach). A non-replicated cell read while true throws
+     * (the value isn't synced server→client — spec §5.7 / D2). Server reads all
+     * cells. Defaults false → the server path is byte-identical (additive).
+     */
+    @JvmField @PublishedApi internal var clientSide = false
+
+    /** Mark this module as backing a CLIENT runtime. Call before the first attach. */
+    @PublishedApi internal fun setClientSide(v: Boolean) { clientSide = v }
 
     /** The last committed output frame (a snapshot of [outputs] at a suspend), or
      *  null before the first commit. The server reads this when it owns the node. */
@@ -182,6 +205,15 @@ abstract class ScriptModule {
     }
 
     /**
+     * Register a CLIENT behavior — runs on the client frame clock, suspends on
+     * [frame] / [frameDelay]. `setup` declares it on BOTH sides, but only a CLIENT
+     * runtime launches it (server [attachScope] ignores this list). Spec D1.
+     */
+    fun clientBehavior(block: suspend () -> Unit) {
+        clientBehaviorSpecs += block
+    }
+
+    /**
      * Per-behavior identity token used for park accounting. It MUST travel with the
      * coroutine across suspension/resumption (a behavior can resume on a different
      * pool thread), so it is carried in the coroutine context — NOT a ThreadLocal.
@@ -208,6 +240,18 @@ abstract class ScriptModule {
         repeat(ticks) { tick() }
     }
 
+    /**
+     * Commit the buffered writes, then suspend until the next CLIENT frame. The
+     * client runtime that launched a clientBehavior attached the frame clock, so
+     * this parks on it exactly as [tick] parks on the server tick clock — both are
+     * "advance one clock step" on the active [tickClock]; only WHICH clock the
+     * runtime attached differs per side. Spec D1/D3.
+     */
+    suspend fun frame() = tick()
+
+    /** Suspend for [frames] client frames (commits a frame at each park). */
+    suspend fun frameDelay(frames: Int) = repeat(frames) { frame() }
+
     /** Batch + commit + advance one tick: run [block] (its output.value= writes
      *  accumulate in the buffer), commit ONE frame, then park (spec D4/D7). */
     suspend fun sync(block: () -> Unit) {
@@ -219,13 +263,24 @@ abstract class ScriptModule {
     val Int.ticks: Int get() = this
 
     /**
-     * Host-side: attach the node's scope + clock and launch all registered
-     * behaviors. Called by ScriptRuntime once, immediately after body-eval
-     * (setup), mirroring `NwUiOwner` building its scope around the clock.
+     * Host-side: attach the node's scope + clock and launch the registered
+     * behaviors for [side]. Called by ScriptRuntime once, immediately after
+     * body-eval (setup), mirroring `NwUiOwner` building its scope around the clock.
+     * SERVER launches [behaviorSpecs] (tick clock); CLIENT launches
+     * [clientBehaviorSpecs] (frame clock). [side] defaults to SERVER so the
+     * Phase-1 caller is unchanged (additive). Spec D1.
      */
-    @PublishedApi internal fun attachScope(scope: CoroutineScope, clock: NwTickClock) {
+    @PublishedApi internal fun attachScope(
+        scope: CoroutineScope,
+        clock: NwTickClock,
+        side: Side = Side.SERVER,
+    ) {
         tickClock = clock
-        for (spec in behaviorSpecs) {
+        // setup ran on BOTH sides + declared everything; launch ONLY this side's
+        // behaviors. SERVER → behaviorSpecs (tick()), CLIENT → clientBehaviorSpecs
+        // (frame()). `side` DEFAULTS to SERVER → the Phase-1 caller is unchanged.
+        val specs = if (side == Side.CLIENT) clientBehaviorSpecs else behaviorSpecs
+        for (spec in specs) {
             val token = BehaviorToken() // per-behavior identity, carried in context
             clock.onBehaviorLaunched() // live until its first await() (single-owner gate)
             // The token rides the coroutine context so tick()/await() identify THIS
@@ -288,7 +343,14 @@ abstract class ScriptModule {
         return PropertyDelegateProvider { _, prop ->
             val cell = StateCell<T>(prop.name, init, kind, replicated).also { stateCells += it }
             object : ReadWriteProperty<Any?, T> {
-                override fun getValue(thisRef: Any?, property: KProperty<*>): T = cell.value
+                override fun getValue(thisRef: Any?, property: KProperty<*>): T {
+                    // On the CLIENT a non-replicated cell carries no synced value →
+                    // reading it is a programming error; throw the spec's exact
+                    // message (§5.7 / D2). Server reads every cell unconditionally.
+                    if (clientSide && !cell.replicated)
+                        throw ScriptDeclException("state '${cell.key}' is not replicated — pass replicated = true")
+                    return cell.value
+                }
                 override fun setValue(thisRef: Any?, property: KProperty<*>, value: T) { cell.value = value }
             }
         }
