@@ -56,6 +56,21 @@ class CameraBlockEntity(pos: BlockPos, state: BlockState) :
     /** The stable handle this camera produces into. */
     fun videoHandle(): UUID = handle
 
+    /**
+     * The Camera's *emitting value* — the producer end of the handle->channel
+     * video pipeline. This is the exact `PinValue` a Screen consumes: it carries
+     * only the stable [handle] UUID (never a frame — the net invariant), so it
+     * crosses the channel pipeline like any other VIDEO value.
+     *
+     * v1 routing (no new packet): a source feeds this into a consumer through the
+     * existing cross-block path the [ScreenBlockEntity] already reads from — a
+     * [LogicBlockEntity] receives it via [LogicBlockEntity.nwWriteChannelInput]
+     * (its `externalChannelInputs` slot), or a graphless [ChannelInputSink] (the
+     * Screen) receives it via [ChannelInputSink.writeChannelInput]. The Camera
+     * itself stays graphless; only the UUID ever moves server-side.
+     */
+    fun videoValue(): PinValue.Video = PinValue.Video(handle)
+
     // ── camera parameters (channel-delivered, defaulted + clamped) ──
 
     /** Field of view in degrees. Default 90, clamped 30..110. */
