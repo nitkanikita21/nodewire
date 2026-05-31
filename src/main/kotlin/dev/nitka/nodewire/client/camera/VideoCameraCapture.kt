@@ -1,19 +1,177 @@
 package dev.nitka.nodewire.client.camera
 
+import com.mojang.blaze3d.pipeline.RenderTarget
+import com.mojang.logging.LogUtils
+import dev.nitka.nodewire.client.video.VideoManager
+import net.minecraft.client.CameraType
 import net.minecraft.client.DeltaTracker
+import net.minecraft.client.Minecraft
+import net.minecraft.util.Mth
+import net.minecraft.world.entity.EntityType
+import net.minecraft.world.entity.Marker
+import net.minecraft.world.entity.Pose
+import org.lwjgl.glfw.GLFW
 
 /**
  * Client-local camera-feed capture loop. Invoked once per frame from
  * [dev.nitka.nodewire.mixin.camera.MixinGameRenderer] at the
- * {@code tryTakeScreenshotIfNeeded()} seam inside {@code GameRenderer.render}.
+ * `tryTakeScreenshotIfNeeded()` seam inside `GameRenderer.render`.
  *
- * The full capture body (FPS gating, GL save/restore, per-feed FBO render via
- * [dev.nitka.nodewire.client.video.VideoManager]) is implemented in Task 6.
+ * For each [CameraFeed] selected this frame it renders the world from the
+ * camera's POV into that feed's [VideoManager]-backed FBO. The Screen on the
+ * consumer end blits the FBO. Only the *handle* ever crosses the network — the
+ * frame is produced fresh on each client.
+ *
+ * Cost is bounded by a 24 fps wall-clock decouple + per-feed stagger, a
+ * per-mc-frame render budget (scaled by the live fps), a hard `MAX_ACTIVE` cap,
+ * and a frustum-visibility filter (v1 always-true fallback). The whole loop is
+ * wrapped in [VideoManager.beginCapture]/[VideoManager.endCapture] so the Screen
+ * renderer refuses to draw mid-capture (no screen-in-screen recursion). All GL
+ * state touched (render target, window size, visible sections, camera, camera
+ * type, transparency post-chain) is saved before and restored in `finally`; a
+ * per-feed `try/catch` self-heals a broken feed by marking it for removal.
  */
 object VideoCameraCapture {
 
+    private val LOG = LogUtils.getLogger()
+
+    /** Capture cadence, decoupled from the client frame rate (wall-clock gated). */
+    private const val FPS_CAP = 24
+    private const val FRAME_INTERVAL = 1.0 / FPS_CAP
+
+    /** Hard ceiling on feeds rendered in a single mc frame. */
+    private const val MAX_ACTIVE = 4
+
+    /** Square capture FBO is 1:1; the window is forced to this during capture. */
+    private const val CAPTURE_WINDOW = 100
+
+    /** Wall-clock time (GLFW seconds) of the last frame on which we rendered any feed. */
+    @Volatile
+    private var lastFrameRenderedSec: Double = 0.0
+
     @JvmStatic
     fun captureFeeds(deltaTracker: DeltaTracker) {
-        /* bodied in Task 6 */
+        // --- GUARDS ---
+        if (CameraFeedRegistry.isEmpty()) return
+        if (VideoManager.isCapturing()) return
+        val mc = Minecraft.getInstance()
+        val level = mc.level ?: return
+        val player = mc.player ?: return
+
+        // --- FPS GATE + selection ---
+        val now = GLFW.glfwGetTime()
+        val all = CameraFeedRegistry.active().filter { !it.removed }
+        if (all.isEmpty()) return
+        // Stagger: spread the per-feed cadence across mc frames.
+        if (now < lastFrameRenderedSec + FRAME_INTERVAL / maxOf(1, all.size)) return
+
+        val lr = mc.levelRenderer
+        val camera = mc.gameRenderer.mainCamera
+        val window = mc.window
+        val playerFrustum = lr.frustum // captured ONCE for this frame's selection
+
+        var budget = Mth.ceil(FPS_CAP * (all.size + 1).toDouble() / mc.fps.toDouble())
+        val active = all.asSequence()
+            .filter { now >= it.lastActiveTimeSec + FRAME_INTERVAL }
+            .filter { it.hasFrameInFrustum(playerFrustum) }
+            .take(MAX_ACTIVE)
+            .filter { budget-- > 0 }
+            .toList()
+        if (active.isEmpty()) return
+        lastFrameRenderedSec = now
+
+        // --- SAVE (once) ---
+        val oldCamEntity = mc.cameraEntity
+        val oldWidth = window.width
+        val oldHeight = window.height
+        val oldVisible = ArrayList(lr.visibleSections)
+        val oldCameraType = mc.options.cameraType
+        val oldMain: RenderTarget = mc.mainRenderTarget
+        val oldTransparency = lr.transparencyChain
+        val oldEyeH = camera.eyeHeight
+        val oldEyeHO = camera.eyeHeightOld
+        val oldPlayerX = player.x
+        val oldPlayerY = player.y
+        val oldPlayerZ = player.z
+        val oldPlayerYRot = player.yRot
+        val oldPlayerXRot = player.xRot
+
+        val markerEntity = Marker(EntityType.MARKER, level)
+        val standEye = player.getDimensions(Pose.STANDING).eyeHeight()
+
+        // --- SETUP (once) ---
+        mc.gameRenderer.setRenderBlockOutline(false)
+        mc.gameRenderer.setRenderHand(false)
+        mc.gameRenderer.setPanoramicMode(true)
+        window.setWidth(CAPTURE_WINDOW)
+        window.setHeight(CAPTURE_WINDOW)
+        mc.options.cameraType = CameraType.FIRST_PERSON
+        camera.eyeHeight = standEye
+        camera.eyeHeightOld = standEye
+        lr.transparencyChain = null
+        mc.renderBuffers().bufferSource().endBatch()
+
+        VideoManager.beginCapture()
+        try {
+            for (feed in active) {
+                try {
+                    val target = feed.renderTarget() ?: continue
+                    val (wpos, yawPitch) = feed.worldPose(level, deltaTracker) ?: continue
+
+                    markerEntity.setPos(wpos.x, wpos.y - standEye + 0.5, wpos.z)
+                    markerEntity.yRot = yawPitch[0]
+                    markerEntity.xRot = yawPitch[1]
+                    mc.cameraEntity = markerEntity
+
+                    camera.setup(
+                        level,
+                        markerEntity,
+                        false,
+                        false,
+                        deltaTracker.getGameTimeDeltaPartialTick(false),
+                    )
+
+                    target.clear(Minecraft.ON_OSX)
+                    target.bindWrite(true)
+                    mc.mainRenderTarget = target
+                    mc.gameRenderer.renderLevel(DeltaTracker.ONE)
+
+                    feed.lastActiveTimeSec = now
+                } catch (t: Throwable) {
+                    LOG.warn("camera feed {} capture failed; dropping", feed.handle, t)
+                    feed.markForRemoval()
+                }
+            }
+        } finally {
+            // --- RESTORE ---
+            markerEntity.discard()
+            mc.cameraEntity = oldCamEntity
+            window.setWidth(oldWidth)
+            window.setHeight(oldHeight)
+            lr.visibleSections.clear()
+            lr.visibleSections.addAll(oldVisible)
+            player.setPos(oldPlayerX, oldPlayerY, oldPlayerZ)
+            player.yRot = oldPlayerYRot
+            player.xRot = oldPlayerXRot
+
+            val thirdPerson = oldCameraType != CameraType.FIRST_PERSON
+            camera.setup(
+                level,
+                oldCamEntity ?: player,
+                thirdPerson,
+                oldCameraType == CameraType.THIRD_PERSON_FRONT,
+                deltaTracker.getGameTimeDeltaPartialTick(false),
+            )
+            camera.eyeHeight = oldEyeH
+            camera.eyeHeightOld = oldEyeHO
+            mc.options.cameraType = oldCameraType
+            mc.gameRenderer.setRenderBlockOutline(true)
+            mc.gameRenderer.setRenderHand(true)
+            mc.gameRenderer.setPanoramicMode(false)
+            mc.mainRenderTarget = oldMain
+            oldMain.bindWrite(true)
+            lr.transparencyChain = oldTransparency
+            VideoManager.endCapture()
+        }
     }
 }
