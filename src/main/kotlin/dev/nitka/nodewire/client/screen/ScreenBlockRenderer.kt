@@ -12,10 +12,8 @@ import dev.nitka.nodewire.client.video.VideoManager
 import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.client.renderer.RenderStateShard
 import net.minecraft.client.renderer.RenderType
-import net.minecraft.client.renderer.LightTexture
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderer
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider
-import net.minecraft.client.renderer.texture.OverlayTexture
 import net.minecraft.core.Direction
 import org.joml.Matrix4f
 
@@ -59,10 +57,12 @@ class ScreenBlockRenderer(
 
         poseStack.pushPose()
         val matrix = poseStack.last().pose()
-        // FULL_BRIGHT: the screen is a self-illuminated monitor — content (camera
-        // feed + HUD) renders at full brightness regardless of environment light.
-        // Lightmap modulation made it too dim in shadow, so we emit at full.
-        emitFace(consumer, matrix, facing, LightTexture.FULL_BRIGHT)
+        // Flat emissive blit: the render type uses the position_tex_color shader,
+        // which applies NEITHER diffuse normal lighting NOR a lightmap, so the FBO
+        // content shows EXACTLY as drawn at full brightness — like a real monitor.
+        // (The old entity-solid shader multiplied by face-diffuse, dimming the whole
+        // screen to a muddy tint regardless of the FULL_BRIGHT lightmap.)
+        emitFace(consumer, matrix, facing)
         poseStack.popPose()
     }
 
@@ -75,7 +75,6 @@ class ScreenBlockRenderer(
         consumer: VertexConsumer,
         matrix: Matrix4f,
         facing: Direction,
-        light: Int,
     ) {
         val o = 0.001f // outset off the face plane
         // Corners of the face in block-local [0,1]^3 space. Order CCW so the
@@ -85,28 +84,22 @@ class ScreenBlockRenderer(
         // The GuiGraphics ortho (top-left origin, y-down) draws an UPRIGHT image
         // into the FBO; sampled with v=0 at the face bottom it shows upright, so
         // the face's bottom edge takes v=0 and the top edge v=1.
-        vertex(consumer, matrix, a, 0f, 0f, facing, light)
-        vertex(consumer, matrix, b, 1f, 0f, facing, light)
-        vertex(consumer, matrix, c, 1f, 1f, facing, light)
-        vertex(consumer, matrix, d, 0f, 1f, facing, light)
+        vertex(consumer, matrix, a, 0f, 0f)
+        vertex(consumer, matrix, b, 1f, 0f)
+        vertex(consumer, matrix, c, 1f, 1f)
+        vertex(consumer, matrix, d, 0f, 1f)
     }
 
+    /** POSITION_TEX vertex: position + UV only (the position_tex shader samples the
+     *  texture × the white shader-colour the setup shard forces — no lighting). */
     private fun vertex(
         consumer: VertexConsumer,
         matrix: Matrix4f,
         p: FloatArray,
         u: Float,
         v: Float,
-        facing: Direction,
-        light: Int,
     ) {
-        val n = facing.normal
-        consumer.addVertex(matrix, p[0], p[1], p[2])
-            .setColor(255, 255, 255, 255)
-            .setUv(u, v)
-            .setOverlay(OverlayTexture.NO_OVERLAY)
-            .setLight(light)
-            .setNormal(n.x.toFloat(), n.y.toFloat(), n.z.toFloat())
+        consumer.addVertex(matrix, p[0], p[1], p[2]).setUv(u, v)
     }
 
     /**
@@ -145,26 +138,31 @@ class ScreenBlockRenderer(
 
     companion object {
         /**
-         * A textured, lit render type bound to a **raw GL texture id**. The setup
-         * shard binds the FBO colour attachment to sampler 0; the clear shard is a
-         * no-op (the texture stays bound until the next type swaps it).
+         * A **flat, UNLIT** textured render type bound to a raw GL texture id. Uses
+         * the `position_tex_color` shader — sample(tex) × vertexColor — which applies
+         * neither diffuse normal lighting nor a lightmap, so the screen shows the FBO
+         * content exactly as drawn (a self-illuminated monitor). The setup shard binds
+         * the FBO colour attachment to sampler 0; the id is read fresh each frame.
          */
         private fun renderTypeFor(texId: Int): RenderType = RenderType.create(
             "nodewire_screen",
-            DefaultVertexFormat.NEW_ENTITY,
+            DefaultVertexFormat.POSITION_TEX,
             VertexFormat.Mode.QUADS,
             256,
             false,
             false,
             RenderType.CompositeState.builder()
-                .setShaderState(RenderStateShard.RENDERTYPE_ENTITY_SOLID_SHADER)
+                .setShaderState(RenderStateShard.POSITION_TEX_SHADER)
                 .setTextureState(object : RenderStateShard.EmptyTextureStateShard(
-                    Runnable { RenderSystem.setShaderTexture(0, texId) },
+                    Runnable {
+                        RenderSystem.setShaderTexture(0, texId)
+                        // position_tex multiplies by the shader colour-modulator —
+                        // force it white so the blit shows the FBO content verbatim.
+                        RenderSystem.setShaderColor(1f, 1f, 1f, 1f)
+                    },
                     Runnable {},
                 ) {})
-                .setLightmapState(RenderStateShard.LIGHTMAP)
-                .setOverlayState(RenderStateShard.OVERLAY)
-                .createCompositeState(true),
+                .createCompositeState(false),
         )
     }
 }
