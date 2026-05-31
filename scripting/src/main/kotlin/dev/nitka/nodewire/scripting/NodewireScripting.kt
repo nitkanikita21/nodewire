@@ -3,6 +3,7 @@ package dev.nitka.nodewire.scripting
 import com.mojang.logging.LogUtils
 import dev.nitka.nodewire.script.ScriptCompilerRegistry
 import dev.nitka.nodewire.script.ScriptEvalResult
+import dev.nitka.nodewire.script.ScriptNodeRuntime
 import dev.nitka.nodewire.script.host.ScriptHost
 import net.neoforged.fml.common.Mod
 import org.slf4j.Logger
@@ -24,6 +25,11 @@ object NodewireScripting {
     init {
         ScriptCompilerRegistry.compiler = ScriptHost
         LOG.info("Nodewire Scripting loaded — script compiler registered")
+
+        // Prime the compiler off-thread NOW (mod construction) so the cold start
+        // — jar extraction + Kotlin compiler bootstrap, several seconds — is paid
+        // during load instead of on the player's first in-world script.
+        ScriptNodeRuntime.warmUp()
 
         // Layer-B JPMS validation probe. Gated behind the `nodewire.scriptprobe`
         // system property so it NEVER runs in production — only the dev run sets

@@ -176,6 +176,27 @@ object ScriptNodeRuntime {
         }
     }
 
+    @Volatile
+    private var warmed = false
+
+    /**
+     * Prime the embedded Kotlin compiler OFF-THREAD so the first in-world script
+     * doesn't pay the multi-second cold start (one-time jar extraction + the
+     * `KotlinCoreEnvironment` bootstrap + facade-classpath resolution). Idempotent;
+     * safe to call at mod load. No-op when the addon (compiler) isn't registered.
+     * Bypasses [cache] — the warmup source is not a real node.
+     */
+    fun warmUp() {
+        if (warmed) return
+        val compiler = ScriptCompilerRegistry.compiler ?: return
+        warmed = true
+        compileExecutor.execute {
+            val t0 = System.nanoTime()
+            runCatching { compiler.compileToModule("val __warm = output<Redstone>(\"__warm\")") }
+            LOG.info("NW-SCRIPT compiler warmed up in {} ms", (System.nanoTime() - t0) / 1_000_000)
+        }
+    }
+
     /** Drop a cached compile (e.g. when a node's source changes). */
     fun invalidate(src: String) {
         cache.remove(src)
