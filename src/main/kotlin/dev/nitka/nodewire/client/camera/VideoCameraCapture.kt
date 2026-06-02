@@ -60,11 +60,41 @@ object VideoCameraCapture {
     @Volatile
     private var lastFrameRenderedSec: Double = 0.0
 
+    /** Render-pipeline mods that aggressively wrap `renderLevel` and break our
+     *  nested capture pass (flicker / crash). When any of these is loaded we
+     *  refuse to capture rather than corrupt their state. Lazily resolved once. */
+    private val INCOMPATIBLE_PIPELINE_MODS = listOf("distanthorizons", "veil")
+
+    /** Cached: which of [INCOMPATIBLE_PIPELINE_MODS] are loaded this session.
+     *  Null = not resolved yet (ModList is queryable only after mod loading). */
+    @Volatile
+    private var conflictingMods: List<String>? = null
+
+    private fun resolveConflictingMods(): List<String> {
+        conflictingMods?.let { return it }
+        val ml = net.neoforged.fml.ModList.get()
+        val hits = INCOMPATIBLE_PIPELINE_MODS.filter { ml.isLoaded(it) }
+        conflictingMods = hits
+        if (hits.isNotEmpty()) {
+            LOG.warn(
+                "[NW-CAMERA] disabled: incompatible render-pipeline mod(s) detected: {}. " +
+                    "Our nested renderLevel capture conflicts with their pipeline wrapping " +
+                    "(flicker / crash). Cameras will show no feed until you remove them.",
+                hits.joinToString(", "),
+            )
+        }
+        return hits
+    }
+
     @JvmStatic
     fun captureFeeds(deltaTracker: DeltaTracker) {
         // --- GUARDS ---
         if (CameraFeedRegistry.isEmpty()) return
         if (VideoManager.isCapturing()) return
+        // Safe-skip if a render-pipeline mod we know breaks us is loaded.
+        // (DH wraps renderLevel with LOD-section bookkeeping; Veil's FramebufferStack
+        // expects matched push/pop around renderLevel — our nested call imbalances both.)
+        if (resolveConflictingMods().isNotEmpty()) return
         val mc = Minecraft.getInstance()
         val level = mc.level ?: return
         val player = mc.player ?: return
