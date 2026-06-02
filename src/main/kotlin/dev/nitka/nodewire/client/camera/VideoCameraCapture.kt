@@ -61,17 +61,17 @@ object VideoCameraCapture {
     private var lastFrameRenderedSec: Double = 0.0
 
     /** Render-pipeline mods that aggressively wrap `renderLevel` and break our
-     *  nested capture pass (flicker / crash). When any of these is loaded we
-     *  refuse to capture rather than corrupt their state. Lazily resolved once.
+     *  nested capture pass. When any of these is loaded we refuse to capture
+     *  rather than corrupt their state.
      *
-     *  Distant Horizons is handled via [DhCaptureGuard] (Vista's API-toggle).
-     *  Veil is handled via the [dev.nitka.nodewire.mixin.camera.MixinVeilPipelineLevelRenderer]
-     *  Pseudo mixin that OR-flags Veil's `isRenderingPerspective()` with our
-     *  `VideoManager.isCapturing()`, so Veil treats the capture as its own
-     *  perspective render (which its FramebufferStack already handles). Both
-     *  techniques come straight from the Vista mod (same MC+NeoForge line).
-     *  Empty for now; keep the list as a known-conflict carve-out. */
-    private val INCOMPATIBLE_PIPELINE_MODS = listOf<String>()
+     *  * Distant Horizons is handled via [DhCaptureGuard] (Vista's API-toggle).
+     *  * Veil is in the skip list. The naive field-flip (`renderingPerspective=true`)
+     *    activates Veil's `PerspectiveChunkCollector` which overflows Sodium's
+     *    `ChunkRenderList` (`ArrayIndexOutOfBoundsException: Render list is full`,
+     *    verified in modpack). Vista's surgical fix uses MixinSquared
+     *    (`@TargetHandler` to mix into Veil's blit handler ONLY) — a separate
+     *    dep + jarJar shipping step. Future work; tracked as TODO. */
+    private val INCOMPATIBLE_PIPELINE_MODS = listOf("veil")
 
     /** Cached: which of [INCOMPATIBLE_PIPELINE_MODS] are loaded this session.
      *  Null = not resolved yet (ModList is queryable only after mod loading). */
@@ -183,11 +183,6 @@ object VideoCameraCapture {
             // DH-aware: temporarily disable Distant Horizons LOD rendering for the
             // whole capture pass (Vista technique). No-op if DH is absent.
             dev.nitka.nodewire.integration.distanthorizons.DhCaptureGuard.aroundCapture {
-            // Veil-aware: flip Veil's `renderingPerspective` flag so its
-            // FramebufferStack treats the capture as its own perspective render
-            // (which it already handles cleanly) instead of pushing/popping
-            // state our nested renderLevel doesn't match. No-op if Veil absent.
-            dev.nitka.nodewire.integration.veil.VeilCaptureGuard.aroundCapture {
             for (feed in active) {
                 try {
                     val target = feed.renderTarget() ?: continue
@@ -225,7 +220,6 @@ object VideoCameraCapture {
                     }
                 }
             }
-            } // end VeilCaptureGuard.aroundCapture
             } // end DhCaptureGuard.aroundCapture
         } finally {
             // --- RESTORE ---
