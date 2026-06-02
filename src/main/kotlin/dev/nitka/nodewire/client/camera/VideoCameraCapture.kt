@@ -62,8 +62,14 @@ object VideoCameraCapture {
 
     /** Render-pipeline mods that aggressively wrap `renderLevel` and break our
      *  nested capture pass (flicker / crash). When any of these is loaded we
-     *  refuse to capture rather than corrupt their state. Lazily resolved once. */
-    private val INCOMPATIBLE_PIPELINE_MODS = listOf("distanthorizons", "veil")
+     *  refuse to capture rather than corrupt their state. Lazily resolved once.
+     *
+     *  Distant Horizons is NOT in this list — we handle it via
+     *  [dev.nitka.nodewire.integration.distanthorizons.DhCaptureGuard], which
+     *  temporarily disables DH rendering for the duration of the pass (Vista
+     *  technique, verified on this MC+NeoForge line). Veil still needs a Pseudo
+     *  mixin to be cap-compatible — TODO. */
+    private val INCOMPATIBLE_PIPELINE_MODS = listOf("veil")
 
     /** Cached: which of [INCOMPATIBLE_PIPELINE_MODS] are loaded this session.
      *  Null = not resolved yet (ModList is queryable only after mod loading). */
@@ -172,6 +178,9 @@ object VideoCameraCapture {
 
         VideoManager.beginCapture()
         try {
+            // DH-aware: temporarily disable Distant Horizons LOD rendering for the
+            // whole capture pass (Vista technique). No-op if DH is absent.
+            dev.nitka.nodewire.integration.distanthorizons.DhCaptureGuard.aroundCapture {
             for (feed in active) {
                 try {
                     val target = feed.renderTarget() ?: continue
@@ -209,6 +218,7 @@ object VideoCameraCapture {
                     }
                 }
             }
+            } // end DhCaptureGuard.aroundCapture
         } finally {
             // --- RESTORE ---
             markerEntity.discard()
