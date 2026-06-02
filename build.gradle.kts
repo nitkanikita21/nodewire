@@ -49,6 +49,7 @@ repositories {
     maven("https://maven.terraformersmc.com/")       // EMI
     maven("https://maven.ryanhcode.dev/releases")    // Sable
     maven("https://maven.squiddev.cc/")              // CC: Tweaked
+    maven("https://maven.bawnorton.com/releases")    // MixinSquared (Veil compat)
     // JetBrains Compose dev maven (multiplatform compose-runtime, etc.)
     maven("https://maven.pkg.jetbrains.space/public/p/compose/dev")
     // Google maven — Compose runtime transitively needs androidx.annotation
@@ -299,6 +300,14 @@ dependencies {
     implementation("io.github.llamalad7:mixinextras-neoforge:0.4.1")
     compileOnly("io.github.llamalad7:mixinextras-common:0.4.1")
     annotationProcessor("io.github.llamalad7:mixinextras-common:0.4.1")
+
+    // MixinSquared — surgical mix into other mods' mixin handlers (Vista technique).
+    // Lets us flip Veil's `isRenderingPerspective()` ONLY at the FBO-push call site
+    // inside its blit handler, without activating its PerspectiveChunkCollector
+    // (which would overflow Sodium's render list).
+    compileOnly("com.github.bawnorton.mixinsquared:mixinsquared-common:0.3.7-beta.2")
+    annotationProcessor("com.github.bawnorton.mixinsquared:mixinsquared-common:0.3.7-beta.2")
+    implementation("com.github.bawnorton.mixinsquared:mixinsquared-neoforge:0.3.7-beta.2")
 
     // JEI — recipe viewer (NeoForge variant for 1.21.1)
     compileOnly("mezz.jei:jei-${mcVer}-neoforge-api:19.21.0.247")

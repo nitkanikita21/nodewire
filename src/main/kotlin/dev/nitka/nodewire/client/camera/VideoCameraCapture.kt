@@ -70,8 +70,13 @@ object VideoCameraCapture {
      *    `ChunkRenderList` (`ArrayIndexOutOfBoundsException: Render list is full`,
      *    verified in modpack). Vista's surgical fix uses MixinSquared
      *    (`@TargetHandler` to mix into Veil's blit handler ONLY) — a separate
-     *    dep + jarJar shipping step. Future work; tracked as TODO. */
-    private val INCOMPATIBLE_PIPELINE_MODS = listOf("veil")
+     *    dep + jarJar shipping step. Future work; tracked as TODO.
+     *
+     *  Empty now: DH = [DhCaptureGuard], Veil = [dev.nitka.nodewire.mixin.camera.MixinVeilBlitHandler]
+     *  (MixinSquared @TargetHandler — surgical OR of `isRenderingPerspective`
+     *  ONLY inside Veil's blit handler, doesn't activate the perspective chunk
+     *  collector that overflows Sodium's render list). */
+    private val INCOMPATIBLE_PIPELINE_MODS = listOf<String>()
 
     /** Cached: which of [INCOMPATIBLE_PIPELINE_MODS] are loaded this session.
      *  Null = not resolved yet (ModList is queryable only after mod loading). */

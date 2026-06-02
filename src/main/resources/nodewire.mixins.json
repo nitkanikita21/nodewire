@@ -11,7 +11,8 @@
     "tc.MixinTweakedControllerButtonPacket"
   ],
   "client": [
-    "camera.MixinGameRenderer"
+    "camera.MixinGameRenderer",
+    "camera.MixinVeilBlitHandler"
   ],
   "server": [],
   "injectors": {
