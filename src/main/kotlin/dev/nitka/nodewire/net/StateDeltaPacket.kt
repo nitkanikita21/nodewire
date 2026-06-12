@@ -36,7 +36,7 @@ data class CellDelta(val key: String, val kind: StateKind, val value: CompoundTa
  * Server → client: a batch of replicated state-cell changes for ONE script node,
  * sent only when a cell mutated (delta, not per-tick full state). The client
  * merges them into the node's client state before its client behaviors read.
- * Server-authoritative, one-way. Modeled on [BindAeroSourcePacket] (registry-aware
+ * Server-authoritative, one-way. Modeled on the bind packets (registry-aware
  * `RegistryFriendlyByteBuf`) + [SetScriptSourcePacket] (NodeId via `UUIDUtil.CODEC`).
  */
 data class StateDeltaPacket(

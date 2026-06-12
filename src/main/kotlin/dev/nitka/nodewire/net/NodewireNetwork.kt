@@ -21,16 +21,15 @@ object NodewireNetwork {
         val registrar: PayloadRegistrar = event.registrar("1")
         // Client → server packets
         registrar.playToServer(SaveGraphPacket.TYPE, SaveGraphPacket.STREAM_CODEC, SaveGraphPacket::handle)
-        registrar.playToServer(BindChannelPacket.TYPE, BindChannelPacket.STREAM_CODEC, BindChannelPacket::handle)
-        registrar.playToServer(BindAeroSourcePacket.TYPE, BindAeroSourcePacket.STREAM_CODEC, BindAeroSourcePacket::handle)
-        registrar.playToServer(BindSensorSourcePacket.TYPE, BindSensorSourcePacket.STREAM_CODEC, BindSensorSourcePacket::handle)
-        registrar.playToServer(BindSideChannelPacket.TYPE, BindSideChannelPacket.STREAM_CODEC, BindSideChannelPacket::handle)
-        registrar.playToServer(BindRemoteRedstonePacket.TYPE, BindRemoteRedstonePacket.STREAM_CODEC, BindRemoteRedstonePacket::handle)
-        registrar.playToServer(BindCameraSourcePacket.TYPE, BindCameraSourcePacket.STREAM_CODEC, BindCameraSourcePacket::handle)
+        // Unified pin linking: ONE bind + ONE unlink packet for every
+        // source/target kind (the PinPort surface replaced the per-kind zoo).
+        registrar.playToServer(BindPinPacket.TYPE, BindPinPacket.STREAM_CODEC, BindPinPacket::handle)
+        registrar.playToServer(RemovePinLinkPacket.TYPE, RemovePinLinkPacket.STREAM_CODEC, RemovePinLinkPacket::handle)
         registrar.playToServer(RemoveBindingPacket.TYPE, RemoveBindingPacket.STREAM_CODEC, RemoveBindingPacket::handle)
         registrar.playToServer(SetBlockNamePacket.TYPE, SetBlockNamePacket.STREAM_CODEC, SetBlockNamePacket::handle)
         registrar.playToServer(SetSideBindingNamePacket.TYPE, SetSideBindingNamePacket.STREAM_CODEC, SetSideBindingNamePacket::handle)
         registrar.playToServer(SetScriptSourcePacket.TYPE, SetScriptSourcePacket.STREAM_CODEC, SetScriptSourcePacket::handle)
+        registrar.playToServer(SetLinkToolModePacket.TYPE, SetLinkToolModePacket.STREAM_CODEC, SetLinkToolModePacket::handle)
         // Server → client packets
         registrar.playToClient(HighlightPacket.TYPE, HighlightPacket.STREAM_CODEC, HighlightPacket::handle)
         registrar.playToClient(StateDeltaPacket.TYPE, StateDeltaPacket.STREAM_CODEC, StateDeltaPacket::handle)

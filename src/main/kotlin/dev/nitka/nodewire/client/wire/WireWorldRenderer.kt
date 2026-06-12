@@ -60,7 +60,10 @@ object WireWorldRenderer {
     }
 
     fun render(event: RenderLevelStageEvent) {
-        if (event.stage != RenderLevelStageEvent.Stage.AFTER_TRANSLUCENT_BLOCKS) return
+        // AFTER_LEVEL fires AFTER Veil's FramebufferStack composes back to the
+        // main target. AFTER_TRANSLUCENT_BLOCKS fires while Veil's FBO is still
+        // bound — under Veil our wires went there but didn't survive compose.
+        if (event.stage != RenderLevelStageEvent.Stage.AFTER_LEVEL) return
         val mc = Minecraft.getInstance()
         val level = mc.level ?: return
         val player = mc.player ?: return
@@ -104,23 +107,23 @@ object WireWorldRenderer {
             }
         }
 
-        // Remote-redstone bindings (logic block READS redstone from arbitrary
-        // world block). Visually: wire from world block → logic block, plus
-        // a vanilla-style block outline around the source block so the user
-        // can identify which block is bound.
-        val remoteList = mutableListOf<RenderRemoteRedstoneBinding>()
+        // Unified pin links (logic block as SINK: camera video, screen touch,
+        // world redstone, another logic block's channel…). Visually: wire
+        // from the source block → logic block, plus a vanilla-style outline
+        // around the source so the user can identify which block is bound.
+        val pinLinkList = mutableListOf<RenderPinLink>()
         for (logic in tracked) {
-            val rrbs = logic.remoteRedstoneBindingsSnapshot()
-            if (rrbs.isEmpty()) continue
-            for (rrb in rrbs) {
+            val pls = logic.pinLinksSnapshot()
+            if (pls.isEmpty()) continue
+            for (pl in pls) {
                 val dstKey = logic.blockPos.asLong()
                 val dstIdx = inCount[dstKey] ?: 0
                 inCount[dstKey] = dstIdx + 1
-                remoteList.add(RenderRemoteRedstoneBinding(logic, rrb, dstIdx))
+                pinLinkList.add(RenderPinLink(logic, pl, dstIdx))
             }
         }
 
-        if (bindList.isEmpty() && sideList.isEmpty() && remoteList.isEmpty()) return
+        if (bindList.isEmpty() && sideList.isEmpty() && pinLinkList.isEmpty()) return
 
         // Totals per endpoint so we can normalize index→angle.
         val outTotal = HashMap<Long, Int>()
@@ -132,18 +135,25 @@ object WireWorldRenderer {
         for (sb in sideList) {
             outTotal.merge(sb.source.blockPos.asLong(), 1, Int::plus)
         }
-        for (rr in remoteList) {
+        for (rr in pinLinkList) {
             inTotal.merge(rr.logic.blockPos.asLong(), 1, Int::plus)
         }
 
         val cameraPos = event.camera.position
-        val pose = event.poseStack
         val bufferSource = mc.renderBuffers().bufferSource()
         val builder = bufferSource.getBuffer(WIRE_TYPE)
 
-        pose.pushPose()
-        pose.translate(-cameraPos.x, -cameraPos.y, -cameraPos.z)
-        val matrix = pose.last().pose()
+        // World→view matrix built from the event's authoritative modelViewMatrix
+        // (the camera-rotation NeoForge passes per stage), NOT poseStack.last().
+        // At AFTER_LEVEL — and especially under Veil's deferred pipeline — the
+        // poseStack top no longer carries the camera rotation, so wires
+        // translated-but-didn't-rotate ("floated" when the camera turned).
+        // modelViewMatrix is independent of poseStack manipulation → stays correct.
+        val matrix = Matrix4f(event.modelViewMatrix).translate(
+            (-cameraPos.x).toFloat(),
+            (-cameraPos.y).toFloat(),
+            (-cameraPos.z).toFloat(),
+        )
 
         for (rb in bindList) {
             val srcKey = rb.source.blockPos.asLong()
@@ -155,20 +165,28 @@ object WireWorldRenderer {
             val color = colorForBinding(rb.source, rb.binding.sourceChannelName)
             drawStraightWire(builder, matrix, src, dst, cameraPos, color)
         }
-        for (rr in remoteList) {
+        for (rr in pinLinkList) {
             val dstKey = rr.logic.blockPos.asLong()
-            val srcCenter = net.minecraft.world.phys.Vec3.atCenterOf(rr.binding.source.payload.blockPos)
+            // Sable-aware source centre (a camera on a sub-level renders at
+            // its world pose); plain world blocks fall back to atCenterOf.
+            val srcCenter = rr.link.source.worldCenter(level)
+                ?: net.minecraft.world.phys.Vec3.atCenterOf(rr.link.source.payload.blockPos)
             val dstCenter = sourceWorldCenter(rr.logic, level) ?: continue
             // Use the input-fan slot on the logic block; source side gets
-            // its own fan slot keyed by source pos so multiple remote
-            // sources spread out around their respective endpoints.
-            val srcKey = rr.binding.source.payload.blockPos.asLong()
+            // its own fan slot keyed by source pos so multiple sources
+            // spread out around their respective endpoints.
+            val srcKey = rr.link.source.payload.blockPos.asLong()
             val srcIdx = outCount[srcKey] ?: 0
             outCount[srcKey] = srcIdx + 1
             outTotal.merge(srcKey, 1, Int::plus)
             val src = fanOffset(srcCenter, srcIdx, outTotal[srcKey]!!)
             val dst = fanOffset(dstCenter, rr.dstIdx, inTotal[dstKey]!!)
-            val color = colorForType(PinType.REDSTONE)
+            // Color by the fed channel_input's type (the sink side knows it).
+            val tgtType = rr.logic.graph.nodes.values.firstOrNull {
+                it.typeKey.path == "channel_input" &&
+                    it.config.getString("name") == rr.link.targetPin
+            }?.let { PinType.fromName(it.config.getString("type")) }
+            val color = colorForType(tgtType ?: PinType.REDSTONE)
             drawStraightWire(builder, matrix, src, dst, cameraPos, color)
         }
         for (sb in sideList) {
@@ -194,20 +212,23 @@ object WireWorldRenderer {
             drawStraightWire(builder, matrix, src, dst, cameraPos, color)
             drawFaceFrame(builder, matrix, dst, wn, wu, wv, color)
         }
-        pose.popPose()
         bufferSource.endBatch(WIRE_TYPE)
 
-        // Vanilla-style black outline around each remote-redstone source block.
+        // Vanilla-style outline around each pin-link source block.
         // Rendered with the LINES render type, separate from the wire batch.
-        if (remoteList.isNotEmpty()) {
+        if (pinLinkList.isNotEmpty()) {
             val lineBuf = bufferSource.getBuffer(net.minecraft.client.renderer.RenderType.lines())
-            pose.pushPose()
+            // Fresh PoseStack seeded from the camera rotation (same reason as the
+            // wire matrix above): renderLineBox needs a PoseStack, and
+            // event.poseStack's top is unreliable at AFTER_LEVEL / under Veil.
+            val pose = com.mojang.blaze3d.vertex.PoseStack()
+            pose.mulPose(event.modelViewMatrix)
             pose.translate(-cameraPos.x, -cameraPos.y, -cameraPos.z)
             // De-dup source positions — multiple bindings on the same block
             // shouldn't stack 12 line passes on the same 12 edges.
             val seen = HashSet<Long>()
-            for (rr in remoteList) {
-                val sp = rr.binding.source.payload.blockPos
+            for (rr in pinLinkList) {
+                val sp = rr.link.source.payload.blockPos
                 if (!seen.add(sp.asLong())) continue
                 val state = level.getBlockState(sp)
                 val shape = state.getShape(level, sp)
@@ -223,7 +244,6 @@ object WireWorldRenderer {
                     0.72f, 0.19f, 0.19f, 1f,
                 )
             }
-            pose.popPose()
             bufferSource.endBatch(net.minecraft.client.renderer.RenderType.lines())
         }
     }
@@ -461,9 +481,9 @@ object WireWorldRenderer {
         val dstIdx: Int,
     )
 
-    private data class RenderRemoteRedstoneBinding(
+    private data class RenderPinLink(
         val logic: LogicBlockEntity,
-        val binding: dev.nitka.nodewire.block.RemoteRedstoneBinding,
+        val link: dev.nitka.nodewire.link.PinLink,
         val dstIdx: Int,
     )
 }

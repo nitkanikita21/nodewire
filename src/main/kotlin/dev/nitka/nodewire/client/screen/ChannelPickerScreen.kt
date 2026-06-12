@@ -47,7 +47,9 @@ class ChannelPickerScreen(
     private val onPick: (name: String) -> Unit,
 ) : NwComposeScreen(Component.literal(title)) {
 
-    data class Option(val name: String, val type: PinType)
+    /** [name] is the pin/channel id handed back to [onPick]; [label] is what
+     *  the row shows (defaults to the id). */
+    data class Option(val name: String, val type: PinType, val label: String = name)
 
     @Composable
     override fun Content() {
@@ -131,7 +133,7 @@ private fun OptionRow(opt: ChannelPickerScreen.Option, onClick: () -> Unit) {
         // Small typed-color dot mirrors the pin handle so the row reads
         // the same as a graph row in the editor.
         Box(modifier = Modifier.size(6).background(pinColor(opt.type), NwTheme.shapes.medium))
-        Text(opt.name, style = NwTheme.typography.caption)
+        Text(opt.label, style = NwTheme.typography.caption)
         Text(
             opt.type.name.lowercase(),
             style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceMuted),

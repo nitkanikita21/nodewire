@@ -30,6 +30,9 @@ import dev.nitka.nodewire.ui.modifier.input.onHover
 import dev.nitka.nodewire.ui.modifier.input.pointerInput
 import dev.nitka.nodewire.ui.modifier.layout.fillMaxSize
 import dev.nitka.nodewire.ui.modifier.layout.fillMaxWidth
+import dev.nitka.nodewire.ui.modifier.layout.height
+import dev.nitka.nodewire.ui.scroll.rememberScrollState
+import dev.nitka.nodewire.ui.scroll.verticalScroll
 import dev.nitka.nodewire.ui.modifier.layout.padding
 import dev.nitka.nodewire.ui.modifier.layout.size
 import dev.nitka.nodewire.ui.modifier.layout.weight
@@ -99,15 +102,21 @@ class BindingsManagerScreen(
         }
         val bindings = remember(version) { sourceBe.bindingsSnapshot() }
         val sideBindings = remember(version) { sourceBe.sideBindingsSnapshot() }
-        val totalBindings = bindings.size + sideBindings.size
+        val pinLinks = remember(version) { sourceBe.pinLinksSnapshot() }
+        val totalBindings = bindings.size + sideBindings.size + pinLinks.size
         // Pre-group by source channel name once so the per-channel rendering
         // loop is O(1) lookup instead of O(N) filter per output.
         val bindingsByChannel = remember(version) { bindings.groupBy { it.sourceChannelName } }
         val sideBindingsByChannel = remember(version) { sideBindings.groupBy { it.sourceChannelName } }
 
+        // The channel list grows past the screen on pin-heavy setups (a fire
+        // control block has 10+ channels) — fixed-height viewport + scroll.
+        val panelTop = 16
+        val viewportH = (h - panelTop * 2 - 64).coerceAtLeast(120)
+        val scroll = rememberScrollState()
         Box(
             modifier = Modifier
-                .padding(start = ((w - PANEL_WIDTH) / 2), top = ((h - 260).coerceAtLeast(20) / 2)),
+                .padding(start = ((w - PANEL_WIDTH) / 2), top = panelTop),
         ) {
             Surface(
                 modifier = Modifier
@@ -122,6 +131,40 @@ class BindingsManagerScreen(
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space6)) {
                     PanelHeader(channelCount = outputs.size, bindingCount = totalBindings)
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(viewportH)
+                            .verticalScroll(scroll),
+                        verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space6),
+                    ) {
+
+                    // Incoming unified pin links (this block as SINK): camera
+                    // video, screen touch, world redstone, other logic blocks…
+                    if (pinLinks.isNotEmpty()) {
+                        Column(verticalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2)) {
+                            MutedLine("Incoming links")
+                            for (pl in pinLinks) {
+                                TargetRow(
+                                    description = "(${pl.source.payload.blockPos.toShortString()}) ${pl.sourcePin} → ${pl.targetPin}",
+                                    kindChip = "in",
+                                    target = pl.source,
+                                    onRemove = {
+                                        PacketDistributor.sendToServer(
+                                            dev.nitka.nodewire.net.RemovePinLinkPacket(
+                                                sinkPos = sourceBe.blockPos,
+                                                source = pl.source,
+                                                sourcePin = pl.sourcePin,
+                                                targetPin = pl.targetPin,
+                                            ),
+                                        )
+                                        version++
+                                    },
+                                )
+                            }
+                        }
+                    }
 
                     if (outputs.isEmpty()) {
                         MutedLine("Add a Channel Output node to this block first.")
@@ -192,6 +235,7 @@ class BindingsManagerScreen(
                             }
                         }
                     }
+                    } // scroll viewport
                 }
             }
         }

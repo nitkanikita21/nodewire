@@ -61,6 +61,7 @@ object NodewireClient {
         FORGE_BUS.addListener<RegisterClientCommandsEvent>(ClientScriptCommand::register)
         FORGE_BUS.addListener(::onLevelUnload)
         FORGE_BUS.addListener<RegisterClientCommandsEvent>(HighlightCommand::register)
+        FORGE_BUS.addListener(::onMouseScroll)
         LOG.info("Nodewire client handlers registered (MOD bus + FORGE bus)")
     }
 
@@ -84,5 +85,22 @@ object NodewireClient {
     private fun onLevelUnload(event: LevelEvent.Unload) {
         if (!event.level.isClientSide) return
         ClientScriptDriver.onLevelUnload()
+    }
+
+    /**
+     * Sneak+scroll with the Channel Link Tool in the MAIN hand cycles the
+     * tool mode (LINK ↔ PANEL). Cancels the event (no hotbar scroll) and asks
+     * the SERVER to mutate the stack NBT — a client-side write would desync.
+     */
+    private fun onMouseScroll(event: net.neoforged.neoforge.client.event.InputEvent.MouseScrollingEvent) {
+        val player = Minecraft.getInstance().player ?: return
+        if (!player.isShiftKeyDown) return
+        if (player.mainHandItem.item !is dev.nitka.nodewire.item.ChannelLinkToolItem) return
+        val dy = event.scrollDeltaY
+        if (dy == 0.0) return
+        event.isCanceled = true
+        net.neoforged.neoforge.network.PacketDistributor.sendToServer(
+            dev.nitka.nodewire.net.SetLinkToolModePacket(if (dy > 0) 1 else -1),
+        )
     }
 }

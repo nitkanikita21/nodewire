@@ -2,7 +2,6 @@ package dev.nitka.nodewire
 
 import dev.nitka.nodewire.block.CameraBlock
 import dev.nitka.nodewire.block.CameraBlockEntity
-import dev.nitka.nodewire.block.ChannelTargetRegistry
 import dev.nitka.nodewire.block.LogicBlock
 import dev.nitka.nodewire.block.LogicBlockEntity
 import dev.nitka.nodewire.block.ScreenBlock
@@ -81,12 +80,9 @@ object Registry {
         ITEMS.register(bus)
         BLOCK_ENTITIES.register(bus)
         bus.addListener(::onBuildTabs)
-        // Channel Link Tool target: the Screen offers a single VIDEO "screen"
-        // input. Registered after blocks so SCREEN_BLOCK.get() is valid.
-        bus.addListener<net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent> {
-            ChannelTargetRegistry.register(SCREEN_BLOCK.get(), ScreenBlockEntity.CHANNEL_TARGET)
-            ChannelTargetRegistry.register(CAMERA_BLOCK.get(), CameraBlockEntity.CHANNEL_TARGET)
-        }
+        // Link Tool needs no per-block registration any more: Screen/Camera/
+        // Logic implement PinPort directly; foreign blocks resolve through
+        // the PinPorts adapters (aero / sensor / redstone fallback).
     }
 
     private fun onBuildTabs(event: BuildCreativeModeTabContentsEvent) {

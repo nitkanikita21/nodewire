@@ -43,7 +43,9 @@ import net.neoforged.fml.ModList
  * runtime — no NBT round-trip; sources will re-populate on the next tick.
  */
 class LogicBlockEntity(pos: BlockPos, state: BlockState) :
-    BlockEntity(Registry.LOGIC_BLOCK_BE.get(), pos, state), ChannelInputSink {
+    BlockEntity(Registry.LOGIC_BLOCK_BE.get(), pos, state),
+    ChannelInputSink,
+    dev.nitka.nodewire.link.PinLinkSink {
 
     var graph: NodeGraph = NodeGraph()
 
@@ -57,18 +59,59 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
      */
     private val sideBindings: MutableList<SideBinding> = mutableListOf()
 
-    /**
-     * Mirror of [sideBindings]: each entry feeds a redstone level read from
-     * an arbitrary world block into a named `channel_input` on this BE.
-     */
-    private val remoteRedstoneBindings: MutableList<RemoteRedstoneBinding> = mutableListOf()
+    // ── unified pin links (this BE as SINK) ──────────────────────────────
+    // Every "something feeds my channel_input" relation — a camera's video
+    // handle, a screen's touch events, a world block's redstone, ANOTHER
+    // logic block's channel_output — is one PinLink, pulled per server tick
+    // by PinLinkEngine. Created by the Channel Link Tool via BindPinPacket.
 
-    /**
-     * Bindings from a [dev.nitka.nodewire.block.CameraBlockEntity] into a named
-     * VIDEO `channel_input` on this BE. Each server tick the camera's stable
-     * handle is delivered into [externalChannelInputs] (Sable-aware resolve).
-     */
-    private val cameraSourceBindings: MutableList<CameraSourceBinding> = mutableListOf()
+    private val pinLinks: MutableList<dev.nitka.nodewire.link.PinLink> = mutableListOf()
+
+    override val pinLinkScratch = dev.nitka.nodewire.link.PinLinkScratch()
+
+    override fun pinLinks(): MutableList<dev.nitka.nodewire.link.PinLink> = pinLinks
+
+    fun pinLinksSnapshot(): List<dev.nitka.nodewire.link.PinLink> = pinLinks.toList()
+
+    override fun onPinLinksChanged() {
+        setChanged()
+    }
+
+    // ── PinPort: this block's linkable surface ───────────────────────────
+    // Outputs = named channel_output nodes (sampled from the last tick's
+    // value snapshot); inputs = named channel_input nodes (delivered into
+    // the same externalChannelInputs slot every legacy path used).
+
+    override fun pinOutputs(ctx: dev.nitka.nodewire.link.LinkContext): List<dev.nitka.nodewire.link.LinkPin> =
+        channelPins("channel_output")
+
+    override fun pinInputs(ctx: dev.nitka.nodewire.link.LinkContext): List<dev.nitka.nodewire.link.LinkPin> =
+        channelPins("channel_input")
+
+    private fun channelPins(nodePath: String): List<dev.nitka.nodewire.link.LinkPin> =
+        graph.nodes.values
+            .filter { it.typeKey.path == nodePath }
+            .mapNotNull { node ->
+                val name = node.config.getString("name")
+                if (name.isEmpty()) null
+                else dev.nitka.nodewire.link.LinkPin(name, PinType.fromName(node.config.getString("type")))
+            }
+
+    /** Last tick's channel_output values, refreshed unconditionally at the
+     *  end of [serverTick] — what other sinks' [readPin] pulls see. */
+    @Transient
+    private var pinReadSnapshot: Map<String, PinValue> = emptyMap()
+
+    override fun readPin(id: String): dev.nitka.nodewire.link.PinReading? =
+        pinReadSnapshot[id]?.let { dev.nitka.nodewire.link.PinReading(it) }
+
+    override fun writePin(id: String, value: PinValue) {
+        externalChannelInputs[id] = value
+    }
+
+    override fun clearPin(id: String) {
+        externalChannelInputs.remove(id)
+    }
 
     private var blockName: String = ""
 
@@ -145,8 +188,17 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
      * Values pushed in from other BEs' [ChannelOutput] nodes via their
      * bindings. Keyed by THIS BE's channel-input name. Read at the start
      * of each tick into the evaluator's externalOutputs map.
+     *
+     * Concurrent: written on the server thread; the singleplayer editor
+     * preview reads a snapshot from the render thread (the integrated-server
+     * bridge in NodeEditorScreen) so its channel_input chips show LIVE
+     * delivered values instead of permanent zeros.
      */
-    private val externalChannelInputs: MutableMap<String, PinValue> = mutableMapOf()
+    private val externalChannelInputs: MutableMap<String, PinValue> =
+        java.util.concurrent.ConcurrentHashMap()
+
+    /** Render-thread-safe copy for the editor preview (SP integrated server). */
+    fun externalInputsSnapshot(): Map<String, PinValue> = HashMap(externalChannelInputs)
 
     private var serverEvaluator: StatefulGraphEvaluator? = null
 
@@ -217,78 +269,17 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
         dev.nitka.nodewire.script.ScriptNodeRuntime.cancelAll()
     }
 
-    /**
-     * Create one explicit channel link: this BE's [sourceChannelName]
-     * (a `channel_output` by that name) → [target]'s [targetChannelName]
-     * (a `channel_input` by that name). Returns true if the binding was
-     * created, false on validation failure (missing nodes / type mismatch /
-     * names blank).
-     *
-     * Replaces any earlier binding from the same source channel name to the
-     * same target so re-picking the same pair doesn't duplicate.
-     */
-    /**
-     * Outcome of [tryAddBinding]. Specific enough that the packet handler
-     * can surface the failure reason to the player instead of silently
-     * dropping the bind.
-     */
-    sealed interface BindResult {
-        object Ok : BindResult
-        object EmptyName : BindResult
-        object SourceMissing : BindResult
-        object TargetMissing : BindResult
-        data class TypeMismatch(val srcType: PinType, val tgtType: PinType) : BindResult
-    }
-
-    fun tryAddBinding(
-        sourceChannelName: String,
-        target: LogicBlockEntity,
-        targetChannelName: String,
-    ): BindResult {
-        if (sourceChannelName.isEmpty() || targetChannelName.isEmpty()) return BindResult.EmptyName
-        val srcNode = graph.nodes.values.firstOrNull {
-            it.typeKey.path == "channel_output"
-                && it.config.getString("name") == sourceChannelName
-        } ?: return BindResult.SourceMissing
-        val tgtNode = target.graph.nodes.values.firstOrNull {
-            it.typeKey.path == "channel_input"
-                && it.config.getString("name") == targetChannelName
-        } ?: return BindResult.TargetMissing
-        val srcType = PinType.fromName(srcNode.config.getString("type"))
-        val tgtType = PinType.fromName(tgtNode.config.getString("type"))
-        // Accept any pair that PinValueConversion can route — same set the
-        // edge-read pipeline uses. Strict equality used to reject e.g.
-        // Bool channel → Redstone channel even though the value transfers.
-        if (!dev.nitka.nodewire.graph.PinValueConversion.canConvert(srcType, tgtType)) {
-            return BindResult.TypeMismatch(srcType, tgtType)
-        }
-
-        bindings.removeAll {
-            it.sourceChannelName == sourceChannelName
-                && it.target.payload.blockPos == target.blockPos
-                && it.targetChannelName == targetChannelName
-        }
-        bindings.add(ChannelBinding(sourceChannelName, EndpointRef.from(level!!, target.blockPos), targetChannelName))
-        setChanged()
-        return BindResult.Ok
-    }
-
-    /** Legacy boolean wrapper. Retained for any caller that doesn't care
-     *  about the reason; new code should use [tryAddBinding]. */
-    fun addBinding(
-        sourceChannelName: String,
-        target: LogicBlockEntity,
-        targetChannelName: String,
-    ): Boolean = tryAddBinding(sourceChannelName, target, targetChannelName) is BindResult.Ok
+    // NOTE (unified linking, 2026-06-11): logic→logic links are no longer
+    // CREATED here — the Link Tool stores a PinLink on the TARGET, which
+    // pulls from this block's channel snapshot. The legacy source-side
+    // [bindings] list keeps loading, ticking and pushing for old worlds
+    // (and the Link Manager can still remove its entries), it just gains
+    // no new entries.
 
     /**
-     * Server-side mutator: replace a node's config blob. Used by
-     * [dev.nitka.nodewire.net.BindAeroSourcePacket.Companion.handle] (and any future packet that wants to
-     * update a single node's config without a full graph sync). Returns
-     * true if the node was found and updated.
-     *
-     * Caller is responsible for any neighbour-update / block-update
-     * broadcast — this method only mutates state + setChanged().
+     * Server-side mutator: replace a node's config blob (single-node config
+     * update without a full graph sync). Returns true if the node was found
+     * and updated. Caller owns any block-update broadcast.
      */
     /**
      * Phase 2b — CLIENT-only: merge replicated state [deltaTag] (a multi-key tag
@@ -362,94 +353,8 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
         return changed
     }
 
-    /**
-     * Bind this BE's [sourceChannelName] (`channel_output`) to a non-Logic
-     * [ChannelInputSink] target's named slot (e.g. a video Screen). The delivery
-     * loop writes the value via [ChannelInputSink.writeChannelInput]. Returns
-     * false if the source channel_output is missing; TYPE compatibility is the
-     * caller's job (validated against the target's [TargetSlot]).
-     */
-    fun addSinkBinding(sourceChannelName: String, target: EndpointRef, targetChannelName: String): Boolean {
-        if (sourceChannelName.isEmpty() || targetChannelName.isEmpty()) return false
-        val hasSource = graph.nodes.values.any {
-            it.typeKey.path == "channel_output" && it.config.getString("name") == sourceChannelName
-        }
-        if (!hasSource) return false
-        bindings.removeAll {
-            it.sourceChannelName == sourceChannelName &&
-                it.target.payload.blockPos == target.payload.blockPos &&
-                it.targetChannelName == targetChannelName
-        }
-        bindings.add(ChannelBinding(sourceChannelName, target, targetChannelName))
-        setChanged()
-        return true
-    }
-
     fun bindingsSnapshot(): List<ChannelBinding> = bindings.toList()
     fun sideBindingsSnapshot(): List<SideBinding> = sideBindings.toList()
-    fun remoteRedstoneBindingsSnapshot(): List<RemoteRedstoneBinding> = remoteRedstoneBindings.toList()
-
-    /**
-     * Add a binding from a world block at [sourcePos] to the named
-     * `channel_input` on this BE. Returns false if the channel doesn't
-     * exist, isn't redstone-coercible, or the source is air.
-     * Duplicates (same target channel + source pos) replace the existing entry.
-     */
-    fun addRemoteRedstoneBinding(targetChannelName: String, sourcePos: BlockPos): Boolean {
-        if (targetChannelName.isEmpty()) return false
-        val lvl = level ?: return false
-        if (lvl.getBlockState(sourcePos).isAir) return false
-        val tgtNode = graph.nodes.values.firstOrNull {
-            it.typeKey.path == "channel_input"
-                && it.config.getString("name") == targetChannelName
-        } ?: return false
-        val tgtType = PinType.fromName(tgtNode.config.getString("type"))
-        if (!dev.nitka.nodewire.graph.PinValueConversion.canConvert(PinType.REDSTONE, tgtType)) return false
-        remoteRedstoneBindings.removeAll {
-            it.targetChannelName == targetChannelName
-                && it.source.payload.blockPos == sourcePos
-        }
-        val ref = dev.nitka.nodewire.endpoint.EndpointRef.from(lvl, sourcePos)
-        remoteRedstoneBindings.add(RemoteRedstoneBinding(targetChannelName, ref))
-        setChanged()
-        return true
-    }
-
-    fun removeRemoteRedstoneBinding(targetChannelName: String, sourcePos: BlockPos): Boolean {
-        val removed = remoteRedstoneBindings.removeAll {
-            it.targetChannelName == targetChannelName
-                && it.source.payload.blockPos == sourcePos
-        }
-        if (removed) setChanged()
-        return removed
-    }
-
-    /**
-     * Bind a [CameraBlockEntity] at [cameraPos] to a named VIDEO `channel_input`
-     * on this BE. Returns false if the channel is missing or not VIDEO-coercible.
-     * Duplicates (same channel + camera pos) replace the existing entry.
-     */
-    fun addCameraSourceBinding(targetChannelName: String, cameraPos: BlockPos): Boolean {
-        if (targetChannelName.isEmpty()) return false
-        val lvl = level ?: return false
-        val tgtNode = graph.nodes.values.firstOrNull {
-            it.typeKey.path == "channel_input"
-                && it.config.getString("name") == targetChannelName
-        } ?: return false
-        val tgtType = PinType.fromName(tgtNode.config.getString("type"))
-        if (!dev.nitka.nodewire.graph.PinValueConversion.canConvert(PinType.VIDEO, tgtType)) return false
-        cameraSourceBindings.removeAll {
-            it.targetChannelName == targetChannelName
-                && it.source.payload.blockPos == cameraPos
-        }
-        cameraSourceBindings.add(
-            CameraSourceBinding(targetChannelName, dev.nitka.nodewire.endpoint.EndpointRef.from(lvl, cameraPos)),
-        )
-        setChanged()
-        return true
-    }
-
-    fun cameraSourceBindingsSnapshot(): List<CameraSourceBinding> = cameraSourceBindings.toList()
 
     /**
      * Delete one channel-binding tuple. Returns true if a matching entry
@@ -474,10 +379,9 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
             val lvl = level
             val tgt = lvl?.getBlockEntity(targetPos)
             if (tgt is ChannelInputSink && tgt !is LogicBlockEntity) {
-                val state = lvl.getBlockState(targetPos)
-                val type = ChannelTargetRegistry.lookup(state)
-                    .slotsFor(lvl, targetPos, state, net.minecraft.core.Direction.NORTH)
-                    .firstOrNull { it.name == targetChannelName }?.type
+                val type = (tgt as? dev.nitka.nodewire.link.PinPort)
+                    ?.pinInputs(dev.nitka.nodewire.link.LinkContext(lvl, targetPos, lvl.getBlockState(targetPos)))
+                    ?.firstOrNull { it.id == targetChannelName }?.type
                     ?: dev.nitka.nodewire.graph.PinType.VIDEO
                 tgt.writeChannelInput(targetChannelName, dev.nitka.nodewire.graph.PinValue.default(type))
             }
@@ -645,36 +549,10 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
             }
         }
 
-        if (remoteRedstoneBindings.isNotEmpty()) {
-            val before = remoteRedstoneBindings.size
-            remoteRedstoneBindings.removeAll { isRemoteRedstoneStale(it, level) }
-            if (remoteRedstoneBindings.size != before) {
-                setChanged()
-                level.sendBlockUpdated(pos, state, state, net.minecraft.world.level.block.Block.UPDATE_CLIENTS)
-            }
-            // Poll each source's best-neighbour redstone and inject into the
-            // corresponding channel_input. Mirrors how cross-block ChannelBinding
-            // sets externalChannelInputs on the target BE — same delivery slot.
-            for (rrb in remoteRedstoneBindings) {
-                val sigLevel = level.getBestNeighborSignal(rrb.source.payload.blockPos)
-                externalChannelInputs[rrb.targetChannelName] = PinValue.Redstone(sigLevel)
-            }
-        }
-
-        if (cameraSourceBindings.isNotEmpty()) {
-            val before = cameraSourceBindings.size
-            cameraSourceBindings.removeAll { isCameraSourceStale(it, level) }
-            if (cameraSourceBindings.size != before) {
-                setChanged()
-                level.sendBlockUpdated(pos, state, state, net.minecraft.world.level.block.Block.UPDATE_CLIENTS)
-            }
-            // Deliver each camera's stable handle into its channel_input. Resolve
-            // is Sable-aware so a camera on a sub-level routes correctly.
-            for (csb in cameraSourceBindings) {
-                val cam = csb.source.resolve(level) as? CameraBlockEntity ?: continue
-                externalChannelInputs[csb.targetChannelName] = PinValue.Video(cam.videoHandle())
-            }
-        }
+        // Unified pin links: prune stale, pull every bound source pin (camera
+        // video, screen touch, world redstone, other logic blocks' channels…)
+        // into externalChannelInputs, clear slots that went silent.
+        dev.nitka.nodewire.link.PinLinkEngine.tick(level, this)
 
         // 1. External inputs: side redstone + named channels.
         val external = HashMap<Pair<java.util.UUID, String>, PinValue>()
@@ -900,12 +778,18 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
                         resolved.externalChannelInputs[binding.targetChannelName] = value
                     // Additive: endpoint consumers that own no graph (e.g. the
                     // video Screen) receive the same value via ChannelInputSink.
+                    // The From-variant lets the sink learn WHO feeds it — the
+                    // touch-screen routes taps back to this block through it.
                     is ChannelInputSink ->
-                        resolved.writeChannelInput(binding.targetChannelName, value)
+                        resolved.writeChannelInputFrom(binding.targetChannelName, value, pos)
                     else -> {}
                 }
             }
         }
+
+        // Publish this tick's channel_output values for PinLink consumers —
+        // other sinks' PinLinkEngine pulls read this snapshot via readPin.
+        pinReadSnapshot = perChannelValueCache
     }
 
     override fun onLoad() {
@@ -981,20 +865,12 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
                     .orElseThrow { IllegalStateException("side_bindings encode failed") },
             )
         }
-        if (remoteRedstoneBindings.isNotEmpty()) {
+        if (pinLinks.isNotEmpty()) {
             tag.put(
-                "remote_redstone_bindings",
-                RemoteRedstoneBinding.CODEC.listOf()
-                    .encodeStart(NbtOps.INSTANCE, remoteRedstoneBindings.toList()).result()
-                    .orElseThrow { IllegalStateException("remote_redstone_bindings encode failed") },
-            )
-        }
-        if (cameraSourceBindings.isNotEmpty()) {
-            tag.put(
-                "camera_source_bindings",
-                CameraSourceBinding.CODEC.listOf()
-                    .encodeStart(NbtOps.INSTANCE, cameraSourceBindings.toList()).result()
-                    .orElseThrow { IllegalStateException("camera_source_bindings encode failed") },
+                PIN_LINKS_KEY,
+                dev.nitka.nodewire.link.PinLink.CODEC.listOf()
+                    .encodeStart(NbtOps.INSTANCE, pinLinks.toList()).result()
+                    .orElseThrow { IllegalStateException("pin_links encode failed") },
             )
         }
         if (blockName.isNotEmpty()) {
@@ -1028,19 +904,22 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
                 .orElse(emptyList())
             sideBindings.addAll(list)
         }
-        remoteRedstoneBindings.clear()
-        if (tag.contains("remote_redstone_bindings")) {
-            val list = RemoteRedstoneBinding.CODEC.listOf()
-                .parse(NbtOps.INSTANCE, tag.get("remote_redstone_bindings")).result()
+        pinLinks.clear()
+        if (tag.contains(PIN_LINKS_KEY)) {
+            val list = dev.nitka.nodewire.link.PinLink.CODEC.listOf()
+                .parse(NbtOps.INSTANCE, tag.get(PIN_LINKS_KEY)).result()
                 .orElse(emptyList())
-            remoteRedstoneBindings.addAll(list)
+            pinLinks.addAll(list)
         }
-        cameraSourceBindings.clear()
-        if (tag.contains("camera_source_bindings")) {
-            val list = CameraSourceBinding.CODEC.listOf()
-                .parse(NbtOps.INSTANCE, tag.get("camera_source_bindings")).result()
-                .orElse(emptyList())
-            cameraSourceBindings.addAll(list)
+        // One-way migration of the pre-unification binding lists (camera /
+        // remote-redstone / screen-touch, each `{ch, source}`) into PinLinks.
+        // The legacy keys are read once and never written back. A touch
+        // binding becomes TWO links (the old path auto-fed `<ch>_down`); the
+        // engine prunes the `_down` one if no such channel_input exists.
+        migrateLegacyLinks(tag, "camera_source_bindings", "video") { _ -> }
+        migrateLegacyLinks(tag, "remote_redstone_bindings", dev.nitka.nodewire.link.PinPorts.REDSTONE_PIN) { _ -> }
+        migrateLegacyLinks(tag, "screen_touch_bindings", "touch") { (src, ch) ->
+            pinLinks.add(dev.nitka.nodewire.link.PinLink(src, "touch_down", ch + "_down"))
         }
         // Phase 2b.3b: CLIENT-only — consume the late-joiner replicated-state
         // piggyback from getUpdateTag, staging current values BEFORE any client
@@ -1107,35 +986,31 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
         return false
     }
 
-    private fun isRemoteRedstoneStale(rrb: RemoteRedstoneBinding, level: Level): Boolean {
-        // Target channel must still exist on this BE.
-        val tgtNode = graph.nodes.values.firstOrNull {
-            it.typeKey.path == "channel_input"
-                && it.config.getString("name") == rrb.targetChannelName
-        } ?: return true
-        val tgtType = PinType.fromName(tgtNode.config.getString("type"))
-        if (!dev.nitka.nodewire.graph.PinValueConversion.canConvert(PinType.REDSTONE, tgtType)) return true
-        // Source must still be a non-air block. Unloaded chunks tolerate
-        // (channel just stays at last value); only air means it was broken.
-        val state = level.getBlockState(rrb.source.payload.blockPos)
-        if (state.isAir) return true
-        return false
-    }
-
-    private fun isCameraSourceStale(csb: CameraSourceBinding, level: Level): Boolean {
-        // Target channel must still exist + accept VIDEO.
-        val tgtNode = graph.nodes.values.firstOrNull {
-            it.typeKey.path == "channel_input"
-                && it.config.getString("name") == csb.targetChannelName
-        } ?: return true
-        val tgtType = PinType.fromName(tgtNode.config.getString("type"))
-        if (!dev.nitka.nodewire.graph.PinValueConversion.canConvert(PinType.VIDEO, tgtType)) return true
-        // Source must still be a camera. Tolerate unloaded chunks (resolve null →
-        // keep the binding, channel just holds its last value); only a loaded
-        // non-camera block means the camera was removed/replaced.
-        val be = level.getBlockEntity(csb.source.payload.blockPos)
-        if (be != null && be !is CameraBlockEntity) return true
-        return false
+    /**
+     * Read one pre-unification binding list (`[{ch, source}]`) from [tag]
+     * and append a [dev.nitka.nodewire.link.PinLink] per entry, with the
+     * given fixed [sourcePin]. [extra] runs per entry for companions (the
+     * touch `_down` link). Legacy keys are never written back — saving once
+     * completes the migration.
+     */
+    private fun migrateLegacyLinks(
+        tag: CompoundTag,
+        key: String,
+        sourcePin: String,
+        extra: (Pair<EndpointRef, String>) -> Unit,
+    ) {
+        if (!tag.contains(key)) return
+        val listTag = tag.getList(key, net.minecraft.nbt.Tag.TAG_COMPOUND.toInt())
+        for (i in 0 until listTag.size) {
+            val e = listTag.getCompound(i)
+            val ch = e.getString("ch")
+            if (ch.isEmpty()) continue
+            val src = EndpointRef.CODEC
+                .parse(NbtOps.INSTANCE, e.getCompound("source"))
+                .result().orElse(null) ?: continue
+            pinLinks.add(dev.nitka.nodewire.link.PinLink(src, sourcePin, ch))
+            extra(src to ch)
+        }
     }
 
     private fun isStale(binding: ChannelBinding, level: Level): Boolean {
@@ -1215,6 +1090,9 @@ class LogicBlockEntity(pos: BlockPos, state: BlockState) :
 
     companion object {
         private const val MAX_NAME_LENGTH = 64
+
+        /** Unified incoming pin links (PinLink list). */
+        private const val PIN_LINKS_KEY = "pin_links"
 
         /** getUpdateTag sub-tag (node-id -> replicated cell values) for late joiners (2b.3b). */
         private const val REPLICATED_STATE_KEY = "nw_replicated_state"

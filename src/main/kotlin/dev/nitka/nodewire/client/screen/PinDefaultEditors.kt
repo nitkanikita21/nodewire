@@ -120,10 +120,10 @@ private fun VectorEditor(
     onChange: (PinValue) -> Unit,
 ) {
     val initial = when (current) {
-        is PinValue.Vec2 -> floatArrayOf(current.x, current.y, 0f, 0f)
-        is PinValue.Vec3 -> floatArrayOf(current.x, current.y, current.z, 0f)
-        is PinValue.Quat -> floatArrayOf(current.x, current.y, current.z, current.w)
-        else -> floatArrayOf(0f, 0f, 0f, 0f)
+        is PinValue.Vec2 -> doubleArrayOf(current.x, current.y, 0.0, 0.0)
+        is PinValue.Vec3 -> doubleArrayOf(current.x, current.y, current.z, 0.0)
+        is PinValue.Quat -> doubleArrayOf(current.x, current.y, current.z, current.w)
+        else -> doubleArrayOf(0.0, 0.0, 0.0, 0.0)
     }
     val componentCount = when (pinType) {
         PinType.VEC2 -> 2
@@ -144,10 +144,10 @@ private fun VectorEditor(
     }
 
     fun commit() {
-        val xf = x.toFloatOrNull() ?: 0f
-        val yf = y.toFloatOrNull() ?: 0f
-        val zf = z.toFloatOrNull() ?: 0f
-        val wf = w.toFloatOrNull() ?: 0f
+        val xf = x.toDoubleOrNull() ?: 0.0
+        val yf = y.toDoubleOrNull() ?: 0.0
+        val zf = z.toDoubleOrNull() ?: 0.0
+        val wf = w.toDoubleOrNull() ?: 0.0
         val value: PinValue = when (pinType) {
             PinType.VEC2 -> PinValue.Vec2(xf, yf)
             PinType.VEC3 -> PinValue.Vec3(xf, yf, zf)
