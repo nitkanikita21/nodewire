@@ -34,6 +34,9 @@ object Nodewire {
         if (net.neoforged.fml.ModList.get().isLoaded("computercraft")) {
             dev.nitka.nodewire.integration.cctweaked.NwPeripheralCapability.register(MOD_BUS)
         }
+        // CBC ballistics for scripts (Cbc.shells()/solvePitch) + cannon-mount
+        // yaw/pitch pins. Internally ModList-gated — safe no-op without CBC.
+        dev.nitka.nodewire.integration.cbc.CbcIntegration.init()
         // Coarse server-side teardown: cancel every server script coroutine when
         // the (integrated or dedicated) server stops. Per-BE setRemoved handles
         // the common case, but a server stop without unloading each BE would leave
