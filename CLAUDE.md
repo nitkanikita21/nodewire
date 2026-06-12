@@ -85,6 +85,15 @@ This means new modifiers are added by implementing one of the three marker inter
 
 `GroupBbox` + `GroupProxyPins.memberClosure` are shared helpers — marquee hit-testing for groups uses the same recipe as `GroupFrame`'s bbox calculation.
 
+### Unified pin linking (`link/`)
+ONE surface for every cross-block relation, replacing the per-kind binding zoo (camera/touch/remote-redstone/aero/sensor packets are gone):
+
+- `PinPort` — interface a BlockEntity implements to expose pins: `pinOutputs`/`pinInputs` (typed `LinkPin`s), `readPin -> PinReading?` (with optional `pulseStamp` for 1-tick event pins), `writePin`, `clearPin`. Implemented by `LogicBlockEntity` (channel nodes), `ScreenBlockEntity` (`touch`/`touch_down` out, `screen` in), `CameraBlockEntity` (`video` out, params in).
+- `PinPorts` — resolver: BE-as-PinPort first, else a composite of adapters (Aero channel catalog, capability sensors, CBC cannon mount via `integration/cbc/CbcIntegration`, and the always-present redstone fallback `redstone` out / `redstone@<face>` in).
+- `PinLink(source EndpointRef, sourcePin, targetPin)` — stored on the CONSUMING BE (`PinLinkSink`), persisted as `pin_links`, pulled per tick by `PinLinkEngine` (prune stale → read → write → clear silent pins). Legacy NBT (`camera_source_bindings` etc.) migrates on load.
+- Net: `BindPinPacket` + `RemovePinLinkPacket` only. The redstone-face fallback still commits a `SideBinding` on the source logic block (push via `VirtualSignalMap`); legacy `ChannelBinding` push delivery remains for old saves but the tool no longer creates them.
+- `ChannelLinkToolItem` modes (sneak+scroll): LINK (sneak+RMB = source pin picker, RMB = target pin picker) and PANEL (two-corner screen panel resize).
+
 ### Endpoint backends (`integration/<mod>/*Backend.kt`)
 `EndpointBackend` resolves an `EndpointRef` (`(BackendId, payloadNbt)`) to a server-side `BlockEntity` + world-space pose. Order at registration in `Nodewire.init` matters — first registered wins on `claims(level, pos)`:
 
@@ -98,7 +107,11 @@ Aircraft built by Aeronautics ARE Sable sub-levels — the wire layer is transpa
 - `AeroChannel` — catalog (~33 channels, 7 kinds), each with a `read(be) -> PinValue` reflection accessor + a `writable: Boolean` flag.
 - `AeroStatePipeline` — per-server-tick snapshot keyed by `AeroBindingKey(endpoint, kind, channel)`. ThreadLocal so node evaluators read in O(1). ModList-gated → no snapshot work when Aeronautics is absent.
 - `AeroInputNode` — single typed-pin `NodeType` whose pin reshapes from `config.channel`. Evaluator looks up the snapshot.
-- Bind UX: held `ChannelLinkToolItem` + sneak+RMB on Aero block → `AeroChannelPickerScreen` → packs binding into `BindAeroSourcePacket` → server replaces the target node's config via `LogicBlockEntity.replaceNodeConfig`.
+- Bind UX: unified Link Tool — Aero blocks expose the channel catalog as output pins via the `PinPorts` adapter; links land on the consuming block as ordinary `PinLink`s (the old AeroChannelPicker/BindAeroSourcePacket flow is gone).
+
+### CBC integration (`integration/cbc/` + script-facing `script/CbcBallistics.kt`)
+- `Cbc` (script package, default-imported, in script-api.jar): live `ShellBallistics`/`PropellantBallistics` catalog + pure solver (`solvePitch`/`maxRange`) replaying CBC's exact integrator (`a = -min(drag·|v|·(|v| if quadratic), |v|)·v̂ + g·ŷ; pos += v + a/2; v += a`, verified against CBC 5.11 bytecode). Muzzle speed = Σ propellant `strength` + shell `addedChargePower`; dual-cannon (Military Supplement) shells carry fixed `initialVelocity`.
+- `CbcIntegration` — reflective provider over CBC's runtime `MunitionPropertiesHandler` maps (data-driven, addon/datapack projectiles included; charge component found STRUCTURALLY by `addedChargePower()` accessor) + cannon-mount `PinPort` (`cannon_yaw`/`cannon_pitch` fields, `position`/`position_text` world-space via EndpointRef).
 
 ### Sub-skill workflow
 Specs → plans → execution under `docs/superpowers/`:
@@ -120,6 +133,12 @@ Plans are executed via `superpowers:subagent-driven-development` (preferred) or 
 - **BE save/load signatures** — `save(HolderLookup.Provider, CompoundTag)` and `loadAdditional(HolderLookup.Provider, CompoundTag)`. `getUpdateTag(Provider)`. `onDataPacket` removed — vanilla calls `loadCustomOnly`.
 - **Aeronautics deps** — Modrinth maven only. The Curse Maven 403s on monetized listings. Aero classes are inside a jarjar wrapper (no top-level `.class` files) → integration uses qualified-name reflection, not direct compile-time references.
 - **Compose ComposableSingletons stale cache** — incremental Kotlin/Compose compile occasionally drops a `ComposableSingleton$lambda-N` → `NoSuchMethodError` at runtime. Fix: `./gradlew clean :compileKotlin`.
+- **PinValue vectors are DOUBLE** — `PinValue.Vec2/Vec3/Quat` and script `Vec2/Vec3/Quat` carry doubles (float quantizes far-lands coords by whole blocks). Float secondary constructors keep old call sites compiling; codecs are `Codec.DOUBLE` (legacy FloatTag NBT parses fine via NbtOps).
+- **JOML in scripts = three-layer contract** — (1) K2 can't read the boot-layer MODULAR joml jar ("Cannot access class org.joml.*" in-game only), so `:scripting` bundles a module-info-stripped `joml.jar` for the COMPILE classpath; (2) that jar must stay OFF the Backend URLClassLoader URLs and `org.joml.` must be parent-delegated there — a child-first copy caused `LinkageError: loader constraint violation` that silently killed tick behaviors; (3) eval config sets `loadDependencies(false)` so every script symbol resolves through the sandbox. Single identity = MC's joml everywhere at runtime.
+- **`ServerLevel.getBlockEntity` returns null OFF the server thread** (vanilla race guard) — cross-thread peeks (editor preview bridge) must hop via `server.execute {}` and publish through an atomic.
+- **Vanilla ESC closes screens before your keyPressed branch** — `Screen.keyPressed` handles ESC → `onClose()` → your post-`super` ESC code is dead. Commit-on-close logic belongs in an `onClose()` override (ScriptEditorScreen lesson).
+- **Evaluator skips were vacuous for outputless nodes** — `outputs.all { provided }` on an EMPTY pin list is true; side-effect-only nodes (a `chat()`-only script) never evaluated. Guard with `outputs.isNotEmpty() &&` (regression: `OutputlessNodeEvaluationTest`).
+- **Editor preview externals** — channel deliveries are server-only; the preview evaluator gets a per-tick snapshot from the integrated server (`LogicBlockEntity.externalInputsSnapshot`, ConcurrentHashMap). On dedicated servers preview channel chips stay at defaults.
 
 ## Communication
 

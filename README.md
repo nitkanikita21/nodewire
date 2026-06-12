@@ -21,15 +21,15 @@
 
 ## Features
 
-- **Visual node editor** opened on a placed Nodewire block. Pan, zoom, drag nodes, draw wires.
-- **Unified selection model** — nodes, groups, and comments share the same press / drag / marquee / Del / accent-border logic. Marquee selects all three kinds; drag on a selected item moves the whole selection (including group members and nested sub-groups) in one undoable step.
+- **Visual node editor** opened on a placed Logic Block. Pan, zoom, drag nodes, draw wires; inline pin-default editors; live values from the running block (singleplayer).
+- **Unified pin linking** — one Channel Link Tool wires ANY pin-exposing block to any other: logic channels, cameras, screens, containers (item/fluid/comparator sensors), Aeronautics blocks, CBC cannon mounts, plain redstone faces. Links live on the consumer, re-deliver every tick, survive Sable structure motion.
+- **Video system** — Camera blocks capture the world into VIDEO channels; Screen blocks display them, merge into multiblock panels (up to 8×8) and double as touch inputs. Scripts can transform video (overlays, HUDs, world→screen projection) between camera and screen.
+- **Kotlin Script node** — write real Kotlin (`*.nw.kts`) compiled in-game by the optional `nodewire_scripting` addon: typed pins, persisted state, per-tick logic, JOML math (double precision end to end), video drawing with a flexbox UI DSL, sandboxed.
+- **Create Big Cannons fire control** — live ballistic profiles from CBC's data-driven registry (addons included) + an exact-trajectory solver in scripts; cannon-mount orientation/position pins. Ships with ready fire-by-coordinates and gunsight scripts.
+- **Unified selection model** — nodes, groups, and comments share the same press / drag / marquee / Del / accent-border logic; group/ungroup, nested groups, reusable templates, comments and wire labels.
 - **Save & load graphs** to client-side files (`<gamedir>/nodewire-graphs/<name>.snbt`) and reuse them between worlds.
-- **Node groups** — collapse parts of a graph into a reusable subgraph. Groups can be nested, saved as standalone templates, renamed inline (double-LMB), and live-synced when you edit the master template.
-- **Comments + wire labels** — annotate the editor with floating text boxes and label individual wires for legibility.
-- **Cross-sub-level logic** — designed to function across Sable sub-level boundaries (e.g., Aeronautics aircraft). Sable Companion provides safe no-op defaults so the mod runs without Sable installed.
-- **Create-friendly** — works alongside Create 6.0.10 + Ponder + Flywheel. Reads/writes Create wireless-redstone frequencies.
-- **Create Aeronautics integration** — `Aeronautics Input` node binds to per-block state (propeller RPM, burner signal, vent pressure, …) across ~33 channels on 7 block kinds.
-- **Tweaked Controllers integration** — `Controller Input` node binds gamepad axes/buttons to graph signals.
+- **Cross-sub-level logic** — works across Sable sub-level boundaries (e.g., Aeronautics aircraft). Sable Companion provides safe no-op defaults so the mod runs without Sable installed.
+- **More integrations** — Create wireless redstone, Aeronautics per-block channels (~33), Tweaked Controllers gamepad input, CC: Tweaked peripheral (Lua access to channels/graph), JEI/EMI ghost ingredients.
 
 ## Stack
 
@@ -38,7 +38,8 @@
 - Build plugin: **`net.neoforged.moddev` 2.0.141** (ModDevGradle, non-legacy)
 - Java toolchain: **21**
 - Custom UI framework on top of **Compose runtime 1.7.0** (no Skiko, no AWT) + **Yoga** (AppliedEnergistics fork, rebuilt for Java 21)
-- Integrations: Sable (via Sable Companion), Create 6.0.10, Create Aeronautics 1.2.1, Tweaked Controllers 1.2.7, JEI, EMI
+- Integrations: Sable (via Sable Companion), Create 6.0.10, Create Aeronautics 1.2.1, Create Big Cannons 5.11, Tweaked Controllers 1.2.7, CC: Tweaked, JEI, EMI
+- Optional addon: **`nodewire_scripting`** — bundles the Kotlin compiler for in-game Script nodes (core works without it; script nodes then show a diagnostic)
 
 ## Build
 
@@ -68,21 +69,35 @@ src/main/kotlin/dev/nitka/nodewire/
 ├── Nodewire.kt                 # @Mod entrypoint
 ├── Registry.kt                 # DeferredRegister for blocks/items/BEs
 ├── JpmsBridge.kt               # runtime kotlin.stdlib -> kotlinx.coroutines.core add_reads
+├── block/                      # LogicBlock(+Entity), Screen, Camera, panels/touch, legacy bindings
+├── link/                       # unified pin linking: PinPort, PinPorts, PinLink, PinLinkEngine
+├── endpoint/                   # EndpointRef + backends (world / Sable sub-levels)
+├── item/                       # ChannelLinkToolItem (LINK / PANEL modes)
+├── graph/                      # graph model: Node, Edge, NodeGraph, Group, Comment, codecs, evaluators
+├── script/                     # script API facade (ScriptModule, Vec*, JOML interop, Cbc ballistics, ui{} DSL)
+├── net/                        # CustomPacketPayload-based network layer
 ├── client/
 │   ├── NodewireClient.kt       # client init, keybinds
-│   └── screen/                 # node editor screens, layers, dialogs
-├── graph/                      # graph model: Node, Edge, NodeGraph, Group, Comment, codecs
-├── net/                        # CustomPacketPayload-based network layer
+│   ├── screen/                 # node editor screens, script editor, Link Manager, pickers
+│   ├── camera/                 # camera capture, world→screen projection
+│   ├── video/                  # VideoManager (FBO surfaces, refcount GC), script video drawing
+│   └── wire/                   # in-world wire rendering
 ├── integration/
 │   ├── sable/                  # SableSubLevelBackend (replaces VS2)
 │   ├── aeronautics/            # AeroChannel pipeline + AeroInput node
+│   ├── cbc/                    # CBC ballistics provider + cannon-mount pins
+│   ├── sensor/                 # capability sensor readings
 │   ├── create/                 # redstone-link IO nodes
+│   ├── cctweaked/              # Lua peripheral
 │   └── tweakedcontroller/      # ControllerInput node
 └── ui/                         # custom Compose runtime UI framework
     ├── core/                   # Applier, dispatcher, owner, YogaNode wiring
     ├── components/             # Text, TextInput, TextArea, Button, Surface, etc.
     ├── modifier/               # Modifier elements (layout / style / input)
+    ├── scroll/                 # ScrollState + verticalScroll
     └── render/                 # NwCanvas + render walk
+
+scripting/                      # optional addon: in-game Kotlin compiler, sandbox, bundled libs
 ```
 
 Architectural details (UI framework layering, JPMS bridge, gotchas) live in [`CLAUDE.md`](CLAUDE.md). Port status and per-phase work log in [`MIGRATION_STATUS.md`](MIGRATION_STATUS.md).
