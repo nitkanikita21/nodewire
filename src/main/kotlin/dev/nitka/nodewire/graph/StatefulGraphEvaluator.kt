@@ -66,7 +66,12 @@ class StatefulGraphEvaluator(val graph: NodeGraph) {
         for (nodeId in order) {
             val node = graph.nodes[nodeId] ?: continue
             val type = NodeTypeRegistry.get(node.typeKey) ?: continue
-            if (node.outputs.all { (nodeId to it.id) in outputs }) continue
+            // Skip only nodes whose every output was provided EXTERNALLY
+            // (side_input/channel_input feeds). A node with NO output pins
+            // must still evaluate — `all{}` on an empty list is true, which
+            // silently skipped e.g. a script node that only chat()/log()s
+            // (side effects, no outputs).
+            if (node.outputs.isNotEmpty() && node.outputs.all { (nodeId to it.id) in outputs }) continue
             val stateful = type.tickEvaluator != null
 
             val inputs = HashMap<String, PinValue>()
