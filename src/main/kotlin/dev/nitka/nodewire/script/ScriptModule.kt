@@ -175,8 +175,15 @@ abstract class ScriptModule {
      *  [pullOutputs] bridge so the server reads a fully-committed frame (spec D6/D7). */
     @PublishedApi internal fun committedOutputs(): Map<String, Any?> = pendingFrame ?: outputs
 
+    /** Declared `input(name, default = …)` values — kept separately so a
+     *  DISCONNECTED pin can fall back to its declared default; `inputs[name]`
+     *  alone can't distinguish "declared default" from "stale value left by a
+     *  removed wire" (the old-camera-feed-after-rewire bug). */
+    @PublishedApi internal val declaredDefaults = HashMap<String, Any?>()
+
     inline fun <reified T> input(name: String, default: T? = null): Input<T> {
         specsIn[name] = PinSpec(name, scriptPinType<T>(), default != null)
+        declaredDefaults[name] = default
         if (name !in inputs) inputs[name] = default
         // A VIDEO input is inherently client-consumed (image()), but clientBehavior
         // can't read graph inputs — only replicated state. So auto-mirror it into a
@@ -208,14 +215,57 @@ abstract class ScriptModule {
 
     inline fun <reified T> output(name: String): Output<T> {
         specsOut[name] = PinSpec(name, scriptPinType<T>(), false)
-        // A video output auto-carries a stable handle (per pin name) so the pin
-        // emits a real surface and draw(out){…} works with no manual minting.
-        if (T::class == Video::class && name !in outputs) outputs[name] = video(name)
+        // A video output auto-carries a SERVER-MINTED per-node handle, carried
+        // by a hidden replicated cell (same server-authoritative pattern as the
+        // camera handle). The old name-derived handle (`video(name)`) collided
+        // ACROSS nodes — every script with `output<Video>("out")` world-wide
+        // drew into the same surface, so screens showed another node's frames.
+        if (T::class == Video::class) {
+            registerVideoOutputMirror(name)
+            if (name !in outputs) outputs[name] = Video(java.util.UUID(0L, 0L))
+        }
         return object : Output<T> {
             override var value: T
                 @Suppress("UNCHECKED_CAST")
                 get() = outputs[name] as T
                 set(v) { outputs[name] = v }
+        }
+    }
+
+    /** Ensure a hidden replicated [StateCell] carries the VIDEO output [name]'s
+     *  server-minted surface handle (persisted with the node state). */
+    @PublishedApi internal fun registerVideoOutputMirror(name: String) {
+        val key = videoOutKey(name)
+        if (stateCells.any { it.key == key }) return
+        stateCells += StateCell(key, Video(java.util.UUID(0L, 0L)), StateKind.VIDEO, replicated = true)
+    }
+
+    /**
+     * SERVER (called from `pushInputs` each owned tick, after `loadState`):
+     * mint a random per-node handle for each VIDEO output ONCE (the cell
+     * persists + replicates it), then expose it through [outputs] so the pin
+     * emits it and `draw(out)` targets it.
+     */
+    @PublishedApi internal fun seedVideoOutputs() {
+        for (cell in stateCells) {
+            if (!cell.key.startsWith(VIDEO_OUT_PREFIX)) continue
+            val name = cell.key.substring(VIDEO_OUT_PREFIX.length)
+            var v = cell.value as? Video ?: Video(java.util.UUID(0L, 0L))
+            if (v.handle == java.util.UUID(0L, 0L)) {
+                v = Video(java.util.UUID.randomUUID())
+                @Suppress("UNCHECKED_CAST")
+                (cell as StateCell<Any?>).value = v
+            }
+            outputs[name] = v
+        }
+    }
+
+    /** CLIENT: copy each VIDEO-output cell into [outputs] so `draw(out)` targets
+     *  the server-minted surface. Called next to [applyVideoInputMirrors]. */
+    @PublishedApi internal fun applyVideoOutputMirrors() {
+        for (cell in stateCells) {
+            if (!cell.key.startsWith(VIDEO_OUT_PREFIX)) continue
+            outputs[cell.key.substring(VIDEO_OUT_PREFIX.length)] = cell.value
         }
     }
 
@@ -492,5 +542,10 @@ abstract class ScriptModule {
         @PublishedApi internal const val VIDEO_MIRROR_PREFIX = "__vin."
 
         @PublishedApi internal fun videoMirrorKey(name: String) = "$VIDEO_MIRROR_PREFIX$name"
+
+        /** Hidden-cell key prefix for server-minted VIDEO output handles. */
+        @PublishedApi internal const val VIDEO_OUT_PREFIX = "__vout."
+
+        @PublishedApi internal fun videoOutKey(name: String) = "$VIDEO_OUT_PREFIX$name"
     }
 }

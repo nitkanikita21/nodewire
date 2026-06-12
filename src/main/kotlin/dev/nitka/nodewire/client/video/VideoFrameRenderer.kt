@@ -133,6 +133,7 @@ object VideoFrameRenderer {
                 NwCanvasVideoCanvas(
                     canvas,
                     surface.width,
+                    surface.height,
                     dtSeconds = dt,
                     timeSeconds = (now - first) / 1000f,
                     frameIndex = frames,

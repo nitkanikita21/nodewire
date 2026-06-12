@@ -34,9 +34,12 @@ internal fun ScriptModule.pushInputs(incoming: Map<String, PinValue>) {
         val pinType = spec.type.toPinType()
         val raw = incoming[name]
         if (raw == null) {
-            // Unconnected: keep the declared default if one was set, else the
-            // type's zero-value (boxed to the script type).
-            if (inputs[name] == null) inputs[name] = boxDefault(pinType)
+            // Unconnected/DISCONNECTED: reset to the declared default, else the
+            // type's zero-value. MUST overwrite (not keep) — keeping the
+            // previous tick's value made a re-wired VIDEO input emit the OLD
+            // feed forever, and scalars kept the last wire value after edge
+            // removal instead of falling back to their declared default.
+            inputs[name] = declaredDefaults[name] ?: boxDefault(pinType)
             continue
         }
         val converted = PinValueConversion.convert(raw, pinType)
@@ -45,13 +48,18 @@ internal fun ScriptModule.pushInputs(incoming: Map<String, PinValue>) {
     // SERVER: push each VIDEO input into its hidden replicated mirror cell so the
     // normal replication path carries the handle to the client (where
     // applyVideoInputMirrors copies it back into inputs for clientBehavior).
+    // A disconnected input mirrors the NIL handle so the client stops drawing
+    // the stale feed too.
     for (cell in stateCells) {
         if (!cell.key.startsWith(ScriptModule.VIDEO_MIRROR_PREFIX)) continue
         val inName = cell.key.substring(ScriptModule.VIDEO_MIRROR_PREFIX.length)
-        val v = inputs[inName] ?: continue
+        val v = inputs[inName] ?: Video(java.util.UUID(0L, 0L))
         @Suppress("UNCHECKED_CAST")
         (cell as StateCell<Any?>).value = v
     }
+    // SERVER: ensure each VIDEO output carries its minted per-node handle
+    // (replicated to the client via its hidden cell; persisted with state).
+    seedVideoOutputs()
 }
 
 /** script-facing outputs -> PinValue map. Unwritten outputs fill from [PinValue.default]. */

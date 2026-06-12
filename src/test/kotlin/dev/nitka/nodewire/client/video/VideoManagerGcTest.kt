@@ -88,14 +88,35 @@ class VideoManagerGcTest {
     }
 
     @Test
-    fun orphanGetOrCreateIsReapedNextSweep() {
+    fun `idle orphan frees after grace, not on the next sweep`() {
         val h = UUID.randomUUID()
-        // No acquire — pure orphan handle.
+        // No acquire — pure orphan handle, touched exactly once.
         VideoManager.getOrCreate(h)
         assertTrue(VideoManager.isAllocated(h))
 
-        VideoManager.onClientTick() // single sweep reaps the transient surface
+        // Within the grace window the surface must SURVIVE (it may be a chain
+        // intermediate between two script frames).
+        sweep(GRACE_TICKS - 1)
+        assertTrue(VideoManager.isAllocated(h))
+
+        // Past the grace window without a touch — freed.
+        sweep(1)
         assertEquals(1, fake.surfaces.single().destroyCount.get())
         assertFalse(VideoManager.isTracked(h))
+    }
+
+    @Test
+    fun `actively-blitted orphan survives indefinitely (script chain intermediate)`() {
+        val h = UUID.randomUUID()
+        VideoManager.getOrCreate(h)
+        // Script A draws into it / script B blits from it every frame: each
+        // frame touches via getOrCreate. Run far past every GC horizon.
+        repeat(AGE_OUT_TICKS + 100) {
+            VideoManager.getOrCreate(h)
+            VideoManager.onClientTick()
+        }
+        assertTrue(VideoManager.isAllocated(h))
+        assertEquals(0, fake.surfaces.single().destroyCount.get())
+        assertEquals(1, fake.createCount.get(), "surface must never be destroyed+recreated mid-chain")
     }
 }

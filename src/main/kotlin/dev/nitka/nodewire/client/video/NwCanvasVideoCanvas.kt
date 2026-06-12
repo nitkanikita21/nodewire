@@ -29,7 +29,8 @@ import java.util.UUID
  */
 class NwCanvasVideoCanvas(
     private val nw: NwCanvas,
-    private val size: Int = VideoManager.STANDARD_SIZE,
+    private val surfaceW: Int = VideoManager.STANDARD_SIZE,
+    private val surfaceH: Int = surfaceW,
     private val dtSeconds: Float = 0f,
     private val timeSeconds: Float = 0f,
     private val frameIndex: Long = 0L,
@@ -38,9 +39,9 @@ class NwCanvasVideoCanvas(
     private val destHandle: UUID = UUID(0L, 0L),
 ) : VideoCanvas {
 
-    override fun width(): Int = size
+    override fun width(): Int = surfaceW
 
-    override fun height(): Int = size
+    override fun height(): Int = surfaceH
 
     override fun dt(): Float = dtSeconds
 
@@ -49,31 +50,30 @@ class NwCanvasVideoCanvas(
     override fun frames(): Long = frameIndex
 
     override fun clear(color: Long) {
-        // Full-surface fill (the `clear` GAP verb — spec §2). The bound FBO is
-        // the standard square, so a single rect covers it.
-        nw.fillRect(0, 0, size, size, color.toColor())
+        // Full-surface fill (the `clear` GAP verb — spec §2).
+        nw.fillRect(0, 0, surfaceW, surfaceH, color.toColor())
     }
 
     override fun rect(x: Int, y: Int, w: Int, h: Int, color: Long) {
-        val r = VideoDrawClamps.rect(x, y, w, h, size)
+        val r = VideoDrawClamps.rect(x, y, w, h, surfaceW, surfaceH)
         if (r.w <= 0 || r.h <= 0) return
         nw.fillRect(r.x, r.y, r.w, r.h, color.toColor())
     }
 
     override fun border(x: Int, y: Int, w: Int, h: Int, thickness: Int, color: Long) {
-        val r = VideoDrawClamps.rect(x, y, w, h, size)
+        val r = VideoDrawClamps.rect(x, y, w, h, surfaceW, surfaceH)
         if (r.w <= 0 || r.h <= 0) return
-        nw.drawBorder(r.x, r.y, r.w, r.h, VideoDrawClamps.thickness(thickness, size), color.toColor())
+        nw.drawBorder(r.x, r.y, r.w, r.h, VideoDrawClamps.thickness(thickness, maxOf(surfaceW, surfaceH)), color.toColor())
     }
 
     override fun line(x1: Int, y1: Int, x2: Int, y2: Int, color: Long) {
         // v1: axis-aligned only — degrade to the bounding strip (a 1-px-thick
         // filled rect spanning the two clamped endpoints). True diagonals are
         // out of scope; documented on the facade.
-        val cx1 = VideoDrawClamps.coord(x1, size)
-        val cy1 = VideoDrawClamps.coord(y1, size)
-        val cx2 = VideoDrawClamps.coord(x2, size)
-        val cy2 = VideoDrawClamps.coord(y2, size)
+        val cx1 = VideoDrawClamps.coord(x1, surfaceW)
+        val cy1 = VideoDrawClamps.coord(y1, surfaceH)
+        val cx2 = VideoDrawClamps.coord(x2, surfaceW)
+        val cy2 = VideoDrawClamps.coord(y2, surfaceH)
         val left = minOf(cx1, cx2)
         val top = minOf(cy1, cy2)
         val w = (maxOf(cx1, cx2) - left).coerceAtLeast(1)
@@ -84,11 +84,28 @@ class NwCanvasVideoCanvas(
     override fun text(s: String, x: Int, y: Int, color: Long) {
         nw.drawText(
             VideoDrawClamps.text(s),
-            VideoDrawClamps.coord(x, size),
-            VideoDrawClamps.coord(y, size),
+            VideoDrawClamps.coord(x, surfaceW),
+            VideoDrawClamps.coord(y, surfaceH),
             color.toColor(),
             shadow = false,
         )
+    }
+
+    // Real font metrics for the `ui {}` layout DSL — measured on the same
+    // (clamped) string that [text] would draw, so layout width == drawn width.
+    override fun textWidth(s: String): Int = nw.measureText(VideoDrawClamps.text(s)).width
+
+    override fun lineHeight(): Int = nw.measureText("").height
+
+    override fun renderUi(root: dev.nitka.nodewire.script.ui.UiSpec) =
+        VideoUiLayout.render(this, root)
+
+    override fun project(video: Video, x: Double, y: Double, z: Double): dev.nitka.nodewire.script.Vec2? {
+        if (video.handle == UUID(0L, 0L)) return null
+        val px = dev.nitka.nodewire.client.camera.CameraProjection.projectToCanvas(
+            video.handle, surfaceW, surfaceH, x, y, z,
+        ) ?: return null
+        return dev.nitka.nodewire.script.Vec2(px[0], px[1])
     }
 
     override fun image(video: Video, x: Int, y: Int, w: Int, h: Int) {
@@ -96,7 +113,7 @@ class NwCanvasVideoCanvas(
         if (video.handle == UUID(0L, 0L)) return
         // Self-blit would sample + write the same FBO — skip.
         if (video.handle == destHandle) return
-        val r = VideoDrawClamps.rect(x, y, w, h, size)
+        val r = VideoDrawClamps.rect(x, y, w, h, surfaceW, surfaceH)
         if (r.w <= 0 || r.h <= 0) return
         val src = VideoManager.getOrCreate(video.handle) as? GlVideoSurface ?: return
         val texId = src.colorTextureId()

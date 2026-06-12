@@ -33,8 +33,8 @@ class CameraVideoOutputTest {
     }
 
     @Test fun `emitting value is the routable VIDEO type and round-trips its codec`() {
-        // The slot the Screen accepts is PinType.VIDEO (see ScreenBlockEntity
-        // CHANNEL_TARGET); the producer's value must be that same variant.
+        // The Screen's `screen` input pin is PinType.VIDEO (see
+        // ScreenBlockEntity.pinInputs); the producer's value must match.
         val emitted = PinValue.Video(handle)
         assertSame(PinType.VIDEO, emitted.type)
         val tag = PinValue.CODEC

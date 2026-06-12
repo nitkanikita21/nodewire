@@ -26,5 +26,8 @@ object CameraFeedRegistry {
     /** Snapshot of currently-registered feeds. */
     fun active(): Collection<CameraFeed> = feeds.values
 
+    /** The live feed producing [handle], or null (world-to-screen projection). */
+    fun byHandle(handle: UUID): CameraFeed? = feeds[handle]
+
     fun isEmpty(): Boolean = feeds.isEmpty()
 }

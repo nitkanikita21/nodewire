@@ -51,6 +51,10 @@ class ScreenBlockRenderer(
         // capture pass is in flight. Inert until Component 4 exists.
         if (VideoManager.isCapturing()) return
 
+        // A covered panel block contributes nothing — the anchor's stretched
+        // quad paints over it (lazily self-heals if the anchor is gone).
+        if (be.coveredByValidAnchor()) return
+
         val handle = be.videoHandle() ?: return
         val surface = VideoManager.getOrCreate(handle) as? GlVideoSurface ?: return
         val texId = surface.colorTextureId()
@@ -66,32 +70,62 @@ class ScreenBlockRenderer(
         // content shows EXACTLY as drawn at full brightness — like a real monitor.
         // (The old entity-solid shader multiplied by face-diffuse, dimming the whole
         // screen to a muddy tint regardless of the FULL_BRIGHT lightmap.)
-        emitFace(consumer, matrix, facing)
+        emitFace(consumer, matrix, facing, be.spanCols().toFloat(), be.spanRows().toFloat())
         poseStack.popPose()
     }
 
+    override fun getRenderBoundingBox(be: ScreenBlockEntity): net.minecraft.world.phys.AABB {
+        // The anchor's quad extends cols×rows blocks from its own pos — without
+        // widening the cull box the whole panel vanishes once the anchor block
+        // itself leaves the camera frustum.
+        val base = net.minecraft.world.phys.AABB(be.blockPos)
+        val cols = be.spanCols()
+        val rows = be.spanRows()
+        if (cols == 1 && rows == 1) return base
+        val facing = be.blockState.getValue(ScreenBlock.FACING)
+        val right = dev.nitka.nodewire.block.ScreenSpan.rightOf(facing)
+        val far = be.blockPos
+            .relative(right, cols - 1)
+            .above(rows - 1)
+        return base.minmax(net.minecraft.world.phys.AABB(far))
+    }
+
     /**
-     * Emits a single unit quad on [facing], inset slightly off the block face so
-     * it does not z-fight with the block texture. UVs map the full FBO (0..1);
-     * V is flipped because FBO colour attachments are bottom-up.
+     * Emits the panel quad on [facing] — `cols`×`rows` blocks, anchored at this
+     * block's bottom-left corner (as seen from outside) — inset slightly off
+     * the face plane so it does not z-fight with the block texture. UVs map the
+     * full FBO (0..1) stretched across the whole panel; V is flipped because
+     * FBO colour attachments are bottom-up.
      */
     private fun emitFace(
         consumer: VertexConsumer,
         matrix: Matrix4f,
         facing: Direction,
+        cols: Float,
+        rows: Float,
     ) {
         val o = 0.001f // outset off the face plane
-        // Corners of the face in block-local [0,1]^3 space. Order CCW so the
-        // textured front faces outward along the facing normal.
-        val (a, b, c, d) = faceCorners(facing, o)
+        // bl = bottom-left corner in block-local space; (rx, rz) = the face's
+        // "right" direction as seen from outside (matches ScreenSpan.rightOf).
+        val (bl, rx, rz) = when (facing) {
+            Direction.NORTH -> Triple(floatArrayOf(1f, 0f, -o), -1f, 0f)
+            Direction.SOUTH -> Triple(floatArrayOf(0f, 0f, 1f + o), 1f, 0f)
+            Direction.WEST -> Triple(floatArrayOf(-o, 0f, 0f), 0f, 1f)
+            Direction.EAST -> Triple(floatArrayOf(1f + o, 0f, 1f), 0f, -1f)
+            // FACING is horizontal-only; UP/DOWN unreachable, render as NORTH.
+            else -> Triple(floatArrayOf(1f, 0f, -o), -1f, 0f)
+        }
+        val br = floatArrayOf(bl[0] + rx * cols, bl[1], bl[2] + rz * cols)
+        val tr = floatArrayOf(br[0], br[1] + rows, br[2])
+        val tl = floatArrayOf(bl[0], bl[1] + rows, bl[2])
         // (u,v) per corner: bottom-left, bottom-right, top-right, top-left.
         // The GuiGraphics ortho (top-left origin, y-down) draws an UPRIGHT image
         // into the FBO; sampled with v=0 at the face bottom it shows upright, so
         // the face's bottom edge takes v=0 and the top edge v=1.
-        vertex(consumer, matrix, a, 0f, 0f)
-        vertex(consumer, matrix, b, 1f, 0f)
-        vertex(consumer, matrix, c, 1f, 1f)
-        vertex(consumer, matrix, d, 0f, 1f)
+        vertex(consumer, matrix, bl, 0f, 0f)
+        vertex(consumer, matrix, br, 1f, 0f)
+        vertex(consumer, matrix, tr, 1f, 1f)
+        vertex(consumer, matrix, tl, 0f, 1f)
     }
 
     /** POSITION_TEX vertex: position + UV only (the position_tex shader samples the

@@ -42,9 +42,6 @@ object VideoCameraCapture {
     /** Hard ceiling on feeds rendered in a single mc frame. */
     private const val MAX_ACTIVE = 4
 
-    /** Square capture FBO is 1:1; the window is forced to this during capture. */
-    private const val CAPTURE_WINDOW = 100
-
     /**
      * Only render a feed whose camera is within this many blocks of the player.
      * Rendering the world from a camera POV near the edge of (or beyond) the
@@ -172,8 +169,10 @@ object VideoCameraCapture {
         mc.gameRenderer.setRenderBlockOutline(false)
         mc.gameRenderer.setRenderHand(false)
         mc.gameRenderer.setPanoramicMode(true)
-        window.setWidth(CAPTURE_WINDOW)
-        window.setHeight(CAPTURE_WINDOW)
+        // Window dims drive the projection ASPECT of the nested renderLevel;
+        // set PER FEED below to the feed surface's dims so a camera shown on a
+        // wide multiblock panel captures with the panel's aspect (the viewport
+        // itself comes from the bound target).
         mc.options.cameraType = CameraType.FIRST_PERSON
         camera.eyeHeight = standEye
         camera.eyeHeightOld = standEye
@@ -192,6 +191,8 @@ object VideoCameraCapture {
                 try {
                     val target = feed.renderTarget() ?: continue
                     val (wpos, yawPitch) = feed.worldPose(level, deltaTracker) ?: continue
+                    window.setWidth(target.width)
+                    window.setHeight(target.height)
 
                     markerEntity.setPos(wpos.x, wpos.y - standEye + 0.5, wpos.z)
                     markerEntity.yRot = yawPitch[0]

@@ -49,6 +49,9 @@ class CameraFeed(private val be: CameraBlockEntity) {
         removed = true
     }
 
+    /** The camera's live vertical FOV in degrees (channel-driven, clamped by the BE). */
+    fun fovDeg(): Double = be.fovDeg()
+
     /**
      * The FBO this feed renders into, or null if the handle's surface is not a
      * GL-backed one (headless/test) or not yet resolvable. Forces lazy FBO

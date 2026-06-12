@@ -22,4 +22,13 @@ import dev.nitka.nodewire.graph.PinValue
 interface ChannelInputSink {
     /** Deliver [value] into the runtime slot named [name]. Last-writer-wins. */
     fun writeChannelInput(name: String, value: PinValue)
+
+    /**
+     * Delivery variant that also names the SOURCE block. Default delegates to
+     * [writeChannelInput]; a sink that needs a back-path (the touch-screen
+     * routes taps back to whoever feeds its video) overrides this and records
+     * [sourcePos]. Purely additive.
+     */
+    fun writeChannelInputFrom(name: String, value: PinValue, sourcePos: net.minecraft.core.BlockPos) =
+        writeChannelInput(name, value)
 }

@@ -72,8 +72,23 @@ object SableSubLevelBackend : EndpointBackend {
     }
 
     override fun claims(level: Level, worldPos: BlockPos): EndpointPayload? {
-        val sub: SubLevelAccess = SableCompanion.INSTANCE.getContaining(level, worldPos) ?: return null
-        return SableSubLevelPayload(sub.uniqueId, worldPos)
+        // Side-aware, mirroring [poseFor]: the companion tracks CLIENT sub-level
+        // membership separately ([ClientSubLevelAccess] via getContainingClient)
+        // from the server-tick map (getContaining).
+        // [dev.nitka.nodewire.client.camera.CameraFeed.worldPose] calls claims on
+        // the CLIENT level every frame — using the server-only getContaining there
+        // returns null for a block that IS inside a sub-level (e.g. a camera
+        // assembled onto a Synaxis/Aeronautics physics sub-level), so worldPose
+        // fell back to the raw plot coordinate — far from the player — and the
+        // capture distance gate skipped it (the camera froze on its last captured
+        // frame). The matching client lookup also keeps the resolved uniqueId
+        // consistent with poseFor's `client.uniqueId != p.subLevelId` guard.
+        val id: UUID = if (level.isClientSide) {
+            SableCompanion.INSTANCE.getContainingClient(worldPos)?.uniqueId ?: return null
+        } else {
+            SableCompanion.INSTANCE.getContaining(level, worldPos)?.uniqueId ?: return null
+        }
+        return SableSubLevelPayload(id, worldPos)
     }
 
     /**

@@ -234,6 +234,9 @@ class ScriptRuntime(
         // Copy auto-mirrored VIDEO inputs out of their hidden cells into `inputs`,
         // so input<Video>(name).value works in clientBehavior with no manual bridge.
         module.applyVideoInputMirrors()
+        // Same for VIDEO outputs: adopt the server-minted per-node surface handle
+        // so draw(out) targets the surface the bound Screen actually blits.
+        module.applyVideoOutputMirrors()
         // Drain client logs (CHAT dropped by the sink).
         module.drainMessages().let { if (it.isNotEmpty()) messageSink(it) }
         // Drain video draws buffered by the last resume (fully-parked => race-free,

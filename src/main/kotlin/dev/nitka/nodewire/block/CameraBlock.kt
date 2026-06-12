@@ -37,8 +37,23 @@ class CameraBlock(props: Properties) : Block(props), EntityBlock {
     override fun newBlockEntity(pos: BlockPos, state: BlockState): BlockEntity =
         CameraBlockEntity(pos, state)
 
-    // No getTicker override: capture is driven client-side off the render
-    // thread (see VideoCameraCapture), not by a server BE ticker.
+    // Capture is driven client-side off the render thread (see
+    // VideoCameraCapture). The server ticker below exists ONLY for the
+    // unified pin links driving camera params (fov/enable/yaw/pitch) —
+    // a no-op while the camera has no incoming links.
+    @Suppress("UNCHECKED_CAST")
+    override fun <T : BlockEntity> getTicker(
+        level: net.minecraft.world.level.Level,
+        state: BlockState,
+        type: net.minecraft.world.level.block.entity.BlockEntityType<T>,
+    ): net.minecraft.world.level.block.entity.BlockEntityTicker<T>? {
+        if (level.isClientSide) return null
+        if (type != dev.nitka.nodewire.Registry.CAMERA_BLOCK_BE.get()) return null
+        val ticker = net.minecraft.world.level.block.entity.BlockEntityTicker<CameraBlockEntity> { lvl, _, _, be ->
+            dev.nitka.nodewire.link.PinLinkEngine.tick(lvl, be)
+        }
+        return ticker as net.minecraft.world.level.block.entity.BlockEntityTicker<T>
+    }
 
     companion object {
         val FACING: DirectionProperty = HorizontalDirectionalBlock.FACING

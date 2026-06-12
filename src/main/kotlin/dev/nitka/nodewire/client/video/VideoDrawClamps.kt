@@ -23,12 +23,15 @@ object VideoDrawClamps {
      * Negative origins are pulled to 0 (and the width shrinks accordingly);
      * the far edge is capped at `size`. Width/height never go negative.
      */
-    fun rect(x: Int, y: Int, w: Int, h: Int, size: Int): Rect {
+    fun rect(x: Int, y: Int, w: Int, h: Int, size: Int): Rect = rect(x, y, w, h, size, size)
+
+    /** Per-axis variant for non-square surfaces (multiblock panel FBOs). */
+    fun rect(x: Int, y: Int, w: Int, h: Int, maxW: Int, maxH: Int): Rect {
         // Compute the requested span as longs so x + w can't overflow Int.
-        val x0 = clampCoord(x, size)
-        val y0 = clampCoord(y, size)
-        val x1 = clampCoord(longSum(x, w), size)
-        val y1 = clampCoord(longSum(y, h), size)
+        val x0 = clampCoord(x, maxW)
+        val y0 = clampCoord(y, maxH)
+        val x1 = clampCoord(longSum(x, w), maxW)
+        val y1 = clampCoord(longSum(y, h), maxH)
         val left = minOf(x0, x1)
         val top = minOf(y0, y1)
         return Rect(left, top, maxOf(x0, x1) - left, maxOf(y0, y1) - top)

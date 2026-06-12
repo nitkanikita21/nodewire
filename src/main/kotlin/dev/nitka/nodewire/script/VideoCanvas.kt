@@ -58,6 +58,62 @@ interface VideoCanvas {
     fun text(s: String, x: Int, y: Int, color: Long)
 
     /**
+     * Pixel width [s] would occupy when drawn with [text]. The default is the
+     * vanilla-font approximation (≈6 px/glyph) so non-GL implementations keep
+     * working; the client impl overrides with real font metrics. Used by the
+     * `ui {}` layout DSL to measure text leaves.
+     */
+    fun textWidth(s: String): Int = s.length * 6
+
+    /** Line height of the font [text] draws with. */
+    fun lineHeight(): Int = 9
+
+    /**
+     * Lay out + paint a declarative [dev.nitka.nodewire.script.ui.UiSpec] tree
+     * (built by the [ui] DSL) onto this surface. Default no-op so
+     * headless/test canvases stay trivial; the client impl routes to the Yoga
+     * flexbox engine. The spec is pure data — the engine never crosses into
+     * the script sandbox.
+     */
+    fun renderUi(root: dev.nitka.nodewire.script.ui.UiSpec) {}
+
+    /**
+     * Project a WORLD position onto this canvas through [video]'s camera —
+     * returns canvas px (origin top-left, y-down; the same space every other
+     * verb draws in) **assuming the feed is blitted full-canvas**
+     * (`image(video)`), so the blit stretch and the projection cancel out.
+     *
+     * Null when: [video] is not a live camera feed on this client, the camera
+     * pose is unresolvable, or the point is behind the camera. Points outside
+     * the canvas DO return coordinates (may be negative / > size) so callers
+     * can clamp them into edge markers. Use for world-locked overlays:
+     * `project(cam.value, mobX, mobY, mobZ)?.let { border(it.x.toInt()-8, …) }`.
+     */
+    fun project(video: Video, x: Double, y: Double, z: Double): Vec2? = null
+
+    /**
+     * Mount a flexbox UI on this surface — the `ui {}` layout DSL (see
+     * [dev.nitka.nodewire.script.ui.UiScope] for the vocabulary). The root is
+     * a COLUMN filling the whole canvas; [pad]/[gap]/[justify]/[align]
+     * configure it like any other container.
+     *
+     * A MEMBER (not a top-level extension) on purpose — same lesson as
+     * `ScriptModule.state`: the in-game script compile classpath is a packed
+     * `script-api.jar` where K2 resolves type references and members fine but
+     * NOT top-level functions reachable only via a star-import (no
+     * `.kotlin_module` route). A member resolves through the receiver type.
+     */
+    fun ui(
+        pad: Int = 0,
+        gap: Int = 0,
+        justify: dev.nitka.nodewire.script.ui.Justify = dev.nitka.nodewire.script.ui.Justify.Start,
+        align: dev.nitka.nodewire.script.ui.Align = dev.nitka.nodewire.script.ui.Align.Stretch,
+        block: dev.nitka.nodewire.script.ui.UiScope.() -> Unit,
+    ) {
+        renderUi(dev.nitka.nodewire.script.ui.buildUiSpec(pad, gap, justify, align, block))
+    }
+
+    /**
      * Blit another [Video]'s current frame into this surface, scaled into the
      * rect (x, y, w, h). This is the only way to *pass through* a camera/stream
      * feed (e.g. an `input<Video>`) and then draw HUD on top of it.

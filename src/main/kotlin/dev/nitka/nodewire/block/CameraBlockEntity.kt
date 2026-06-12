@@ -28,10 +28,9 @@ import java.util.UUID
  * Mirror of [ScreenBlockEntity], inverted: the Screen *consumes* a handle
  * delivered over a channel, the Camera *owns* a handle and feeds it out.
  *
- * Camera parameters (fov / enable / yaw / pitch) arrive through the existing
- * channel pipeline: the BE is registered as a [ChannelTargetRegistry] target
- * exposing four typed [TargetSlot.Channel] slots, so the Channel Link Tool can
- * drive them with zero new packet code. Each delivered value lands in
+ * Camera parameters (fov / enable / yaw / pitch) arrive through the unified
+ * pin-link surface: the BE exposes four typed input pins, so the Channel Link
+ * Tool can drive them from any source. Each delivered value lands in
  * [channelInputs] via [writeChannelInput]; the param readers clamp+default.
  *
  * Client lifecycle (gated by `level?.isClientSide == true`):
@@ -39,7 +38,52 @@ import java.util.UUID
  *   - `setRemoved` -> `VideoManager.release(handle)` + `CameraFeedRegistry.unregister`
  */
 class CameraBlockEntity(pos: BlockPos, state: BlockState) :
-    BlockEntity(Registry.CAMERA_BLOCK_BE.get(), pos, state), ChannelInputSink {
+    BlockEntity(Registry.CAMERA_BLOCK_BE.get(), pos, state),
+    ChannelInputSink,
+    dev.nitka.nodewire.link.PinLinkSink {
+
+    // ── unified pin links ─────────────────────────────────────────────────
+    // Output `video` = the stable handle, sampled per tick by linked sinks
+    // (a Screen or Logic channel keeps tracking this camera continuously —
+    // no more one-shot binds). Inputs = the four camera params.
+
+    private val pinLinks: MutableList<dev.nitka.nodewire.link.PinLink> = mutableListOf()
+
+    override val pinLinkScratch = dev.nitka.nodewire.link.PinLinkScratch()
+
+    override fun pinLinks(): MutableList<dev.nitka.nodewire.link.PinLink> = pinLinks
+
+    fun pinLinksSnapshot(): List<dev.nitka.nodewire.link.PinLink> = pinLinks.toList()
+
+    override fun onPinLinksChanged() {
+        setChanged()
+    }
+
+    override fun pinOutputs(ctx: dev.nitka.nodewire.link.LinkContext): List<dev.nitka.nodewire.link.LinkPin> =
+        listOf(dev.nitka.nodewire.link.LinkPin(VIDEO_PIN, PinType.VIDEO))
+
+    override fun pinInputs(ctx: dev.nitka.nodewire.link.LinkContext): List<dev.nitka.nodewire.link.LinkPin> =
+        listOf(
+            dev.nitka.nodewire.link.LinkPin(FOV_CHANNEL, PinType.FLOAT),
+            dev.nitka.nodewire.link.LinkPin(ENABLE_CHANNEL, PinType.BOOL),
+            dev.nitka.nodewire.link.LinkPin(YAW_CHANNEL, PinType.FLOAT),
+            dev.nitka.nodewire.link.LinkPin(PITCH_CHANNEL, PinType.FLOAT),
+        )
+
+    override fun readPin(id: String): dev.nitka.nodewire.link.PinReading? =
+        if (id == VIDEO_PIN) dev.nitka.nodewire.link.PinReading(videoValue()) else null
+
+    override fun writePin(id: String, value: PinValue) = writeChannelInput(id, value)
+
+    override fun clearPin(id: String) {
+        if (channelInputs.remove(id) != null) {
+            setChanged()
+            val lvl = level
+            if (lvl != null && !lvl.isClientSide) {
+                lvl.sendBlockUpdated(blockPos, blockState, blockState, Block.UPDATE_CLIENTS)
+            }
+        }
+    }
 
     /** Stable, persisted video handle. Lazily minted on first client/server load. */
     private var handle: UUID = UUID(0L, 0L)
@@ -112,6 +156,11 @@ class CameraBlockEntity(pos: BlockPos, state: BlockState) :
             (value as? PinValue.Float)?.let { tag.putFloat(name, it.value) }
             (value as? PinValue.Bool)?.let { tag.putBoolean(name, it.value) }
         }
+        if (pinLinks.isNotEmpty()) {
+            dev.nitka.nodewire.link.PinLink.CODEC.listOf()
+                .encodeStart(net.minecraft.nbt.NbtOps.INSTANCE, pinLinks.toList())
+                .result().ifPresent { tag.put(TAG_PIN_LINKS, it) }
+        }
     }
 
     override fun loadAdditional(tag: CompoundTag, registries: HolderLookup.Provider) {
@@ -121,6 +170,12 @@ class CameraBlockEntity(pos: BlockPos, state: BlockState) :
         readParam(tag, YAW_CHANNEL, numeric = true)
         readParam(tag, PITCH_CHANNEL, numeric = true)
         if (tag.contains(ENABLE_CHANNEL)) channelInputs[ENABLE_CHANNEL] = PinValue.Bool(tag.getBoolean(ENABLE_CHANNEL))
+        pinLinks.clear()
+        if (tag.contains(TAG_PIN_LINKS)) {
+            dev.nitka.nodewire.link.PinLink.CODEC.listOf()
+                .parse(net.minecraft.nbt.NbtOps.INSTANCE, tag.get(TAG_PIN_LINKS))
+                .result().ifPresent { pinLinks.addAll(it) }
+        }
         // The synced handle may arrive here AFTER the client's onLoad (fresh
         // placement), so (re)try registration now that it's known.
         tryClientRegister()
@@ -182,27 +237,14 @@ class CameraBlockEntity(pos: BlockPos, state: BlockState) :
         /** NBT key for the persisted stable handle. */
         const val HANDLE_KEY = "video_handle"
 
+        /** The camera's single output pin. */
+        const val VIDEO_PIN = "video"
+
         const val FOV_CHANNEL = "fov"
         const val ENABLE_CHANNEL = "enable"
         const val YAW_CHANNEL = "yaw"
         const val PITCH_CHANNEL = "pitch"
 
-        /**
-         * Channel target so the Channel Link Tool offers the four typed camera
-         * parameter inputs on this block. Registered in [Registry].
-         */
-        val CHANNEL_TARGET: ChannelTargetProvider = object : ChannelTargetProvider {
-            override fun slotsFor(
-                level: Level,
-                pos: BlockPos,
-                state: BlockState,
-                clickedFace: Direction,
-            ): List<TargetSlot> = listOf(
-                TargetSlot.Channel(FOV_CHANNEL, PinType.FLOAT),
-                TargetSlot.Channel(ENABLE_CHANNEL, PinType.BOOL),
-                TargetSlot.Channel(YAW_CHANNEL, PinType.FLOAT),
-                TargetSlot.Channel(PITCH_CHANNEL, PinType.FLOAT),
-            )
-        }
+        private const val TAG_PIN_LINKS = "pin_links"
     }
 }
