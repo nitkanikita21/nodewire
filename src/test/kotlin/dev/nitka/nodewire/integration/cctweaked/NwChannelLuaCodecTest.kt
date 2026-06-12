@@ -52,6 +52,6 @@ class NwChannelLuaCodecTest {
         val lua = NwChannelLuaCodec.toLua(src) as Map<*, *>
         assertEquals(0.1f.toDouble(), (lua["x"] as Number).toDouble(), 1e-6)
         val back = NwChannelLuaCodec.fromLua(lua, PinType.QUAT) as PinValue.Quat
-        assertEquals(0.9f, back.w, 1e-6f)
+        assertEquals(0.9, back.w, 1e-6)
     }
 }

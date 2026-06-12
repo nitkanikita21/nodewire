@@ -15,6 +15,7 @@ import kotlin.script.experimental.api.implicitReceivers
 import kotlin.script.experimental.api.valueOrNull
 import kotlin.script.experimental.host.toScriptSource
 import kotlin.script.experimental.jvm.baseClassLoader
+import kotlin.script.experimental.jvm.loadDependencies
 import kotlin.script.experimental.jvm.jvm
 import kotlin.script.experimental.jvmhost.BasicJvmScriptingHost
 import kotlin.script.experimental.jvmhost.createJvmCompilationConfigurationFromTemplate
@@ -104,7 +105,10 @@ class ScriptBackend : ScriptCompiler {
 
         jarOf(ScriptModule::class.java)?.let(::add) // core facade output (dev) — null under union://
         jarOf(ScriptBackend::class.java)?.let(::add) // backend.jar (this code)
-        addAll(bundledScriptLibs()) // stdlib + script-runtime + script-api (extracted jars)
+        // joml comes from bundledScriptLibs (extracted, module-info-stripped
+        // joml.jar) — the boot-layer modular jar that jarOf(Matrix4f) finds in
+        // production is unreadable for K2 ("Cannot access class 'org.joml.*'").
+        addAll(bundledScriptLibs()) // stdlib + script-runtime + script-api + joml
     }.distinct()
 
     /**
@@ -166,7 +170,18 @@ class ScriptBackend : ScriptCompiler {
         val module = NwScriptInstance()
         val evalConfig = ScriptEvaluationConfiguration {
             implicitReceivers(module)
-            jvm { baseClassLoader(newGuard()) }
+            // loadDependencies(false) is LOAD-BEARING: with the default (true)
+            // the evaluator stacks the COMPILE classpath jars onto the script's
+            // own classloader, bypassing the sandbox. That minted a SECOND
+            // org.joml from the bundled joml.jar and the first toJoml() call
+            // died with "loader constraint violation" (silently killing the
+            // tick behavior, 2026-06-12). Every dependency symbol must come
+            // through the sandbox guard instead (org.joml/kotlin/script-api
+            // are all VIA_MOD there), so there is exactly ONE copy of each.
+            jvm {
+                baseClassLoader(newGuard())
+                loadDependencies(false)
+            }
         }
         val evalResult = withModuleTccl {
             host.runInCoroutineContext { host.evaluator(script, evalConfig) }
@@ -190,7 +205,11 @@ class ScriptBackend : ScriptCompiler {
             ?: return ResultWithDiagnostics.Failure(compiled.reports)
         val evalConfig = ScriptEvaluationConfiguration {
             implicitReceivers(NwScriptInstance())
-            jvm { baseClassLoader(newGuard()) }
+            // Same loadDependencies(false) rationale as evalModule above.
+            jvm {
+                baseClassLoader(newGuard())
+                loadDependencies(false)
+            }
         }
         val res = withModuleTccl {
             host.runInCoroutineContext { host.evaluator(script, evalConfig) }
@@ -216,7 +235,7 @@ class ScriptBackend : ScriptCompiler {
     companion object {
         const val LIBS_DIR_PROP = "nodewire.script.libsDir"
         private val SCRIPT_CLASSPATH_JARS =
-            listOf("kotlin-stdlib.jar", "kotlin-script-runtime.jar", "script-api.jar")
+            listOf("kotlin-stdlib.jar", "kotlin-script-runtime.jar", "script-api.jar", "joml.jar")
     }
 }
 

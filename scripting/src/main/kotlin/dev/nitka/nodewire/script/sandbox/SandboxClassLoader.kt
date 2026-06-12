@@ -26,6 +26,11 @@ class SandboxClassLoader(private val modLoader: ClassLoader) : ClassLoader(null)
 
     private val allowedPrefixes = listOf(
         "dev.nitka.nodewire.script.",
+        // JOML — pure math (vectors/matrices/quaternions): no IO, no
+        // reflection, no classloading anywhere in the library, so exposing it
+        // adds no capability beyond arithmetic. Ships with vanilla MC; also
+        // added to the script COMPILE classpath in ScriptDefinition.
+        "org.joml.",
     )
 
     /** Exact graph types the script is allowed to touch (identity must match the host's). */

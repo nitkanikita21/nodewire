@@ -202,8 +202,8 @@ class VectorEvaluatorsTest {
             mapOf("v" to PinValue.Vec2(3f, 4f)),
         )
         val v = out["out"] as PinValue.Vec2
-        assertEquals(0.6f, v.x, 0.0001f)
-        assertEquals(0.8f, v.y, 0.0001f)
+        assertEquals(0.6, v.x, 0.0001)
+        assertEquals(0.8, v.y, 0.0001)
     }
 
     @Test fun vecOpNormalizeZeroStaysZero() {
@@ -246,8 +246,8 @@ class VectorEvaluatorsTest {
             mapOf("v" to PinValue.Vec2(3f, 4f), "max" to PinValue.Float(2f)),
         )
         val v = out["out"] as PinValue.Vec2
-        assertEquals(1.2f, v.x, 0.0001f)
-        assertEquals(1.6f, v.y, 0.0001f)
+        assertEquals(1.2, v.x, 0.0001)
+        assertEquals(1.6, v.y, 0.0001)
     }
 
     @Test fun vecOpLerpVec2Middle() {
@@ -281,8 +281,8 @@ class VectorEvaluatorsTest {
             mapOf("a" to PinValue.Vec2(3f, 4f), "b" to PinValue.Vec2(1f, 0f)),
         )
         val v = out["out"] as PinValue.Vec2
-        assertEquals(3f, v.x, 0.0001f)
-        assertEquals(0f, v.y, 0.0001f)
+        assertEquals(3.0, v.x, 0.0001)
+        assertEquals(0.0, v.y, 0.0001)
     }
 
     @Test fun vecOpProjectOnZeroIsZero() {
@@ -300,8 +300,8 @@ class VectorEvaluatorsTest {
             mapOf("v" to PinValue.Vec2(1f, -1f), "n" to PinValue.Vec2(0f, 1f)),
         )
         val v = out["out"] as PinValue.Vec2
-        assertEquals(1f, v.x, 0.0001f)
-        assertEquals(1f, v.y, 0.0001f)
+        assertEquals(1.0, v.x, 0.0001)
+        assertEquals(1.0, v.y, 0.0001)
     }
 
     @Test fun vecOpDotVec2() {
@@ -407,8 +407,8 @@ class VectorEvaluatorsTest {
             ),
         )
         val v = out["out"] as PinValue.Vec2
-        assertEquals(0f, v.x, 0.0001f)
-        assertEquals(1f, v.y, 0.0001f)
+        assertEquals(0.0, v.x, 0.0001)
+        assertEquals(1.0, v.y, 0.0001)
     }
 
     @Test fun vecOpToVec3() {

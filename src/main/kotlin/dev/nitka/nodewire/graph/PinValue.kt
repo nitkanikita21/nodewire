@@ -33,20 +33,31 @@ sealed class PinValue {
         override val type = PinType.STRING
     }
 
-    data class Vec2(val x: kotlin.Float, val y: kotlin.Float) : PinValue() {
+    // Vector variants carry DOUBLES (JOML `Vector*d` semantics): float's
+    // 24-bit mantissa quantizes far-lands-scale world coordinates by whole
+    // blocks (step = 2 at |x| ≈ 2^24), which broke coordinate-driven fire
+    // control. The Float secondary constructors keep the old call sites
+    // (and saved scripts) compiling unchanged.
+
+    data class Vec2(val x: Double, val y: Double) : PinValue() {
+        constructor(x: kotlin.Float, y: kotlin.Float) : this(x.toDouble(), y.toDouble())
         override val type = PinType.VEC2
     }
 
-    data class Vec3(val x: kotlin.Float, val y: kotlin.Float, val z: kotlin.Float) : PinValue() {
+    data class Vec3(val x: Double, val y: Double, val z: Double) : PinValue() {
+        constructor(x: kotlin.Float, y: kotlin.Float, z: kotlin.Float) :
+            this(x.toDouble(), y.toDouble(), z.toDouble())
         override val type = PinType.VEC3
     }
 
     data class Quat(
-        val x: kotlin.Float,
-        val y: kotlin.Float,
-        val z: kotlin.Float,
-        val w: kotlin.Float,
+        val x: Double,
+        val y: Double,
+        val z: Double,
+        val w: Double,
     ) : PinValue() {
+        constructor(x: kotlin.Float, y: kotlin.Float, z: kotlin.Float, w: kotlin.Float) :
+            this(x.toDouble(), y.toDouble(), z.toDouble(), w.toDouble())
         override val type = PinType.QUAT
     }
 
@@ -99,28 +110,30 @@ sealed class PinValue {
                 i.group(com.mojang.serialization.Codec.STRING.fieldOf("v").forGetter(Str::value))
                     .apply(i, ::Str)
             }
+        // DOUBLE codecs parse legacy FloatTag NBT fine (NbtOps routes any
+        // NumericTag through asDouble), so pre-migration saves load as-is.
         private val Vec2Codec: com.mojang.serialization.MapCodec<Vec2> =
             com.mojang.serialization.codecs.RecordCodecBuilder.mapCodec { i ->
                 i.group(
-                    com.mojang.serialization.Codec.FLOAT.fieldOf("x").forGetter(Vec2::x),
-                    com.mojang.serialization.Codec.FLOAT.fieldOf("y").forGetter(Vec2::y),
+                    com.mojang.serialization.Codec.DOUBLE.fieldOf("x").forGetter(Vec2::x),
+                    com.mojang.serialization.Codec.DOUBLE.fieldOf("y").forGetter(Vec2::y),
                 ).apply(i, ::Vec2)
             }
         private val Vec3Codec: com.mojang.serialization.MapCodec<Vec3> =
             com.mojang.serialization.codecs.RecordCodecBuilder.mapCodec { i ->
                 i.group(
-                    com.mojang.serialization.Codec.FLOAT.fieldOf("x").forGetter(Vec3::x),
-                    com.mojang.serialization.Codec.FLOAT.fieldOf("y").forGetter(Vec3::y),
-                    com.mojang.serialization.Codec.FLOAT.fieldOf("z").forGetter(Vec3::z),
+                    com.mojang.serialization.Codec.DOUBLE.fieldOf("x").forGetter(Vec3::x),
+                    com.mojang.serialization.Codec.DOUBLE.fieldOf("y").forGetter(Vec3::y),
+                    com.mojang.serialization.Codec.DOUBLE.fieldOf("z").forGetter(Vec3::z),
                 ).apply(i, ::Vec3)
             }
         private val QuatCodec: com.mojang.serialization.MapCodec<Quat> =
             com.mojang.serialization.codecs.RecordCodecBuilder.mapCodec { i ->
                 i.group(
-                    com.mojang.serialization.Codec.FLOAT.fieldOf("x").forGetter(Quat::x),
-                    com.mojang.serialization.Codec.FLOAT.fieldOf("y").forGetter(Quat::y),
-                    com.mojang.serialization.Codec.FLOAT.fieldOf("z").forGetter(Quat::z),
-                    com.mojang.serialization.Codec.FLOAT.fieldOf("w").forGetter(Quat::w),
+                    com.mojang.serialization.Codec.DOUBLE.fieldOf("x").forGetter(Quat::x),
+                    com.mojang.serialization.Codec.DOUBLE.fieldOf("y").forGetter(Quat::y),
+                    com.mojang.serialization.Codec.DOUBLE.fieldOf("z").forGetter(Quat::z),
+                    com.mojang.serialization.Codec.DOUBLE.fieldOf("w").forGetter(Quat::w),
                 ).apply(i, ::Quat)
             }
         private val VideoCodec: com.mojang.serialization.MapCodec<Video> =

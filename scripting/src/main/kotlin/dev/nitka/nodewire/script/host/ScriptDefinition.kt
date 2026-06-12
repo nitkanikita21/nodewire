@@ -32,7 +32,9 @@ import kotlin.script.experimental.jvm.updateClasspath
 abstract class NwScript
 
 object NwScriptCompilationConfig : ScriptCompilationConfiguration({
-    defaultImports("dev.nitka.nodewire.script.*")
+    // script.ui.* = the `ui {}` flexbox DSL (Justify/Align/UiScope) — same
+    // facade jar, so it costs nothing on the classpath side.
+    defaultImports("dev.nitka.nodewire.script.*", "dev.nitka.nodewire.script.ui.*", "org.joml.*")
     implicitReceivers(ScriptModule::class)
     // The script API's `input<T>` / `output<T>` are `inline fun`s compiled at
     // JVM target 21; the scripting compiler defaults to 1.8 and refuses to
@@ -62,9 +64,14 @@ private fun scriptCompileClasspath(): List<File> = buildList {
     jarOf(ScriptModule::class.java)?.let(::add)
     jarOf(NwScript::class.java)?.let(::add)
 
+    // joml.jar comes from the EXTRACTED bundle, NOT from jarOf(Matrix4f): in
+    // production that codeSource is the boot-layer MODULAR joml jar, and K2
+    // refused to read classes out of it ("Cannot access class
+    // 'org.joml.Vector3d'", in-game compile 2026-06-12). The bundled copy is
+    // module-info-stripped, plain-classpath safe.
     val dir = System.getProperty(ScriptBackend.LIBS_DIR_PROP)?.let(::File)
     if (dir != null) {
-        for (name in listOf("kotlin-stdlib.jar", "kotlin-script-runtime.jar", "script-api.jar")) {
+        for (name in listOf("kotlin-stdlib.jar", "kotlin-script-runtime.jar", "script-api.jar", "joml.jar")) {
             val f = File(dir, name)
             if (f.exists() && f.length() > 0L) add(f)
         }

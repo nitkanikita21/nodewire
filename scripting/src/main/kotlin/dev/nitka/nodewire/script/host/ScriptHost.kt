@@ -49,12 +49,14 @@ object ScriptHost : ScriptCompiler {
     private fun loadBackend(): ScriptCompiler {
         val jars = extractBundledJars()
 
-        // script-api.jar is the COMPILE classpath for the script body only; it
-        // must NOT go on the URLClassLoader (duplicating the facade there would
-        // give it a second identity and break PinValue/ScriptModule identity
-        // crossing the sandbox boundary). The facade comes from the parent.
+        // script-api.jar and joml.jar are the COMPILE classpath for the script
+        // body only; they must NOT go on the URLClassLoader (duplicating them
+        // there gives the classes a second identity and breaks the sandbox
+        // boundary — script-api via PinValue/ScriptModule identity asserts,
+        // joml via "loader constraint violation" the first time toJoml()'s
+        // parent-linked Vector3d met the child-first copy, 2026-06-12).
         val cpUrls: Array<URL> = jars
-            .filter { it.name != SCRIPT_API_JAR }
+            .filter { it.name != SCRIPT_API_JAR && it.name != JOML_JAR }
             .map { it.toURI().toURL() }
             .toTypedArray()
 
@@ -121,6 +123,11 @@ object ScriptHost : ScriptCompiler {
                 // scripting API isn't on the parent — it lives in our jars.
                 return !name.startsWith("kotlin.script.")
             }
+            // JOML: single identity with the host — the facade (JomlInterop)
+            // and the game both link against the parent's org.joml; a
+            // child-first copy from the bundled compile-classpath jar caused
+            // loader-constraint violations inside script bodies.
+            if (name.startsWith("org.joml.")) return true
             return false
         }
     }
@@ -153,6 +160,7 @@ object ScriptHost : ScriptCompiler {
     private const val RESOURCE_DIR = "nodewire-compiler"
     private const val INDEX_FILE = "index.txt"
     private const val SCRIPT_API_JAR = "script-api.jar"
+    private const val JOML_JAR = "joml.jar"
     private const val BACKEND_FQN = "dev.nitka.nodewire.script.host.ScriptBackend"
     private const val LIBS_DIR_PROP = "nodewire.script.libsDir"
 }

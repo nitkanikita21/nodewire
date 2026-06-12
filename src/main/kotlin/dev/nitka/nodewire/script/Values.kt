@@ -31,12 +31,25 @@ value class Redstone private constructor(val power: Int) {
     }
 }
 
-data class Vec2(val x: Float, val y: Float)
+// Vector types carry DOUBLES (JOML `Vector*d` semantics) so world-scale
+// coordinates survive the pin boundary — float quantizes far-lands positions
+// by whole blocks. Float secondary constructors keep `Vec3(1f, 2f, 3f)` in
+// existing scripts compiling unchanged; mixed Float/Double argument lists
+// promote to the Double primary via Kotlin's normal numeric conversions.
 
-data class Vec3(val x: Float, val y: Float, val z: Float)
+data class Vec2(val x: Double, val y: Double) {
+    constructor(x: Float, y: Float) : this(x.toDouble(), y.toDouble())
+}
 
-data class Quat(val x: Float, val y: Float, val z: Float, val w: Float) {
+data class Vec3(val x: Double, val y: Double, val z: Double) {
+    constructor(x: Float, y: Float, z: Float) : this(x.toDouble(), y.toDouble(), z.toDouble())
+}
+
+data class Quat(val x: Double, val y: Double, val z: Double, val w: Double) {
+    constructor(x: Float, y: Float, z: Float, w: Float) :
+        this(x.toDouble(), y.toDouble(), z.toDouble(), w.toDouble())
+
     companion object {
-        val IDENTITY = Quat(0f, 0f, 0f, 1f)
+        val IDENTITY = Quat(0.0, 0.0, 0.0, 1.0)
     }
 }

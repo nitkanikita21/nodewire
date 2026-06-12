@@ -79,6 +79,9 @@ neoForge {
 // module layer.
 val compilerLibs by configurations.creating
 
+/** JOML for the script COMPILE classpath (see jomlJar task below). */
+val jomlForScripts by configurations.creating
+
 val kotlinScriptVer = "2.0.20"
 
 dependencies {
@@ -108,6 +111,10 @@ dependencies {
     compilerLibs("org.jetbrains.kotlin:kotlin-stdlib:$kotlinScriptVer")
     compilerLibs("org.jetbrains.kotlin:kotlin-reflect:$kotlinScriptVer")
     compilerLibs("org.jetbrains.kotlin:kotlin-script-runtime:$kotlinScriptVer")
+
+    // Matches the joml MC 1.21.1 ships; compile-classpath only (runtime links
+    // against the boot-layer joml via the sandbox's VIA_MOD delegation).
+    jomlForScripts("org.joml:joml:1.10.5")
 
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
@@ -161,6 +168,12 @@ val scriptApiJar = tasks.register<Jar>("scriptApiJar") {
     destinationDirectory.set(compilerResDir)
     from(coreKotlinClasses.flatMap { it.destinationDirectory }) {
         include("dev/nitka/nodewire/script/**")
+        // Without the .kotlin_module map K2 resolves CLASSES from this jar but
+        // NOT top-level functions/properties (star-import lookups go through
+        // the module map) — script-facing entry points are interface/receiver
+        // MEMBERS by convention (ScriptModule.state, VideoCanvas.ui — both
+        // bitten by this). Ship the map anyway so a future top-level works.
+        include("META-INF/*.kotlin_module")
     }
 }
 
@@ -178,9 +191,25 @@ tasks.register<Copy>("exportScriptApi") {
     into(exportDir)
 }
 
+// 3b. joml.jar — real JOML for script math. In PRODUCTION MC loads joml as a
+// JPMS module on the boot layer; referencing that modular jar by codeSource
+// path made K2 reject it ("Cannot access class 'org.joml.Vector3d'" on the
+// in-game compile, 2026-06-12, while dev/test compiles passed). Bundle a
+// plain CLASSPATH copy with module-info stripped. Runtime linkage still goes
+// to the boot-layer joml through the sandbox (VIA_MOD), so there is no class
+// identity split — this jar is compile-time only.
+val jomlJar = tasks.register<Jar>("jomlJar") {
+    archiveFileName.set("joml.jar")
+    destinationDirectory.set(compilerResDir)
+    from({ jomlForScripts.map { zipTree(it) } }) {
+        exclude("module-info.class")
+        exclude("META-INF/versions/**")
+    }
+}
+
 // 4. index.txt = every jar filename under nodewire-compiler/ (one per line).
 val writeCompilerIndex = tasks.register("writeCompilerIndex") {
-    dependsOn(bundleCompilerLibs, backendJar, scriptApiJar)
+    dependsOn(bundleCompilerLibs, backendJar, scriptApiJar, jomlJar)
     val dir = compilerResDir
     outputs.file(dir.map { it.file("index.txt") })
     doLast {

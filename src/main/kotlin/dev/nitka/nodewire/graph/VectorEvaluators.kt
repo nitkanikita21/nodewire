@@ -51,15 +51,15 @@ object VectorEvaluators {
         if (dim == "VEC3") {
             val v = vec3In(inputs, "in")
             mapOf(
-                "x" to PinValue.Float(v.x),
-                "y" to PinValue.Float(v.y),
-                "z" to PinValue.Float(v.z),
+                "x" to PinValue.Float(v.x.toFloat()),
+                "y" to PinValue.Float(v.y.toFloat()),
+                "z" to PinValue.Float(v.z.toFloat()),
             )
         } else {
             val v = vec2In(inputs, "in")
             mapOf(
-                "x" to PinValue.Float(v.x),
-                "y" to PinValue.Float(v.y),
+                "x" to PinValue.Float(v.x.toFloat()),
+                "y" to PinValue.Float(v.y.toFloat()),
             )
         }
     }
@@ -159,12 +159,12 @@ object VectorEvaluators {
             VecOpType.NORMALIZE -> if (v2) {
                 val a = vec2In(inputs, "v")
                 val len = kotlin.math.sqrt(a.x * a.x + a.y * a.y)
-                if (len == 0f) PinValue.Vec2(0f, 0f)
+                if (len == 0.0) PinValue.Vec2(0f, 0f)
                 else PinValue.Vec2(a.x / len, a.y / len)
             } else {
                 val a = vec3In(inputs, "v")
                 val len = kotlin.math.sqrt(a.x * a.x + a.y * a.y + a.z * a.z)
-                if (len == 0f) PinValue.Vec3(0f, 0f, 0f)
+                if (len == 0.0) PinValue.Vec3(0f, 0f, 0f)
                 else PinValue.Vec3(a.x / len, a.y / len, a.z / len)
             }
             VecOpType.SCALE -> {
@@ -182,12 +182,12 @@ object VectorEvaluators {
                 if (v2) {
                     val a = vec2In(inputs, "v")
                     val len = kotlin.math.sqrt(a.x * a.x + a.y * a.y)
-                    if (len <= max || len == 0f) PinValue.Vec2(a.x, a.y)
+                    if (len <= max || len == 0.0) PinValue.Vec2(a.x, a.y)
                     else PinValue.Vec2(a.x / len * max, a.y / len * max)
                 } else {
                     val a = vec3In(inputs, "v")
                     val len = kotlin.math.sqrt(a.x * a.x + a.y * a.y + a.z * a.z)
-                    if (len <= max || len == 0f) PinValue.Vec3(a.x, a.y, a.z)
+                    if (len <= max || len == 0.0) PinValue.Vec3(a.x, a.y, a.z)
                     else PinValue.Vec3(
                         a.x / len * max, a.y / len * max, a.z / len * max,
                     )
@@ -213,7 +213,7 @@ object VectorEvaluators {
             VecOpType.PROJECT -> if (v2) {
                 val a = vec2In(inputs, "a"); val b = vec2In(inputs, "b")
                 val bLenSq = b.x * b.x + b.y * b.y
-                if (bLenSq == 0f) PinValue.Vec2(0f, 0f)
+                if (bLenSq == 0.0) PinValue.Vec2(0f, 0f)
                 else {
                     val k = (a.x * b.x + a.y * b.y) / bLenSq
                     PinValue.Vec2(b.x * k, b.y * k)
@@ -221,7 +221,7 @@ object VectorEvaluators {
             } else {
                 val a = vec3In(inputs, "a"); val b = vec3In(inputs, "b")
                 val bLenSq = b.x * b.x + b.y * b.y + b.z * b.z
-                if (bLenSq == 0f) PinValue.Vec3(0f, 0f, 0f)
+                if (bLenSq == 0.0) PinValue.Vec3(0f, 0f, 0f)
                 else {
                     val k = (a.x * b.x + a.y * b.y + a.z * b.z) / bLenSq
                     PinValue.Vec3(b.x * k, b.y * k, b.z * k)
@@ -249,7 +249,7 @@ object VectorEvaluators {
                     val a = vec3In(inputs, "a"); val b = vec3In(inputs, "b")
                     a.x * b.x + a.y * b.y + a.z * b.z
                 }
-                PinValue.Float(f)
+                PinValue.Float(f.toFloat())
             }
             VecOpType.LENGTH -> {
                 val sq = if (v2) {
@@ -259,7 +259,7 @@ object VectorEvaluators {
                     val a = vec3In(inputs, "v")
                     a.x * a.x + a.y * a.y + a.z * a.z
                 }
-                PinValue.Float(kotlin.math.sqrt(sq))
+                PinValue.Float(kotlin.math.sqrt(sq).toFloat())
             }
             VecOpType.LENGTH_SQ -> {
                 val sq = if (v2) {
@@ -269,7 +269,7 @@ object VectorEvaluators {
                     val a = vec3In(inputs, "v")
                     a.x * a.x + a.y * a.y + a.z * a.z
                 }
-                PinValue.Float(sq)
+                PinValue.Float(sq.toFloat())
             }
             VecOpType.DISTANCE -> {
                 val sq = if (v2) {
@@ -281,28 +281,28 @@ object VectorEvaluators {
                     val dx = a.x - b.x; val dy = a.y - b.y; val dz = a.z - b.z
                     dx * dx + dy * dy + dz * dz
                 }
-                PinValue.Float(kotlin.math.sqrt(sq))
+                PinValue.Float(kotlin.math.sqrt(sq).toFloat())
             }
             VecOpType.ANGLE -> {
                 val theta = if (v2) {
                     val a = vec2In(inputs, "a"); val b = vec2In(inputs, "b")
                     val la = kotlin.math.sqrt(a.x * a.x + a.y * a.y)
                     val lb = kotlin.math.sqrt(b.x * b.x + b.y * b.y)
-                    if (la == 0f || lb == 0f) 0f
+                    if (la == 0.0 || lb == 0.0) 0.0
                     else kotlin.math.acos(
-                        ((a.x * b.x + a.y * b.y) / (la * lb)).coerceIn(-1f, 1f),
+                        ((a.x * b.x + a.y * b.y) / (la * lb)).coerceIn(-1.0, 1.0),
                     )
                 } else {
                     val a = vec3In(inputs, "a"); val b = vec3In(inputs, "b")
                     val la = kotlin.math.sqrt(a.x * a.x + a.y * a.y + a.z * a.z)
                     val lb = kotlin.math.sqrt(b.x * b.x + b.y * b.y + b.z * b.z)
-                    if (la == 0f || lb == 0f) 0f
+                    if (la == 0.0 || lb == 0.0) 0.0
                     else kotlin.math.acos(
                         ((a.x * b.x + a.y * b.y + a.z * b.z) / (la * lb))
-                            .coerceIn(-1f, 1f),
+                            .coerceIn(-1.0, 1.0),
                     )
                 }
-                PinValue.Float(theta)
+                PinValue.Float(theta.toFloat())
             }
             VecOpType.CROSS -> {
                 val a = vec3In(inputs, "a"); val b = vec3In(inputs, "b")
@@ -320,7 +320,7 @@ object VectorEvaluators {
             }
             VecOpType.TO_VEC3 -> {
                 val a = vec2In(inputs, "v")
-                PinValue.Vec3(a.x, a.y, floatIn(inputs, "z"))
+                PinValue.Vec3(a.x, a.y, floatIn(inputs, "z").toDouble())
             }
             VecOpType.TO_VEC2 -> {
                 val a = vec3In(inputs, "v")
