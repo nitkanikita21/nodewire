@@ -145,14 +145,55 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
             val nodeIds by editor.nodes.collectAsState()
             // Live evaluator: runs once per game tick (50ms) so stateful
             // nodes (Timer) advance smoothly in the editor preview. Graph
-            // mutations show up on the next tick. External inputs empty
-            // for now — block_input outputs default to `false`.
+            // mutations show up on the next tick.
+            //
+            // SINGLEPLAYER bridge: channel deliveries happen on the SERVER
+            // (externalChannelInputs never round-trips), so a preview with no
+            // externals showed permanent zeros on every channel_input chip —
+            // useless for debugging link wiring. On an integrated server we
+            // peek the server-side BE's snapshot each preview tick and feed
+            // it in. On a dedicated server this stays empty (as before).
             val evaluator = remember(graph) { StatefulGraphEvaluator(graph) }
             var evalResult by remember { mutableStateOf(EvalResult(emptyMap())) }
             LaunchedEffect(evaluator) {
+                // Vanilla Level.getBlockEntity returns NULL off the server
+                // thread (race guard), so the snapshot must be TAKEN on the
+                // server thread (server.execute) and published through an
+                // atomic for the render thread to consume a cycle later.
+                val latestSnap = java.util.concurrent.atomic.AtomicReference<Map<String, dev.nitka.nodewire.graph.PinValue>>(emptyMap())
+                var diagCountdown = 0
                 while (true) {
                     delay(TICK_INTERVAL_MS)
-                    evalResult = evaluator.tick()
+                    val diag = --diagCountdown <= 0
+                    if (diag) diagCountdown = 100 // one NW-PREVIEW line per ~5 s
+                    val externals = HashMap<Pair<dev.nitka.nodewire.graph.NodeId, String>, dev.nitka.nodewire.graph.PinValue>()
+                    try {
+                        val mc = net.minecraft.client.Minecraft.getInstance()
+                        val server = mc.singleplayerServer
+                        val dim = mc.level?.dimension()
+                        if (server != null && dim != null) {
+                            server.execute {
+                                val be = server.getLevel(dim)?.getBlockEntity(pos)
+                                    as? dev.nitka.nodewire.block.LogicBlockEntity
+                                if (be != null) latestSnap.set(be.externalInputsSnapshot())
+                            }
+                        }
+                        val snap = latestSnap.get()
+                        for ((id, node) in graph.nodes) {
+                            if (node.typeKey.path != "channel_input") continue
+                            val v = snap[node.config.getString("name")] ?: continue
+                            externals[id to "out"] = v
+                        }
+                        if (diag) {
+                            PREVIEW_LOG.info(
+                                "NW-PREVIEW @{}: server={} snap={} externals={}",
+                                pos.toShortString(), server != null, snap.keys, externals.size,
+                            )
+                        }
+                    } catch (e: Throwable) {
+                        if (diag) PREVIEW_LOG.info("NW-PREVIEW @{}: bridge failed: {}", pos.toShortString(), e.toString())
+                    }
+                    evalResult = evaluator.tick(externals)
                 }
             }
 
@@ -311,5 +352,6 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
         private const val RIGHT_BUTTON = 1
         /** MC's game tick is 50 ms (20 Hz). Match it so Timer pulses align with the server's tick rate. */
         private const val TICK_INTERVAL_MS = 50L
+        private val PREVIEW_LOG = com.mojang.logging.LogUtils.getLogger()
     }
 }

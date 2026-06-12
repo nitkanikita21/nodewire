@@ -32,6 +32,7 @@ import dev.nitka.nodewire.ui.layout.Row
 import dev.nitka.nodewire.ui.modifier.input.pointerInput
 import dev.nitka.nodewire.ui.modifier.layout.absolutePosition
 import dev.nitka.nodewire.ui.modifier.layout.fillMaxWidth
+import dev.nitka.nodewire.ui.modifier.layout.flex
 import dev.nitka.nodewire.ui.modifier.layout.offset
 import dev.nitka.nodewire.ui.modifier.layout.padding
 import dev.nitka.nodewire.ui.modifier.layout.size
@@ -84,10 +85,19 @@ fun NodeCard(
     val selected = editor.isSelected(nodeId)
 
 
+    // Pin-heavy nodes (a fire-control script declares 12 inputs + 9 outputs)
+    // can't fit the fixed card width — long names, inline editors and value
+    // chips from both half-width columns collided in the middle. Width is
+    // measured from the widest input row + widest output row instead;
+    // CARD_WIDTH stays the floor so small nodes keep their compact look.
+    val cardWidth = remember(node.typeKey, node.inputs, node.outputs) {
+        desiredCardWidth(node)
+    }
+
     Surface(
         modifier = modifier
             .absolutePosition(pos.x.toInt(), pos.y.toInt())
-            .width(CARD_WIDTH)
+            .width(cardWidth)
             // Report measured size to the editor so rubber-band hit-tests
             // use the real card bounds, not a constant guess.
             .onSizeChanged { size ->
@@ -368,9 +378,12 @@ private fun InputPinRow(
     val showEditor = editor != null &&
         !hasIncomingEdge &&
         editorSpec !is dev.nitka.nodewire.graph.PinEditor.None
-    // Plain LTR: [●] Name chip [editor?]. Content-sized row left-
-    // aligned by the surrounding column.
+    // Plain LTR: [●] Name chip [editor?]. fillMaxWidth is LOAD-BEARING:
+    // it caps the row at its half-card column so Yoga's flex-shrink can
+    // squeeze the chip (which then ellipsizes) — a content-sized row just
+    // overflowed into the neighbouring output column instead.
     Row(
+        modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.Center,
         horizontalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2),
     ) {
@@ -403,13 +416,14 @@ private fun OutputPinRow(
 ) {
     val evalResult = LocalEvalResult.current
     val chip = pinChipText(pin, evalResult?.valueAt(nodeId, pin.id))
-    // Mirror layout: chip, Name, [●]. Content-sized row right-aligned by
-    // the surrounding column (cross-axis Alignment.End), so the handle
-    // sits at the card's right edge and chip+name pack in LTR order
-    // immediately to its left.
+    // Mirror layout: chip, Name, [●]. fillMaxWidth + spacedByEnd: the row
+    // is capped at its half-card column (so the chip can flex-shrink +
+    // ellipsize instead of overflowing into the input column) while the
+    // content still packs against the card's right edge.
     Row(
+        modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.Center,
-        horizontalArrangement = Arrangement.spacedBy(NwTheme.dimens.space2),
+        horizontalArrangement = Arrangement.spacedByEnd(NwTheme.dimens.space2),
     ) {
         ChipLabel(chip)
         Text(pin.name, style = NwTheme.typography.caption)
@@ -525,6 +539,11 @@ private fun PinHandle(
 private fun ChipLabel(text: String) {
     Text(
         text,
+        // shrink=1: the chip is the row's flexible part — when name+chip+editor
+        // exceed the half-card column, Yoga shrinks the chip below intrinsic
+        // and TextRenderer ellipsizes, instead of overpainting the neighbour
+        // column (long VIDEO handles smeared across the output pin's label).
+        modifier = Modifier.flex(shrink = 1f),
         style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceMuted),
     )
 }
@@ -549,7 +568,9 @@ private fun pinChipText(pin: Pin, value: PinValue?): String = when (value) {
     is PinValue.Vec2 -> "(%.1f; %.1f)".format(value.x, value.y)
     is PinValue.Vec3 -> "(%.1f; %.1f; %.1f)".format(value.x, value.y, value.z)
     is PinValue.Quat -> "q(%.1f; %.1f; %.1f; %.1f)".format(value.x, value.y, value.z, value.w)
-    is PinValue.Video -> "vid:${value.handle.toString().take(8)}"
+    // Just the handle prefix — the pin colour + name already say "video",
+    // and "vid:" + 8 hex chars didn't fit the half-card pin column.
+    is PinValue.Video -> value.handle.toString().take(8)
 }
 
 @Composable
@@ -583,5 +604,58 @@ private fun displayTitleOf(node: Node): String {
 }
 
 internal const val CARD_WIDTH = 130
+
+/** Width cap so a pathological pin set can't produce a screen-wide card. */
+private const val CARD_WIDTH_MAX = 320
+
+/**
+ * Content-measured card width: widest input row + widest output row, with
+ * [CARD_WIDTH] as the floor. Editor widths come from the pin's [PinEditor]
+ * SPEC (not its current connect state) so the card doesn't resize when a
+ * wire connects/disconnects. Pure estimate — the rows' flex-shrink +
+ * ellipsis still guard any residual overflow.
+ */
+private fun desiredCardWidth(node: Node): Int {
+    val font = net.minecraft.client.Minecraft.getInstance().font
+    val captionScale = 0.85f
+    fun tw(s: String): Int = kotlin.math.ceil(font.width(s) * captionScale).toInt()
+
+    val gap = 2
+    val handle = 4   // visible half of the edge-centred pin handle
+    val chipEst = 30 // short value chip ("0.00f" / "false" / 8-char id)
+
+    fun editorWidth(pin: Pin): Int {
+        val spec = NodeTypeRegistry.get(node.typeKey)?.editorFor(pin.id, pin.type)
+            ?: dev.nitka.nodewire.graph.defaultEditorFor(pin.type)
+        return when (spec) {
+            is dev.nitka.nodewire.graph.PinEditor.None -> 0
+            is dev.nitka.nodewire.graph.PinEditor.Checkbox -> 14
+            is dev.nitka.nodewire.graph.PinEditor.Numeric -> 50
+            is dev.nitka.nodewire.graph.PinEditor.Text -> 100
+            is dev.nitka.nodewire.graph.PinEditor.Vector -> when (pin.type) {
+                dev.nitka.nodewire.graph.PinType.VEC2 -> 62
+                dev.nitka.nodewire.graph.PinType.QUAT -> 126
+                else -> 94
+            }
+            is dev.nitka.nodewire.graph.PinEditor.Enum,
+            is dev.nitka.nodewire.graph.PinEditor.Slider -> 60
+        }
+    }
+
+    var maxIn = 0
+    for (pin in node.inputs) {
+        val e = editorWidth(pin)
+        val w = handle + gap + tw(pin.name) + gap + chipEst + (if (e > 0) gap + e else 0)
+        if (w > maxIn) maxIn = w
+    }
+    var maxOut = 0
+    for (pin in node.outputs) {
+        val w = chipEst + gap + tw(pin.name) + gap + handle
+        if (w > maxOut) maxOut = w
+    }
+    if (maxIn == 0 && maxOut == 0) return CARD_WIDTH
+    // Column gap + card body padding + safety slack.
+    return (maxIn + maxOut + 20).coerceIn(CARD_WIDTH, CARD_WIDTH_MAX)
+}
 private const val PIN_HANDLE_SIZE = 8
 private const val PIN_HANDLE_HALF = PIN_HANDLE_SIZE / 2

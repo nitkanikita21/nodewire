@@ -45,18 +45,47 @@ class PixelDotHeaderRenderer(
         // Solid base across the whole strip — target pixels punch through.
         fillRect(0, 0, w, h, base)
 
+        // The dither ramp starts AFTER the title so the text always sits on
+        // SOLID base color — a mid-ramp checkerboard under the glyphs made
+        // the title hard to read. The direct child is a stretched Row/Column
+        // (full header width — measuring IT killed the ramp entirely), so we
+        // walk to the TEXT leaves and take their right-most edge. Children
+        // are already laid out when we paint; +4px breathing room.
+        val solidEnd = (textRightEdge(node, 0) + 4).coerceIn(0, w)
+        val ramp = w - solidEnd
+        if (ramp <= 0) return
+
         // Bayer matrix gives a stable, pixel-art-friendly dither pattern.
         // Threshold values in 1..16; we normalize to (i + 0.5) / 16 below.
         for (y in 0 until h) {
             val row = y and 3
-            for (x in 0 until w) {
-                val t = (x + 0.5f) / w
+            for (x in solidEnd until w) {
+                val t = (x - solidEnd + 0.5f) / ramp
                 val threshold = (BAYER_4X4[row][x and 3] + 0.5f) / 16f
                 if (t > threshold) {
                     fillRect(x, y, 1, 1, target)
                 }
             }
         }
+    }
+
+    /**
+     * Right-most edge (header-local px) over the subtree's TEXT leaves.
+     * Containers stretch to the full strip, so only glyph-bearing leaves
+     * count; a missing title (rename overlay active) resolves to 0.
+     */
+    private fun textRightEdge(node: UiNode, baseX: Int): Int {
+        var right = 0
+        for (c in node.children) {
+            val cx = baseX + c.layoutX
+            val r = if (c.children.isEmpty()) {
+                if (c.renderer is dev.nitka.nodewire.ui.render.TextRenderer) cx + c.layoutWidth else 0
+            } else {
+                textRightEdge(c, cx)
+            }
+            if (r > right) right = r
+        }
+        return right
     }
 
     companion object {

@@ -10,6 +10,7 @@ import dev.nitka.nodewire.graph.NodeId
 import dev.nitka.nodewire.net.SetScriptSourcePacket
 import dev.nitka.nodewire.script.ScriptDiagnostics
 import dev.nitka.nodewire.ui.components.Button
+import dev.nitka.nodewire.ui.components.ButtonDefaults
 import dev.nitka.nodewire.ui.components.Surface
 import dev.nitka.nodewire.ui.components.SurfaceStyle
 import dev.nitka.nodewire.ui.components.Text
@@ -72,6 +73,92 @@ class ScriptEditorScreen(
         return ScriptDiagnostics.readStatus(node.config) to ScriptDiagnostics.readText(node.config)
     }
 
+    private companion object {
+        /** Sanity cap for a loaded script file — scripts are a few KiB. */
+        const val MAX_SCRIPT_FILE_BYTES = 512L * 1024
+    }
+
+    /** One native picker at a time — a second click while one is open is a no-op. */
+    private val pickerBusy = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    /**
+     * Native OS file picker (LWJGL tinyfd — ships with vanilla MC) on a worker
+     * thread; zenity/kdialog block their caller, so the render thread must NOT
+     * host the dialog. The chosen file is read off-thread too; only the final
+     * state write hops back to the client thread via [Minecraft.execute].
+     * Starts in `<gameDir>/nodewire-scripts/` (created on first use).
+     */
+    private fun browseAndLoad(onLoaded: (String) -> Unit, onError: (String) -> Unit) {
+        if (!pickerBusy.compareAndSet(false, true)) return
+        val mc = Minecraft.getInstance()
+        val dir = java.io.File(mc.gameDirectory, "nodewire-scripts").apply { mkdirs() }
+        Thread({
+            try {
+                val path = org.lwjgl.system.MemoryStack.stackPush().use { stack ->
+                    val patterns = stack.mallocPointer(2)
+                    patterns.put(stack.UTF8("*.kts"))
+                    patterns.put(stack.UTF8("*.txt"))
+                    patterns.flip()
+                    org.lwjgl.util.tinyfd.TinyFileDialogs.tinyfd_openFileDialog(
+                        "Open Nodewire script",
+                        dir.absolutePath + java.io.File.separator,
+                        patterns,
+                        "Nodewire scripts (*.kts, *.txt)",
+                        false,
+                    )
+                } ?: return@Thread // cancelled
+                val file = java.io.File(path)
+                val result = runCatching {
+                    require(file.length() <= MAX_SCRIPT_FILE_BYTES) {
+                        "file is larger than ${MAX_SCRIPT_FILE_BYTES / 1024} KiB"
+                    }
+                    file.readText()
+                }
+                mc.execute {
+                    result.fold(onLoaded) { e -> onError(e.message ?: e.toString()) }
+                }
+            } finally {
+                pickerBusy.set(false)
+            }
+        }, "nw-script-open").apply { isDaemon = true }.start()
+    }
+
+    /**
+     * Native "save as" dialog (tinyfd), mirrored on [browseAndLoad]: worker
+     * thread for the blocking dialog + the disk write, client thread for the
+     * result callback. Default name = sanitized node name + `.nw.kts`; a
+     * picked name without an extension gets `.nw.kts` appended.
+     */
+    private fun browseAndSave(content: String, onSaved: (String) -> Unit, onError: (String) -> Unit) {
+        if (!pickerBusy.compareAndSet(false, true)) return
+        val mc = Minecraft.getInstance()
+        val dir = java.io.File(mc.gameDirectory, "nodewire-scripts").apply { mkdirs() }
+        val defaultName = nodeName.replace(Regex("[^A-Za-z0-9._-]"), "_").ifEmpty { "script" } + ".nw.kts"
+        Thread({
+            try {
+                val path = org.lwjgl.system.MemoryStack.stackPush().use { stack ->
+                    val patterns = stack.mallocPointer(2)
+                    patterns.put(stack.UTF8("*.kts"))
+                    patterns.put(stack.UTF8("*.txt"))
+                    patterns.flip()
+                    org.lwjgl.util.tinyfd.TinyFileDialogs.tinyfd_saveFileDialog(
+                        "Save Nodewire script",
+                        dir.absolutePath + java.io.File.separator + defaultName,
+                        patterns,
+                        "Nodewire scripts (*.kts, *.txt)",
+                    )
+                } ?: return@Thread // cancelled
+                val file = java.io.File(if (path.substringAfterLast('/').contains('.')) path else "$path.nw.kts")
+                val result = runCatching { file.writeText(content); file.name }
+                mc.execute {
+                    result.fold(onSaved) { e -> onError(e.message ?: e.toString()) }
+                }
+            } finally {
+                pickerBusy.set(false)
+            }
+        }, "nw-script-save").apply { isDaemon = true }.start()
+    }
+
     /** Commit edits (if changed) + return to the node editor. */
     private fun closeAndApply() {
         val mc = Minecraft.getInstance()
@@ -88,20 +175,26 @@ class ScriptEditorScreen(
         mc.setScreen(if (be != null) NodeEditorScreen(pos, be.graph) else null)
     }
 
-    override fun keyPressed(keyCode: Int, scanCode: Int, modifiers: Int): Boolean {
-        // Let the focused TextArea consume first (typing, its own ESC = blur).
-        if (super.keyPressed(keyCode, scanCode, modifiers)) return true
-        if (keyCode == com.mojang.blaze3d.platform.InputConstants.KEY_ESCAPE) {
-            closeAndApply()
-            return true
-        }
-        return false
+    /**
+     * EVERY close path must commit. Vanilla `Screen.keyPressed` handles ESC
+     * itself (shouldCloseOnEsc → onClose → setScreen(null)), so a manual ESC
+     * branch after `super.keyPressed` is dead code — the screen used to close
+     * through vanilla onClose and silently DROP the edit ("закрив редактор —
+     * а там минулий скрипт", 2026-06-12). Routing onClose into closeAndApply
+     * covers ESC and any other vanilla-initiated close. A TextArea-focused
+     * ESC is still consumed by the TextArea first (blur), so the first ESC
+     * blurs, the second commits and closes.
+     */
+    override fun onClose() {
+        closeAndApply()
     }
 
     @Composable
     override fun Content() {
         NwThemeProvider {
             var text by remember { mutableStateOf(src) }
+            // Transient file-IO feedback: (message, isError) or null.
+            var ioMsg by remember { mutableStateOf<Pair<String, Boolean>?>(null) }
             val (statusToken, statusText) = diagnostics()
             Box(modifier = Modifier.fillMaxSize().padding(NwTheme.dimens.space8)) {
                 Surface(
@@ -124,7 +217,34 @@ class ScriptEditorScreen(
                             horizontalArrangement = Arrangement.spacedBy(NwTheme.dimens.space4),
                         ) {
                             Text(nodeName, style = NwTheme.typography.subtitle)
+                            ioMsg?.let { (msg, isError) ->
+                                Text(
+                                    if (isError) "⚠ $msg" else msg,
+                                    style = NwTheme.typography.caption.copy(
+                                        color = if (isError) NwTheme.colors.pinRedstone else NwTheme.colors.onSurfaceMuted,
+                                    ),
+                                )
+                            }
                             Box(modifier = Modifier.weight(1f)) {}
+                            Button(
+                                onClick = {
+                                    browseAndLoad(
+                                        onLoaded = { c -> text = c; src = c; ioMsg = null },
+                                        onError = { msg -> ioMsg = msg to true },
+                                    )
+                                },
+                                style = ButtonDefaults.ghost(),
+                            ) { Text("Open…") }
+                            Button(
+                                onClick = {
+                                    browseAndSave(
+                                        content = text,
+                                        onSaved = { name -> ioMsg = "✔ $name" to false },
+                                        onError = { msg -> ioMsg = msg to true },
+                                    )
+                                },
+                                style = ButtonDefaults.ghost(),
+                            ) { Text("Save…") }
                             Button(onClick = { closeAndApply() }) { Text("Close") }
                         }
 
@@ -134,6 +254,7 @@ class ScriptEditorScreen(
                             onValueChange = { new -> text = new; src = new },
                             modifier = Modifier.fillMaxWidth().weight(1f),
                             highlight = { line -> ScriptHighlighter.highlight(line) },
+                            lineNumbers = true,
                         )
 
                         // Status strip — last known server diagnostics.

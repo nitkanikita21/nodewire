@@ -54,6 +54,15 @@ class UiNode {
         styleModifiers = styles
         inputModifiers = inputs
         yoga.apply(yogaConfig)
+        // Yoga's setMeasureFunction stores the new lambda WITHOUT marking the
+        // node dirty, and style setters dirty only on an actual value change —
+        // so a pure content change (Text recomposed with a new string; same
+        // modifier, same style values) left the node "clean" and
+        // calculateLayout served the CACHED measurement of the old content:
+        // stale width/height until something else forced a re-measure. Dirty
+        // measure-defined leaves explicitly; containers self-dirty via their
+        // style setters when their values really change.
+        if (yoga.isMeasureDefined) yoga.markDirtyAndPropagate()
     }
 
     var styleModifiers: List<StyleModifierElement<*>> = emptyList()
