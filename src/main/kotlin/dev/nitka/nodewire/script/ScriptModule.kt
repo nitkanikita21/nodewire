@@ -204,10 +204,22 @@ abstract class ScriptModule {
         // hidden replicated cell that rides the normal replication path (delta +
         // late-join piggyback + persist), and is copied back into inputs on the
         // client. This makes `input<Video>(name).value` just work in clientBehavior.
-        if (T::class == Video::class) registerVideoInputMirror(name)
+        if (T::class == Video::class) {
+            registerVideoInputMirror(name)
+            // Ensure inputs[name] starts with a valid non-null Video sentinel
+            // so reads before the first replication don't NPE (analogous to
+            // output<Video>'s initialisation in the output function below).
+            if (inputs[name] == null) inputs[name] = Video(java.util.UUID(0L, 0L))
+        }
         return object : Input<T> {
             @Suppress("UNCHECKED_CAST")
-            override val value: T get() = inputs[name] as T
+            override val value: T get() {
+                // If we are on the client, only allow accessing the value of Video inputs
+                if (clientSide && T::class != Video::class) {
+                    throw ScriptDeclException("input '$name' value is not available on the client — copy it to a replicated state variable in tick {} first")
+                }
+                return inputs[name] as T
+            }
         }
     }
 

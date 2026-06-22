@@ -1,5 +1,6 @@
 package dev.nitka.nodewire.script
 
+import org.junit.jupiter.api.Assertions.assertDoesNotThrow
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -32,5 +33,21 @@ class NonReplicatedClientReadTest {
     @Test fun `the server reads non-replicated cells without throwing`() {
         val m = M() // clientSide defaults false
         assertEquals(0, m.local)
+    }
+
+    @Test fun `reading a non-video input on the client throws a clear error`() {
+        class M2 : ScriptModule() {
+            val speed = input<Int>("speed")
+            val cam = input<Video>("camera")
+        }
+        val m = M2().apply { setClientSide(true) }
+
+        // Non-video input must throw
+        val ex = runCatching { m.speed.value }.exceptionOrNull()
+        assertTrue(ex is ScriptDeclException, "expected ScriptDeclException on client-side non-video input read")
+        assertTrue(ex?.message?.contains("not available on the client") == true)
+
+        // Video input must not throw (returns NONE by default on empty inputs)
+        assertDoesNotThrow { m.cam.value }
     }
 }

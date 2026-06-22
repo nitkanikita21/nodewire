@@ -154,7 +154,19 @@ object ClientScriptNodeRuntime {
             // Skip the nil handle (an unbound Video) — never allocate a surface for it.
             if (req.handle == NIL_VIDEO_HANDLE) continue
             if (!VideoCadence.shouldDraw(req.handle, now)) continue
-            VideoFrameRenderer.drawInto(req.handle) { canvas -> req.block(canvas) }
+            try {
+                VideoFrameRenderer.drawInto(req.handle) { canvas -> req.block(canvas) }
+            } catch (e: Exception) {
+                val player = net.minecraft.client.Minecraft.getInstance().player
+                if (player != null) {
+                    player.displayClientMessage(
+                        net.minecraft.network.chat.Component.literal(
+                            "§c[Nodewire] Script draw() error: ${e.message}"
+                        ), false
+                    )
+                }
+                LOG.error("Script draw() threw for handle {}", req.handle, e)
+            }
         }
     }
 
