@@ -202,13 +202,7 @@ class NodeEditorScreen(val pos: BlockPos, initialGraph: NodeGraph) :
                 LocalEvalResult provides evalResult,
             ) {
                 Column(modifier = Modifier.fillMaxSize()) {
-                    EditorToolbar(pos = pos, onOpenBindings = {
-                        val mc = net.minecraft.client.Minecraft.getInstance()
-                        val be = mc.level?.getBlockEntity(pos)
-                            as? dev.nitka.nodewire.block.LogicBlockEntity
-                            ?: return@EditorToolbar
-                        mc.setScreen(BindingsManagerScreen(sourceBe = be, onPickSource = { }))
-                    })
+                    EditorToolbar(pos = pos)
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()

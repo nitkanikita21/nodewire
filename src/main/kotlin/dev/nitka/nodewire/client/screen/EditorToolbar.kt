@@ -45,14 +45,14 @@ import net.neoforged.neoforge.network.PacketDistributor
 /**
  * Thin top toolbar. Layout:
  *
- *   [graph name input] [File ▾] [Edit ▾] [View ▾] ──── [Bindings…]
+ *   [graph name input] [File ▾] [Edit ▾] [View ▾] ────
  *
  * The three menu buttons open anchored [ContextMenu]s with grouped
  * actions — keeps the bar short while exposing the same operations the
  * keyboard shortcuts already provide.
  */
 @Composable
-fun EditorToolbar(pos: BlockPos, onOpenBindings: () -> Unit) {
+fun EditorToolbar(pos: BlockPos) {
     val editor = LocalEditorState.current ?: return
     val toast = LocalToastManager.current
     val name by editor.blockName.collectAsState()
@@ -114,12 +114,6 @@ fun EditorToolbar(pos: BlockPos, onOpenBindings: () -> Unit) {
                 style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceMuted),
             )
         }
-        MenuButton(
-            label = "Bindings…",
-            isOpen = false,
-            onClick = onOpenBindings,
-            onPositioned = { },
-        )
     }
 
     val anchorCoords = openMenu?.let { anchors[it] }

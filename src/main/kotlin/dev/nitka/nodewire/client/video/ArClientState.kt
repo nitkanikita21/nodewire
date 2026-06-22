@@ -69,8 +69,10 @@ object ArClientState {
             val texId = surface.colorTextureId()
             val w = mc.window.guiScaledWidth.toFloat()
             val h = mc.window.guiScaledHeight.toFloat()
-            // Full-screen feed through the single video pipeline (signal-driven
-            // noise — identical to the Screen block and script image()).
+            // Full-screen blit of the AR overlay FBO — NO backing: most of this FBO
+            // is transparent on purpose (the HUD shows through to the real view), and
+            // any per-window dark backing was already composited INTO the FBO by the
+            // script's image() verb. A backing here would black out the whole HUD.
             VideoBlit.blit(texId, 0f, 0f, w, h, activeSignal)
         } finally {
             RenderSystem.enableDepthTest()

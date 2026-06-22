@@ -1,10 +1,8 @@
 package dev.nitka.nodewire.item
 
-import dev.nitka.nodewire.block.LogicBlockEntity
 import dev.nitka.nodewire.client.link.LinkHud
 import dev.nitka.nodewire.endpoint.EndpointRef
 import dev.nitka.nodewire.graph.PinType
-import dev.nitka.nodewire.link.LinkContext
 import dev.nitka.nodewire.link.LinkPin
 import dev.nitka.nodewire.link.PinPorts
 import dev.nitka.nodewire.net.BindPinPacket
@@ -38,8 +36,9 @@ import net.neoforged.neoforge.network.PacketDistributor
  *    the server stores a [dev.nitka.nodewire.link.PinLink] on the target
  *    (or a SideBinding for the redstone-face fallback).
  *
- * A Logic Block's sneak+RMB opens the Link Manager instead of a bare picker
- * (same outputs, plus existing-binding management).
+ * Existing links are managed inline: hover a SINK block, scroll the hover
+ * window to a bound input pin, and middle-click to unbind it (the bound pin
+ * reads out its source block, which lights up in-world while highlighted).
  *
  * **PANEL mode** (sneak+scroll to switch): the tool only does the Screen
  * two-corner panel resize; no linking.
@@ -128,27 +127,14 @@ class ChannelLinkToolItem(props: Properties) : Item(props) {
     }
 
     /**
-     * Sneak + RMB. Clears the armed source if one is set; otherwise a Logic
-     * block opens its Link Manager (channel outputs + existing-binding
-     * management), the one richer UI the inline flow keeps.
+     * Sneak + RMB. Clears the armed source if one is set; otherwise just hints
+     * how to arm one. (Existing links are managed inline now: scroll the hover
+     * window to a bound input pin and middle-click to unbind — see [LinkHud].)
      */
     private fun secondaryAction(stack: ItemStack, ctx: UseOnContext) {
         if (readArmedSource(stack) != null) {
             clearArmedSource(stack)
             actionBar("Source cleared", false)
-            return
-        }
-        val level = ctx.level
-        val pos = ctx.clickedPos
-        val logicBe = level.getBlockEntity(pos) as? LogicBlockEntity
-        if (logicBe != null) {
-            Minecraft.getInstance().setScreen(
-                dev.nitka.nodewire.client.screen.BindingsManagerScreen(logicBe) { picked ->
-                    val type = logicBe.pinOutputs(LinkContext(level, pos, level.getBlockState(pos)))
-                        .firstOrNull { it.id == picked }?.type ?: PinType.ANY
-                    armSource(stack, level, pos, LinkPin(picked, type))
-                },
-            )
         } else {
             actionBar("No armed source — right-click an output pin to arm one", true)
         }

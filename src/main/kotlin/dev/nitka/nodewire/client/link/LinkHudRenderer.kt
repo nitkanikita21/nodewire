@@ -8,9 +8,12 @@ import net.neoforged.neoforge.client.event.RenderGuiEvent
 /**
  * Draws the Channel Link Tool's inline pin window (state in [LinkHud]) as a
  * small HUD panel next to the crosshair — the in-world replacement for the old
- * full-screen pin pickers. Rows are type-colored; the active/selectable ones
- * are bright, incompatible ones are dimmed but still visible (so you see *why*
- * a pin can't be picked), and the scroll-highlighted row gets an accent bar.
+ * full-screen pin pickers and Link Manager. Rows are type-colored; the
+ * active/selectable ones are bright, incompatible ones are dimmed but still
+ * visible (so you see *why* a pin can't be picked), and the scroll-highlighted
+ * row gets an accent bar. A bound input's right side reads out its source block
+ * (`← x, y, z`); when one is highlighted, a footer hints that the middle mouse
+ * button unbinds it.
  */
 object LinkHudRenderer {
 
@@ -30,6 +33,8 @@ object LinkHudRenderer {
     private const val ACCENT = 0xFF_4A_9E_FF.toInt()
     private const val HILITE_BG = 0x33_4A_9E_FF.toInt()
 
+    private const val UNBIND_HINT = "MMB: unbind"
+
     fun onRenderGui(event: RenderGuiEvent.Post) {
         val mc = Minecraft.getInstance()
         if (mc.options.hideGui || mc.player == null) return
@@ -48,6 +53,14 @@ object LinkHudRenderer {
             .coerceIn(0, maxOf(0, rows.size - visible))
         val end = (start + visible).coerceAtMost(rows.size)
 
+        // Right-aligned readout per row: a bound input shows its source block
+        // ("← x, y, z"); everything else shows the in/out tag.
+        fun rightText(i: Int): String {
+            val row = rows[i]
+            return row.link?.let { "← ${it.source.payload.blockPos.toShortString()}" }
+                ?: if (row.output) "out" else "in"
+        }
+
         // ── measure ──
         fun fit(s: String): String {
             if (font.width(s) <= LABEL_MAX_W) return s
@@ -55,15 +68,16 @@ object LinkHudRenderer {
             while (t.isNotEmpty() && font.width("$t…") > LABEL_MAX_W) t = t.dropLast(1)
             return "$t…"
         }
+        val unbindHint = LinkHud.highlightedLink() != null
         val labels = (start until end).associateWith { fit(rows[it].pin.label) }
         var innerW = font.width(header)
         for (i in start until end) {
-            val tag = if (rows[i].output) "out" else "in"
-            val w = DOT + DOT_GAP + font.width(labels.getValue(i)) + TAG_GAP + font.width(tag)
+            val w = DOT + DOT_GAP + font.width(labels.getValue(i)) + TAG_GAP + font.width(rightText(i))
             if (w > innerW) innerW = w
         }
+        if (unbindHint) innerW = maxOf(innerW, font.width(UNBIND_HINT))
         val width = innerW + PAD * 2
-        val height = PAD * 2 + (lineH + 4) + (end - start) * rowH
+        val height = PAD * 2 + (lineH + 4) + (end - start) * rowH + (if (unbindHint) lineH + 2 else 0)
 
         // ── position: just right of the crosshair, vertically centered, clamped ──
         val sw = mc.window.guiScaledWidth
@@ -99,13 +113,26 @@ object LinkHudRenderer {
                 else -> TEXT_DIM
             }
             g.drawString(font, labels.getValue(i), tx + DOT + DOT_GAP, rowY, labelColor)
-            val tag = if (row.output) "out" else "in"
-            g.drawString(font, tag, x + width - PAD - font.width(tag), rowY, if (row.active) MUTED else TEXT_DIM)
+            val right = rightText(i)
+            val rightColor = when {
+                row.link != null -> ACCENT          // bound: source readout pops
+                row.active -> MUTED
+                else -> TEXT_DIM
+            }
+            g.drawString(font, right, x + width - PAD - font.width(right), rowY, rightColor)
+        }
+
+        // ── footer: unbind hint for the highlighted bound row ──
+        if (unbindHint) {
+            val hy = ty + (end - start) * rowH + 1
+            g.drawString(font, UNBIND_HINT, tx, hy, MUTED)
         }
 
         // ── overflow arrows ──
         if (start > 0) g.drawString(font, "▲", x + width - PAD - font.width("▲"), y + PAD, MUTED)
-        if (end < rows.size) g.drawString(font, "▼", x + width - PAD - font.width("▼"), y + height - PAD - lineH, MUTED)
+        if (end < rows.size && !unbindHint) {
+            g.drawString(font, "▼", x + width - PAD - font.width("▼"), y + height - PAD - lineH, MUTED)
+        }
     }
 
     private fun headerText(): String {

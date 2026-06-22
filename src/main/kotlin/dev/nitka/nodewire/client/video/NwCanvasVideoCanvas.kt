@@ -125,12 +125,16 @@ class NwCanvasVideoCanvas(
         nw.flush()
 
         // The single video pipeline — signal-driven noise, identical to the
-        // Screen block and the AR HUD (it V-flips the bottom-up FBO).
+        // Screen block and the AR HUD (it V-flips the bottom-up FBO). `backing`:
+        // a video window is meant to be opaque, so an black quad under THIS rect
+        // stops the feed's transparent sky from showing whatever is behind the
+        // window (the real view, on a transparent AR overlay FBO).
         VideoBlit.blit(
             texId,
             r.x.toFloat(), r.y.toFloat(),
             (r.x + r.w).toFloat(), (r.y + r.h).toFloat(),
             video.signal,
+            backing = true,
         )
     }
 

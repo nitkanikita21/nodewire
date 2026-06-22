@@ -114,6 +114,7 @@ object NodewireClient {
         FORGE_BUS.addListener(::onLevelUnload)
         FORGE_BUS.addListener<RegisterClientCommandsEvent>(HighlightCommand::register)
         FORGE_BUS.addListener(::onMouseScroll)
+        FORGE_BUS.addListener(::onMouseButton)
         // Channel Link Tool inline pin window — hover state + HUD draw.
         FORGE_BUS.addListener<net.neoforged.neoforge.client.event.RenderGuiEvent.Post>(LinkHudRenderer::onRenderGui)
         // AR Glasses: render video FBO under the vanilla HUD.
@@ -136,6 +137,9 @@ object NodewireClient {
         // Refresh the Link Tool hover window from the crosshair (no-ops / clears
         // itself when the tool isn't held or a screen is open).
         LinkHud.update()
+        // Pillar 2 Stage A — publish far-camera chunk zones + request streaming
+        // (no-ops without far cameras; sends only on change).
+        dev.nitka.nodewire.camerachunk.CameraChunkClient.tick()
         // Stream the pilot's input while a Control Block session is active.
         ControlSession.update()
         // Drain the mouse-capture keybind; toggle only while piloting.
@@ -211,6 +215,37 @@ object NodewireClient {
             event.isCanceled = true
             LinkHud.scroll(if (dy > 0) -1 else 1)
         }
+    }
+
+    /**
+     * Middle mouse button (the rebindable Pick Block control) with the Channel
+     * Link Tool while the inline window highlights a BOUND input pin → unbind
+     * it. The pin selection is the same client-side [LinkHud] state the RMB
+     * arm/commit flow uses; the server validates reach. Cancels the event so
+     * vanilla pick-block doesn't also fire.
+     */
+    private fun onMouseButton(event: net.neoforged.neoforge.client.event.InputEvent.MouseButton.Pre) {
+        if (event.action != org.lwjgl.glfw.GLFW.GLFW_PRESS) return
+        val mc = Minecraft.getInstance()
+        if (mc.screen != null) return
+        val player = mc.player ?: return
+        val stack = player.mainHandItem
+        if (stack.item !is dev.nitka.nodewire.item.ChannelLinkToolItem) return
+        if (dev.nitka.nodewire.item.ChannelLinkToolItem.readMode(stack)
+            != dev.nitka.nodewire.item.ChannelLinkToolItem.Mode.LINK
+        ) return
+        if (!mc.options.keyPickItem.matchesMouse(event.button)) return
+        val link = LinkHud.highlightedLink() ?: return
+        val sink = LinkHud.targetPos ?: return
+        event.isCanceled = true
+        net.neoforged.neoforge.network.PacketDistributor.sendToServer(
+            dev.nitka.nodewire.net.RemovePinLinkPacket(sink, link.source, link.sourcePin, link.targetPin),
+        )
+        player.displayClientMessage(
+            net.minecraft.network.chat.Component.literal("Unlinked ${link.targetPin}")
+                .withStyle(net.minecraft.ChatFormatting.AQUA),
+            true,
+        )
     }
 
     /**

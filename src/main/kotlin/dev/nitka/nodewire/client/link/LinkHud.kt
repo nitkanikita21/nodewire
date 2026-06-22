@@ -1,10 +1,13 @@
 package dev.nitka.nodewire.client.link
 
+import dev.nitka.nodewire.client.highlight.BlockHighlightRenderer
 import dev.nitka.nodewire.graph.PinType
 import dev.nitka.nodewire.graph.PinValueConversion
 import dev.nitka.nodewire.item.ChannelLinkToolItem
 import dev.nitka.nodewire.link.LinkContext
 import dev.nitka.nodewire.link.LinkPin
+import dev.nitka.nodewire.link.PinLink
+import dev.nitka.nodewire.link.PinLinkSink
 import dev.nitka.nodewire.link.PinPorts
 import net.minecraft.client.Minecraft
 import net.minecraft.core.BlockPos
@@ -13,28 +16,40 @@ import net.minecraft.world.phys.HitResult
 
 /**
  * Client-side state for the Channel Link Tool's inline pin picker — the small
- * hover window ([LinkHudRenderer]) that replaces the old full-screen pickers.
+ * hover window ([LinkHudRenderer]) that replaces the old full-screen pickers
+ * AND the deleted Link Manager screen.
  *
  * Every client tick [update] raycasts the crosshair, enumerates the targeted
- * block's pins through [PinPorts], and tags each row **active** or **inactive**
- * for the current phase:
+ * block's pins through [PinPorts], reads the block's own incoming [PinLink]s
+ * (client-synced via `getUpdateTag`), and tags each row for the current phase:
  *
- *  * No source armed → the block's OUTPUT pins are active (arm candidates);
- *    its inputs show greyed.
- *  * A source armed → the INPUT pins that the source type converts into are
- *    active (the same [PinValueConversion] check the bind packet validates);
- *    incompatible inputs and all outputs show greyed.
+ *  * No source armed → the block's OUTPUT pins are active arm candidates; any
+ *    already-bound INPUT pin is also shown so it can be unbound.
+ *  * A source armed → the INPUT pins the source type converts into are active
+ *    commit targets; bound inputs stay selectable (for unbind) even when the
+ *    armed type can't feed them.
  *
- * The scroll wheel ([scroll]) moves the highlight across **active rows only**;
- * inactive rows are visible but never selectable. RMB on the tool acts on
- * [highlightedPin]. All state is render-thread/client-tick local — nothing here
- * crosses the network.
+ * Scroll ([scroll]) moves the highlight across **active** rows. RMB acts on
+ * [highlightedPin] (arm / commit). MMB acts on [highlightedLink] (unbind), and
+ * the hovered link's source block is highlighted in-world so you can see where
+ * the wire goes. All state is render-thread/client-tick local.
  */
 object LinkHud {
 
-    /** One pin row in the window. [output] drives the in/out tag; [active]
-     *  decides selectability + brightness. */
-    data class Row(val pin: LinkPin, val output: Boolean, val active: Boolean)
+    /**
+     * One pin row. [active] = the scroll highlight can land here. [canBind] =
+     * RMB arms (output, arming phase) or commits a link (compatible input,
+     * targeting phase). [link] = the incoming [PinLink] feeding this input pin
+     * (null for outputs / unbound inputs) — drives the source readout, the
+     * MMB-unbind, and the source-block highlight.
+     */
+    data class Row(
+        val pin: LinkPin,
+        val output: Boolean,
+        val active: Boolean,
+        val canBind: Boolean,
+        val link: PinLink?,
+    )
 
     var targetPos: BlockPos? = null
         private set
@@ -79,16 +94,29 @@ object LinkHud {
         val ctx = LinkContext(level, pos, level.getBlockState(pos), face)
         val outs = port.pinOutputs(ctx)
         val ins = port.pinInputs(ctx)
+
+        // Incoming links stored on this block (the SINK), client-synced via
+        // getUpdateTag — used to read out a bound input's source + offer unbind.
+        val sinkLinks: List<PinLink> =
+            (level.getBlockEntity(pos) as? PinLinkSink)?.pinLinks()?.toList() ?: emptyList()
+        fun linkFor(pinId: String): PinLink? = sinkLinks.firstOrNull { it.targetPin == pinId }
+
         val newRows = buildList {
             if (armed == null) {
-                // Picking a source → show only this block's OUTPUT pins.
-                outs.forEach { add(Row(it, output = true, active = true)) }
+                // Arming: this block's OUTPUT pins are the arm candidates…
+                outs.forEach { add(Row(it, output = true, active = true, canBind = true, link = null)) }
+                // …plus any already-bound INPUT, shown so it can be unbound.
+                ins.forEach { p ->
+                    val l = linkFor(p.id)
+                    if (l != null) add(Row(p, output = false, active = true, canBind = false, link = l))
+                }
             } else {
-                // Picking a target → show only INPUT pins; incompatible ones
-                // stay visible but inactive (greyed) so you see why they can't
-                // be chosen, and the scroll skips them.
-                ins.forEach {
-                    add(Row(it, output = false, active = !sameAsSource && PinValueConversion.canConvert(armed.type, it.type)))
+                // Targeting: INPUT pins. Compatible ones commit; bound ones are
+                // selectable for unbind even when incompatible.
+                ins.forEach { p ->
+                    val l = linkFor(p.id)
+                    val compatible = !sameAsSource && PinValueConversion.canConvert(armed.type, p.type)
+                    add(Row(p, output = false, active = compatible || l != null, canBind = compatible, link = l))
                 }
             }
         }
@@ -104,6 +132,11 @@ object LinkHud {
         if (highlight !in rows.indices || !rows[highlight].active) {
             highlight = rows.indexOfFirst { it.active }
         }
+
+        // Light up the source block of the hovered bound row (through walls), so
+        // you see where the wire goes. Refreshed each tick → fades when you
+        // scroll off / look away.
+        highlightedLink()?.let { BlockHighlightRenderer.highlight(it.source, HOVER_HIGHLIGHT_MS) }
     }
 
     /** Move the highlight to the next/previous ACTIVE row (wraps). */
@@ -115,10 +148,13 @@ object LinkHud {
         highlight = actives[next]
     }
 
-    /** The currently selectable pin, or null when nothing active is highlighted. */
-    fun highlightedPin(): LinkPin? = rows.getOrNull(highlight)?.takeIf { it.active }?.pin
+    /** The pin RMB acts on (arm / commit), or null when none is selectable. */
+    fun highlightedPin(): LinkPin? = rows.getOrNull(highlight)?.takeIf { it.canBind }?.pin
 
-    /** Whether the window currently offers at least one selectable pin (gates
+    /** The incoming link MMB unbinds (and whose source is highlighted), or null. */
+    fun highlightedLink(): PinLink? = rows.getOrNull(highlight)?.link
+
+    /** Whether the window currently offers at least one selectable row (gates
      *  whether plain scroll cycles pins vs. falls through to the hotbar). */
     fun hasActive(): Boolean = rows.any { it.active }
 
@@ -131,4 +167,6 @@ object LinkHud {
         sameAsSource = false
         lastPos = null
     }
+
+    private const val HOVER_HIGHLIGHT_MS = 250L
 }

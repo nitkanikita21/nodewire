@@ -53,6 +53,20 @@ object Nodewire {
             // Drop every transmitter snapshot so a singleplayer quit→rejoin in the
             // same JVM can't resurrect ghost broadcasts from the old world.
             dev.nitka.nodewire.radio.RadioRegistry.clearAll()
+            // Drop far-camera chunk-stream tracking (Pillar 2 Stage A).
+            dev.nitka.nodewire.camerachunk.CameraChunkServer.clearAll()
+        }
+        // Pillar 2 Stage A — far-camera chunk streaming: per server-player tick
+        // refreshes force-load tickets + flushes loaded zone chunks; logout releases.
+        FORGE_BUS.addListener<net.neoforged.neoforge.event.tick.PlayerTickEvent.Post> { e ->
+            (e.entity as? net.minecraft.server.level.ServerPlayer)?.let {
+                dev.nitka.nodewire.camerachunk.CameraChunkServer.tick(it)
+            }
+        }
+        FORGE_BUS.addListener<net.neoforged.neoforge.event.entity.player.PlayerEvent.PlayerLoggedOutEvent> { e ->
+            (e.entity as? net.minecraft.server.level.ServerPlayer)?.let {
+                dev.nitka.nodewire.camerachunk.CameraChunkServer.onLeave(it)
+            }
         }
         // Per-dimension unload (e.g. a Sable plot world / End closing) — purge just
         // that dimension's transmitters so the registry can't leak across reloads.

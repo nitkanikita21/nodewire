@@ -13,6 +13,9 @@
   "client": [
     "camera.MixinGameRenderer",
     "camera.MixinVeilBlitHandler",
+    "camera.MixinClientChunkCache",
+    "camera.MixinClientChunkCacheStorage",
+    "camera.MixinLevelRenderer",
     "control.MixinMouseHandler"
   ],
   "server": [],

@@ -45,6 +45,29 @@ class CameraFeed(private val be: CameraBlockEntity) {
     @Volatile
     var renderFailures: Int = 0
 
+    // ── Per-feed occlusion graph (no-Sodium edge-flicker fix) ──────────────
+    private var feedGraph: FeedSectionOcclusionGraph? = null
+    private var feedGraphViewArea: net.minecraft.client.renderer.ViewArea? = null
+
+    /**
+     * This feed's OWN occlusion graph, (re)initialised against the current
+     * [viewArea]. Swapped into the LevelRenderer around the feed's nested
+     * renderLevel so the feed's visibility BFS writes to its own storage, leaving
+     * the player's graph untouched → the player's render-distance-edge sections
+     * don't get culled by the feed → no edge flicker. Re-inits automatically when
+     * the ViewArea is swapped (allChanged), so a stale graph is never reused.
+     */
+    fun feedGraph(viewArea: net.minecraft.client.renderer.ViewArea): net.minecraft.client.renderer.SectionOcclusionGraph {
+        var g = feedGraph
+        if (g == null || feedGraphViewArea !== viewArea) {
+            g = FeedSectionOcclusionGraph()
+            g.waitAndReset(viewArea) // fresh graph → no pending task → does not block
+            feedGraph = g
+            feedGraphViewArea = viewArea
+        }
+        return g
+    }
+
     fun markForRemoval() {
         removed = true
     }

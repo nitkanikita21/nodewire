@@ -23,9 +23,9 @@ import org.slf4j.Logger
  * SIDE = drop a [dev.nitka.nodewire.block.SideBinding]. [extra] is the
  * target channel name (CHANNEL) or the target side enum name (SIDE).
  *
- * Sent by the [dev.nitka.nodewire.client.screen.BindingsManagerScreen]
- * delete buttons. Server resolves the BE, calls the matching remove*,
- * and pushes a chunk update so other clients drop the wire from view.
+ * Legacy channel/side binding removal (the unified [dev.nitka.nodewire.link.PinLink]
+ * flow uses RemovePinLinkPacket). Server resolves the BE, calls the matching
+ * remove*, and pushes a chunk update so other clients drop the wire from view.
  */
 data class RemoveBindingPacket(
     val sourcePos: BlockPos,

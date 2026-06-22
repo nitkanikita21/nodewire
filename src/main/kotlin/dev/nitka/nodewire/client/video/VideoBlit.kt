@@ -42,11 +42,29 @@ object VideoBlit {
      * IMMEDIATE blit of FBO [texId] into the screen-space rect [x0,y0]–[x1,y1],
      * degraded by [signal]. For GUI / off-buffer sites (AR HUD, script `image()`).
      * Sets blend + cull itself.
+     *
+     * [backing] draws an opaque black quad under the exact rect FIRST, so the feed
+     * composites over solid black instead of letting whatever is behind the draw
+     * bleed through the FBO's semi-transparent areas (the sky writes alpha < 1).
+     * Wanted for a video WINDOW (script `image()`) where the rect IS the feed; NOT
+     * wanted for the full-screen AR blit, where most of the FBO is transparent on
+     * purpose and a backing would black out the whole HUD.
      */
-    fun blit(texId: Int, x0: Float, y0: Float, x1: Float, y1: Float, signal: Float) {
+    fun blit(texId: Int, x0: Float, y0: Float, x1: Float, y1: Float, signal: Float, backing: Boolean = false) {
         RenderSystem.enableBlend()
         RenderSystem.defaultBlendFunc()
         RenderSystem.disableCull()
+
+        if (backing) {
+            RenderSystem.setShader { GameRenderer.getPositionColorShader() }
+            Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR).also { b ->
+                b.addVertex(x0, y0, 0f).setColor(0, 0, 0, 255)
+                b.addVertex(x0, y1, 0f).setColor(0, 0, 0, 255)
+                b.addVertex(x1, y1, 0f).setColor(0, 0, 0, 255)
+                b.addVertex(x1, y0, 0f).setColor(0, 0, 0, 255)
+            }.let { BufferUploader.drawWithShader(it.buildOrThrow()) }
+        }
+
         RenderSystem.setShaderTexture(0, texId)
         RenderSystem.setShaderColor(1f, 1f, 1f, 1f)
 

@@ -72,9 +72,9 @@ object BlockHighlightRenderer {
         val bufferSource = mc.renderBuffers().bufferSource()
         val builder = bufferSource.getBuffer(HIGHLIGHT_TYPE)
 
-        // Pulse alpha for the translucent face fill. The faces are solid
-        // quads, so we want a low base alpha (so the block + surroundings
-        // remain readable through the highlight) with a gentle pulse.
+        // Pulse alpha for the outline. It's thin edge beams now (not a fill),
+        // so the base alpha is high — a thin line needs the opacity to read
+        // through walls — with a gentle pulse on top.
         val pulse = (0.5 + 0.5 * sin(now * (2 * PI / PULSE_PERIOD_MS))).toFloat()
         val a = (BASE_ALPHA + (PEAK_ALPHA - BASE_ALPHA) * pulse).toInt().coerceIn(0, 255)
         val r = 0xFF
@@ -87,7 +87,7 @@ object BlockHighlightRenderer {
 
         for (endpoint in active.keys) {
             val center = endpoint.worldCenter(level) ?: continue
-            drawCubeSolid(builder, matrix, center.x, center.y, center.z, r, g, b, a)
+            drawBoxOutline(builder, matrix, center.x, center.y, center.z, r, g, b, a)
         }
 
         pose.popPose()
@@ -95,56 +95,61 @@ object BlockHighlightRenderer {
     }
 
     /**
-     * Draws the six faces of a cube centred on (cx, cy, cz) as translucent
-     * quads, very slightly outset to avoid z-fight with the block's own
-     * surfaces. NO_CULL means faces render from both sides, so we don't worry
-     * about winding.
+     * Draws the 12 edges of a cube centred on (cx, cy, cz) as thin axis-aligned
+     * beams — a Create-style selection outline (rather than a solid fill) that,
+     * thanks to the type's NO_DEPTH_TEST, shows straight through walls so you
+     * can find the linked block from anywhere. The cube is slightly outset to
+     * sit just outside the block's own surfaces.
      *
      * For world endpoints [EndpointRef.worldCenter] returns
-     * `Vec3.atCenterOf(pos)` = `(pos.x+0.5, pos.y+0.5, pos.z+0.5)`, so the
-     * rendered cube is identical to the old `pos.x..pos.x+1` form.
-     * For ship endpoints the centre is the rotated/translated world position,
-     * so the highlight follows the ship.
+     * `Vec3.atCenterOf(pos)` = `(pos.x+0.5, pos.y+0.5, pos.z+0.5)`; for ship
+     * endpoints the centre is the rotated/translated world position, so the
+     * highlight follows the ship.
      */
-    private fun drawCubeSolid(
+    private fun drawBoxOutline(
         builder: VertexConsumer,
         matrix: Matrix4f,
         cx: Double, cy: Double, cz: Double,
         r: Int, g: Int, b: Int, a: Int,
     ) {
-        val lo = -(0.5 + OUTSET)
-        val hi = 0.5 + OUTSET
+        val h = 0.5 + OUTSET
+        val t = EDGE
+        val s = doubleArrayOf(-h, h) // the two corner offsets per axis
+        // 4 edges along X (vary y,z corners) …
+        for (yy in s) for (zz in s)
+            solidBox(builder, matrix, cx - h, cy + yy - t, cz + zz - t, cx + h, cy + yy + t, cz + zz + t, r, g, b, a)
+        // … 4 along Y (vary x,z) …
+        for (xx in s) for (zz in s)
+            solidBox(builder, matrix, cx + xx - t, cy - h, cz + zz - t, cx + xx + t, cy + h, cz + zz + t, r, g, b, a)
+        // … 4 along Z (vary x,y).
+        for (xx in s) for (yy in s)
+            solidBox(builder, matrix, cx + xx - t, cy + yy - t, cz - h, cx + xx + t, cy + yy + t, cz + h, r, g, b, a)
+    }
 
-        // -Y (bottom)
-        emit(builder, matrix, cx + lo, cy + lo, cz + lo, r, g, b, a)
-        emit(builder, matrix, cx + lo, cy + lo, cz + hi, r, g, b, a)
-        emit(builder, matrix, cx + hi, cy + lo, cz + hi, r, g, b, a)
-        emit(builder, matrix, cx + hi, cy + lo, cz + lo, r, g, b, a)
-        // +Y (top)
-        emit(builder, matrix, cx + lo, cy + hi, cz + lo, r, g, b, a)
-        emit(builder, matrix, cx + hi, cy + hi, cz + lo, r, g, b, a)
-        emit(builder, matrix, cx + hi, cy + hi, cz + hi, r, g, b, a)
-        emit(builder, matrix, cx + lo, cy + hi, cz + hi, r, g, b, a)
-        // -Z (north)
-        emit(builder, matrix, cx + lo, cy + lo, cz + lo, r, g, b, a)
-        emit(builder, matrix, cx + hi, cy + lo, cz + lo, r, g, b, a)
-        emit(builder, matrix, cx + hi, cy + hi, cz + lo, r, g, b, a)
-        emit(builder, matrix, cx + lo, cy + hi, cz + lo, r, g, b, a)
-        // +Z (south)
-        emit(builder, matrix, cx + lo, cy + lo, cz + hi, r, g, b, a)
-        emit(builder, matrix, cx + lo, cy + hi, cz + hi, r, g, b, a)
-        emit(builder, matrix, cx + hi, cy + hi, cz + hi, r, g, b, a)
-        emit(builder, matrix, cx + hi, cy + lo, cz + hi, r, g, b, a)
-        // -X (west)
-        emit(builder, matrix, cx + lo, cy + lo, cz + lo, r, g, b, a)
-        emit(builder, matrix, cx + lo, cy + hi, cz + lo, r, g, b, a)
-        emit(builder, matrix, cx + lo, cy + hi, cz + hi, r, g, b, a)
-        emit(builder, matrix, cx + lo, cy + lo, cz + hi, r, g, b, a)
-        // +X (east)
-        emit(builder, matrix, cx + hi, cy + lo, cz + lo, r, g, b, a)
-        emit(builder, matrix, cx + hi, cy + lo, cz + hi, r, g, b, a)
-        emit(builder, matrix, cx + hi, cy + hi, cz + hi, r, g, b, a)
-        emit(builder, matrix, cx + hi, cy + hi, cz + lo, r, g, b, a)
+    /** Six QUAD faces of an axis-aligned box [x0,x1]×[y0,y1]×[z0,z1]. NO_CULL
+     *  means winding doesn't matter. */
+    private fun solidBox(
+        builder: VertexConsumer,
+        matrix: Matrix4f,
+        x0: Double, y0: Double, z0: Double,
+        x1: Double, y1: Double, z1: Double,
+        r: Int, g: Int, b: Int, a: Int,
+    ) {
+        // -Y / +Y
+        emit(builder, matrix, x0, y0, z0, r, g, b, a); emit(builder, matrix, x0, y0, z1, r, g, b, a)
+        emit(builder, matrix, x1, y0, z1, r, g, b, a); emit(builder, matrix, x1, y0, z0, r, g, b, a)
+        emit(builder, matrix, x0, y1, z0, r, g, b, a); emit(builder, matrix, x1, y1, z0, r, g, b, a)
+        emit(builder, matrix, x1, y1, z1, r, g, b, a); emit(builder, matrix, x0, y1, z1, r, g, b, a)
+        // -Z / +Z
+        emit(builder, matrix, x0, y0, z0, r, g, b, a); emit(builder, matrix, x1, y0, z0, r, g, b, a)
+        emit(builder, matrix, x1, y1, z0, r, g, b, a); emit(builder, matrix, x0, y1, z0, r, g, b, a)
+        emit(builder, matrix, x0, y0, z1, r, g, b, a); emit(builder, matrix, x0, y1, z1, r, g, b, a)
+        emit(builder, matrix, x1, y1, z1, r, g, b, a); emit(builder, matrix, x1, y0, z1, r, g, b, a)
+        // -X / +X
+        emit(builder, matrix, x0, y0, z0, r, g, b, a); emit(builder, matrix, x0, y1, z0, r, g, b, a)
+        emit(builder, matrix, x0, y1, z1, r, g, b, a); emit(builder, matrix, x0, y0, z1, r, g, b, a)
+        emit(builder, matrix, x1, y0, z0, r, g, b, a); emit(builder, matrix, x1, y0, z1, r, g, b, a)
+        emit(builder, matrix, x1, y1, z1, r, g, b, a); emit(builder, matrix, x1, y1, z0, r, g, b, a)
     }
 
     private fun emit(
@@ -158,8 +163,9 @@ object BlockHighlightRenderer {
     }
 
     private const val DEFAULT_DURATION_MS = 3000L
-    private const val OUTSET = 0.005
+    private const val OUTSET = 0.01
+    private const val EDGE = 0.03         // half-thickness of an outline beam (~0.06 full ≈ Create line)
     private const val PULSE_PERIOD_MS = 700.0
-    private const val BASE_ALPHA = 60   // ~24% — block stays readable
-    private const val PEAK_ALPHA = 140  // ~55% — clearly "lit"
+    private const val BASE_ALPHA = 170  // thin lines need opacity to read through walls
+    private const val PEAK_ALPHA = 240
 }

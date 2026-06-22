@@ -27,13 +27,37 @@ import org.lwjgl.glfw.GLFW
  * and a frustum-visibility filter (v1 always-true fallback). The whole loop is
  * wrapped in [VideoManager.beginCapture]/[VideoManager.endCapture] so the Screen
  * renderer refuses to draw mid-capture (no screen-in-screen recursion). All GL
- * state touched (render target, window size, visible sections, camera, camera
- * type, transparency post-chain) is saved before and restored in `finally`; a
- * per-feed `try/catch` self-heals a broken feed by marking it for removal.
+ * state touched (render target, window size, visible sections + section-graph
+ * dirty caches, camera, camera type, transparency post-chain) is saved before and
+ * restored IN PLACE in `finally`; a per-feed `try/catch` self-heals a broken feed.
  */
 object VideoCameraCapture {
 
     private val LOG = LogUtils.getLogger()
+
+    /** Set by [onLevelRendererAllChanged] when `LevelRenderer.allChanged()` fires
+     *  DURING a capture (Veil/Iris pipeline (re)init does this). It releases every
+     *  section's VertexBuffer + swaps the ViewArea, so the pre-capture section
+     *  snapshot we'd restore now points at dead buffers — the finally below must
+     *  skip the stale restore. Reset at the start of every capture. */
+    @Volatile
+    private var allChangedDuringCapture = false
+
+    /** Called from [dev.nitka.nodewire.mixin.camera.MixinLevelRenderer] at the
+     *  tail of `LevelRenderer.allChanged()`. */
+    @JvmStatic
+    fun onLevelRendererAllChanged() {
+        // Flag the in-flight capture so its restore skips the now-stale snapshot.
+        if (VideoManager.isCapturing()) allChangedDuringCapture = true
+    }
+
+    /** Sodium/Embeddium replace the chunk renderer (they don't read vanilla
+     *  sectionOcclusionGraph), so the per-feed graph swap can't help — gate it off
+     *  and fall back to the plain in-place capture. */
+    private val SODIUM: Boolean by lazy {
+        val ml = net.neoforged.fml.ModList.get()
+        ml.isLoaded("sodium") || ml.isLoaded("embeddium")
+    }
 
     /** Capture cadence, decoupled from the client frame rate (wall-clock gated). */
     private const val FPS_CAP = 24
@@ -44,14 +68,14 @@ object VideoCameraCapture {
 
     /**
      * Hard ceiling on capture distance (blocks). The effective reach is the
-     * player's render distance clamped to this. The chunk-flicker that used to
-     * force a tiny 16-block cap is fixed by restoring the section-graph dirty
-     * caches after each capture (see the SAVE/RESTORE block below), so the camera
-     * can now reach toward render distance. Capped at 256 because beyond that the
-     * Flywheel/Create render origin thrashes (docs/research flywheel §2.3) and the
-     * camera can only ever show chunks the client has already compiled anyway.
-     * Measured against the camera's Sable-aware world centre, so a camera on a
-     * sub-level the player rides stays in range.
+     * player's render distance clamped to this. (A per-feed occlusion graph — the
+     * Vista approach to also kill the residual cross-capture flicker — proved
+     * incompatible with this modpack's render pipeline: reassigning the renderer's
+     * visibleSections/graph crashed under Veil/Sodium/Flywheel, so we save/restore
+     * in place instead.) The cap stays at render distance because beyond it the
+     * client hasn't loaded/compiled the camera's chunks. Measured against the
+     * camera's Sable-aware world centre, so a camera on a sub-level the player
+     * rides stays in range.
      */
     private const val MAX_CAPTURE_DISTANCE = 256.0
 
@@ -152,14 +176,19 @@ object VideoCameraCapture {
         val oldCamEntity = mc.cameraEntity
         val oldWidth = window.width
         val oldHeight = window.height
+        // In-place save/restore of the player's section state (Path A). The per-feed
+        // graph swap (Vista's flicker fix) does NOT compose with our after-the-main-
+        // pass integration point — it left the player's terrain unrendered (transparent
+        // world) — and is moot under Sodium anyway. So: save here, restore in `finally`,
+        // no invalidate() (which was the self-inflicted flicker), with the
+        // allChanged() firewall to skip a snapshot the pipeline tore down mid-capture.
+        // no-Sodium: render each feed against its OWN occlusion graph (graph-only
+        // swap; visibleSections stays in-place) so the feed's BFS never touches the
+        // player's graph → the player's render-distance-edge sections don't flicker.
+        // (Occlusion culling stays ON for perf; the feed renders at the full far
+        // plane — a clamp would clip the sky dome → transparent sky.)
+        val playerGraph = if (!SODIUM) lr.sectionOcclusionGraph else null
         val oldVisible = ArrayList(lr.visibleSections)
-        // Section-graph dirty caches. The nested renderLevel runs setupRender for
-        // the camera POV, which rewrites these + the occlusion graph (and clears
-        // visibleSections). The old code restored only visibleSections, so the
-        // next PLAYER frame saw prevCam already == the camera pose, skipped its
-        // own invalidate, and rendered against the camera-built graph → the
-        // player's own chunks flickered. Snapshot them here, restore + invalidate
-        // below so the player frame always rebuilds its own graph.
         val oldSecX = lr.lastCameraSectionX
         val oldSecY = lr.lastCameraSectionY
         val oldSecZ = lr.lastCameraSectionZ
@@ -206,6 +235,7 @@ object VideoCameraCapture {
         lr.weatherTarget = null
         mc.renderBuffers().bufferSource().endBatch()
 
+        allChangedDuringCapture = false
         VideoManager.beginCapture()
         try {
             // DH-aware: temporarily disable Distant Horizons LOD rendering for the
@@ -234,6 +264,10 @@ object VideoCameraCapture {
                     target.clear(Minecraft.ON_OSX)
                     target.bindWrite(true)
                     mc.mainRenderTarget = target
+                    // Swap in THIS feed's own graph (no-Sodium) so its visibility BFS
+                    // writes to feed storage, not the player's graph.
+                    val feedVa = lr.viewArea
+                    if (playerGraph != null && feedVa != null) lr.sectionOcclusionGraph = feed.feedGraph(feedVa)
                     mc.gameRenderer.renderLevel(DeltaTracker.ONE)
 
                     feed.lastActiveTimeSec = now
@@ -257,20 +291,30 @@ object VideoCameraCapture {
             mc.cameraEntity = oldCamEntity
             window.setWidth(oldWidth)
             window.setHeight(oldHeight)
-            lr.visibleSections.clear()
-            lr.visibleSections.addAll(oldVisible)
-            // Restore the section-graph dirty caches and force a rebuild so the
-            // next player frame's setupRender re-derives the graph for the PLAYER,
-            // not the camera POV (the fix for the cross-capture chunk flicker).
-            lr.lastCameraSectionX = oldSecX
-            lr.lastCameraSectionY = oldSecY
-            lr.lastCameraSectionZ = oldSecZ
-            lr.prevCamX = oldPrevCamX
-            lr.prevCamY = oldPrevCamY
-            lr.prevCamZ = oldPrevCamZ
-            lr.prevCamRotX = oldPrevRotX
-            lr.prevCamRotY = oldPrevRotY
-            lr.sectionOcclusionGraph.invalidate()
+            // Restore the player's section state.
+            if (allChangedDuringCapture) {
+                // allChanged() ran mid-capture (Veil/Iris pipeline init): the ViewArea
+                // + all buffers were swapped, so our pre-capture snapshot now points at
+                // released buffers — the mode==null NPE. Restore nothing; allChanged
+                // already reset the renderer to a fresh self-rebuilding state.
+                lr.visibleSections.clear()
+            } else {
+                // Normal path: restore the player's own list + dirty caches IN PLACE.
+                // No invalidate() — that forced a full re-BFS every captured frame,
+                // which was the chunk flicker. Keeps the player's graph untouched.
+                lr.visibleSections.clear()
+                lr.visibleSections.addAll(oldVisible)
+                lr.lastCameraSectionX = oldSecX
+                lr.lastCameraSectionY = oldSecY
+                lr.lastCameraSectionZ = oldSecZ
+                lr.prevCamX = oldPrevCamX
+                lr.prevCamY = oldPrevCamY
+                lr.prevCamZ = oldPrevCamZ
+                lr.prevCamRotX = oldPrevRotX
+                lr.prevCamRotY = oldPrevRotY
+            }
+            // Restore the player's OWN occlusion graph (untouched by the feeds).
+            if (playerGraph != null) lr.sectionOcclusionGraph = playerGraph
             player.setPos(oldPlayerX, oldPlayerY, oldPlayerZ)
             player.yRot = oldPlayerYRot
             player.xRot = oldPlayerXRot
