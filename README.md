@@ -9,21 +9,22 @@
 </p>
 
 <p align="center">
+  <a href="https://modrinth.com/mod/nodewire"><img src="https://img.shields.io/modrinth/dt/nodewire?style=flat-square&logo=modrinth&logoColor=white&label=downloads&color=00af5c" alt="Modrinth downloads"/></a>
+  <a href="https://discord.gg/QtgrdA6Rje"><img src="https://img.shields.io/badge/discord-join-5865f2?style=flat-square&logo=discord&logoColor=white" alt="Discord"/></a>
   <img src="https://img.shields.io/badge/status-early%20development-f59e0b?style=flat-square" alt="Status: early development"/>
   <img src="https://img.shields.io/badge/minecraft-1.21.1-62a834?style=flat-square&logo=minecraft&logoColor=white" alt="Minecraft 1.21.1"/>
   <img src="https://img.shields.io/badge/neoforge-21.1.230-1f2937?style=flat-square" alt="NeoForge 21.1.230"/>
   <img src="https://img.shields.io/badge/kotlin-2.0.20-7f52ff?style=flat-square&logo=kotlin&logoColor=white" alt="Kotlin 2.0.20"/>
   <img src="https://img.shields.io/github/license/nitkanikita21/nodewire?style=flat-square&color=86c61e" alt="License: MIT"/>
-  <img src="https://img.shields.io/github/actions/workflow/status/nitkanikita21/nodewire/build.yml?branch=port/neoforge-1.21.1&style=flat-square&label=build" alt="Build status"/>
+  <img src="https://img.shields.io/github/actions/workflow/status/nitkanikita21/nodewire/build.yml?branch=master&style=flat-square&label=build" alt="Build status"/>
 </p>
-
-> **Branch note.** `master` is the Forge 1.20.1 release (v0.1.x). The active branch [`port/neoforge-1.21.1`](https://github.com/nitkanikita21/nodewire/tree/port/neoforge-1.21.1) is the NeoForge 1.21.1 port (v0.2.0-dev) — what this README describes. Compiles + tests pass; in-client smoke testing in progress. Dev builds are published as GitHub pre-releases when a `dev-v*` tag is pushed.
 
 ## Features
 
 - **Visual node editor** opened on a placed Logic Block. Pan, zoom, drag nodes, draw wires; inline pin-default editors; live values from the running block (singleplayer).
 - **Unified pin linking** — one Channel Link Tool wires ANY pin-exposing block to any other: logic channels, cameras, screens, containers (item/fluid/comparator sensors), Aeronautics blocks, CBC cannon mounts, plain redstone faces. Links live on the consumer, re-deliver every tick, survive Sable structure motion.
 - **Video system** — Camera blocks capture the world into VIDEO channels; Screen blocks display them, merge into multiblock panels (up to 8×8) and double as touch inputs. Scripts can transform video (overlays, HUDs, world→screen projection) between camera and screen.
+- **Radio & AR** — broadcast VIDEO/data wirelessly over tunable channels; antennas set range and directionality, and weak reception degrades the feed with signal noise. AR Glasses surface a live camera feed as a head-up overlay.
 - **Kotlin Script node** — write real Kotlin (`*.nw.kts`) compiled in-game by the optional `nodewire_scripting` addon: typed pins, persisted state, per-tick logic, JOML math (double precision end to end), video drawing with a flexbox UI DSL, sandboxed.
 - **Create Big Cannons fire control** — live ballistic profiles from CBC's data-driven registry (addons included) + an exact-trajectory solver in scripts; cannon-mount orientation/position pins. Ships with ready fire-by-coordinates and gunsight scripts.
 - **Unified selection model** — nodes, groups, and comments share the same press / drag / marquee / Del / accent-border logic; group/ungroup, nested groups, reusable templates, comments and wire labels.
@@ -78,7 +79,7 @@ src/main/kotlin/dev/nitka/nodewire/
 ├── net/                        # CustomPacketPayload-based network layer
 ├── client/
 │   ├── NodewireClient.kt       # client init, keybinds
-│   ├── screen/                 # node editor screens, script editor, Link Manager, pickers
+│   ├── screen/                 # node editor screens, script editor, pickers
 │   ├── camera/                 # camera capture, world→screen projection
 │   ├── video/                  # VideoManager (FBO surfaces, refcount GC), script video drawing
 │   └── wire/                   # in-world wire rendering
@@ -100,7 +101,15 @@ src/main/kotlin/dev/nitka/nodewire/
 scripting/                      # optional addon: in-game Kotlin compiler, sandbox, bundled libs
 ```
 
-Architectural details (UI framework layering, JPMS bridge, gotchas) live in [`CLAUDE.md`](CLAUDE.md). Port status and per-phase work log in [`MIGRATION_STATUS.md`](MIGRATION_STATUS.md).
+Architectural details (UI framework layering, JPMS bridge, gotchas) live in [`CLAUDE.md`](CLAUDE.md).
+
+## Community
+
+Questions, bug reports, showcases, or help wiring a graph — the Discord is the fastest way to reach us:
+
+**Discord — [discord.gg/QtgrdA6Rje](https://discord.gg/QtgrdA6Rje)**
+
+The mod is published on **[Modrinth](https://modrinth.com/mod/nodewire)**.
 
 ## Contributing
 

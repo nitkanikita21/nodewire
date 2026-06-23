@@ -9,7 +9,7 @@ Short reference for everyday use. For build / contributor info see the main [`RE
 | **Logic Block** | Carries a node graph; evaluates every server tick. Right-click to open the editor. |
 | **Screen** | Displays a VIDEO channel on its face. Merges into multiblock panels; doubles as a touch source. |
 | **Camera** | Produces a VIDEO handle — a live capture of the world from its face. Has `fov`/`enable`/`yaw`/`pitch` input pins. |
-| **Channel Link Tool** | THE wiring tool: links pins between blocks, manages bindings, resizes screen panels. |
+| **Channel Link Tool** | THE wiring tool: links and unlinks pins between blocks, resizes screen panels. |
 
 ## Channel Link Tool — unified pin linking
 
@@ -17,7 +17,6 @@ Every linkable block exposes **pins** (typed, named values it produces or accept
 One flow links anything to anything:
 
 1. **Sneak + RMB** a block → its **output pins**. One pin arms instantly, several open a picker.
-   (A Logic Block opens the **Link Manager** instead — its channel list + existing bindings, scrollable.)
 2. **RMB** another block → its **input pins**, filtered to types the armed source can convert into.
    One pin commits instantly, several open a picker.
 
@@ -37,8 +36,8 @@ Links are stored on the **consuming** block and pulled every server tick — re-
 pruned automatically when an endpoint disappears, and the fed value resets when a link is removed.
 Endpoints are Sable-aware: blocks on an assembled structure keep working and report **world-space** positions.
 
-Manage links: sneak+RMB a Logic Block → **Link Manager** — "Incoming links" section lists every pin link
-with a ✕ to remove and ◎ to highlight the source block in the world. Wires render in-world while the tool is held.
+Manage links inline: point the Link Tool at a block and its pins + current links show at the cursor —
+middle-click a link to unlink it, and a keybind highlights the linked source block through walls. Wires render in-world while the tool is held.
 
 **Tool modes** (sneak+scroll): **Link pins** ↔ **Screen panels**.
 
@@ -67,7 +66,7 @@ server-delivered values** — what you see is what the block computes.
 2. **Drag from an output pin** to an input pin to draw a wire. Pin colours = value type.
 3. **Inline pin editors** on the card set defaults for unconnected inputs (numbers, text, vectors,
    checkboxes, dropdowns). **Press Enter to commit** text/number fields; a connected wire overrides the default.
-4. **Toolbar**: `File ▸ Save / Save as / Open / New`, `Edit ▸ Undo / Redo`, `View ▸ Frame …`, Link Manager.
+4. **Toolbar**: `File ▸ Save / Save as / Open / New`, `Edit ▸ Undo / Redo`, `View ▸ Frame …`.
 5. Cards size themselves to their pin content; pin-heavy nodes (scripts) grow up to 320 px wide.
 
 Graphs are saved per client under `<gamedir>/nodewire-graphs/<name>.snbt`, group templates under

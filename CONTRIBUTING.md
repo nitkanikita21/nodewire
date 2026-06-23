@@ -2,6 +2,8 @@
 
 Thanks for your interest. The project is early — APIs and save formats may still shift — but contributions are welcome.
 
+Real-time chat, questions, and showcases: **[Discord](https://discord.gg/QtgrdA6Rje)**.
+
 ## Reporting bugs / requesting features
 
 Open an issue using one of the templates:
@@ -9,7 +11,7 @@ Open an issue using one of the templates:
 - **Bug report** — for crashes, incorrect behavior, broken integrations.
 - **Feature request** — for new nodes, editor capabilities, or mod compat.
 
-Versions of Forge / Nodewire / relevant mods help a lot. Logs / crash reports help even more.
+Versions of NeoForge / Nodewire / relevant mods help a lot. Logs / crash reports help even more.
 
 ## Submitting code
 
@@ -29,7 +31,7 @@ Versions of Forge / Nodewire / relevant mods help a lot. Logs / crash reports he
 
 ## Local development
 
-Build runs on ModDevGradle (not ForgeGradle 6). Java 17 only. IDE run configs are generated on Gradle sync — no `genIntellijRuns` task.
+Build runs on ModDevGradle (not ForgeGradle 6). Java 21 only. IDE run configs are generated on Gradle sync — no `genIntellijRuns` task.
 
 ```bash
 ./gradlew build        # compile + reobf

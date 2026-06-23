@@ -2,8 +2,6 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-> **Branch note.** `master` is the working **Forge 1.20.1** build (v0.1.x). The active branch `port/neoforge-1.21.1` is a **NeoForge 1.21.1** port (v0.2.0-dev). This document describes the port branch — for the 1.20.1 build, check out master.
-
 ## Project
 
 **Nodewire** — Minecraft NeoForge 1.21.1 Kotlin mod that replaces redstone with a node-based logic system. Designed to work across ship boundaries (via **Sable** sub-levels) and interoperate with **Create** + **Create Aeronautics**. Uses a custom Jetpack Compose-based UI framework (no Skiko/AWT) for the in-world node editor.
