@@ -83,7 +83,10 @@ object PinValueConversion {
             PinType.BOOL -> PinValue.Bool(n != 0.0)
             PinType.INT -> PinValue.Int(n.toInt())
             PinType.FLOAT -> PinValue.Float(n.toFloat())
-            PinType.REDSTONE -> PinValue.Redstone(n.toInt().coerceIn(0, 15))
+            // Bool→Redstone is on/off — a `true` is a FULL signal (15), not 1.
+            PinType.REDSTONE ->
+                if (from == PinType.BOOL) PinValue.Redstone(if (n != 0.0) 15 else 0)
+                else PinValue.Redstone(n.toInt().coerceIn(0, 15))
             PinType.STRING -> when (from) {
                 PinType.INT, PinType.REDSTONE -> PinValue.Str(n.toInt().toString())
                 PinType.FLOAT -> PinValue.Str("%.3f".format(n))

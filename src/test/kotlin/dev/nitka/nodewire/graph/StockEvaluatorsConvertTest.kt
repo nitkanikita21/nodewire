@@ -199,4 +199,34 @@ class StockEvaluatorsConvertTest {
             mapOf("in" to PinValue.Redstone(7)),
         )["out"],
     )
+
+    // ── scaled-mode MIDPOINT cases (caught the truncation bug) ─────────────
+    // The endpoint cases above pass even with the old `.toInt()` truncation;
+    // these mid-range cases are where truncating-before-offset pinned the
+    // result to the low end (e.g. signal<8 always gave min). They lock in the
+    // round-the-whole-value fix.
+
+    private fun rsToIntScaled(min: Int, max: Int, signal: Int) = StockEvaluators.Convert(
+        cfg {
+            putString("sourceType","REDSTONE"); putString("targetType","INT")
+            putString("mode","scaled"); putInt("min",min); putInt("max",max)
+        },
+        mapOf("in" to PinValue.Redstone(signal)),
+    )["out"]
+
+    @Test fun redstoneToIntScaledFullLeft() = assertEquals(PinValue.Int(-1), rsToIntScaled(-1, 1, 0))
+    @Test fun redstoneToIntScaledMidpointIsZero() = assertEquals(PinValue.Int(0), rsToIntScaled(-1, 1, 7))
+    @Test fun redstoneToIntScaledFullRight() = assertEquals(PinValue.Int(1), rsToIntScaled(-1, 1, 15))
+
+    @Test fun intToRedstoneScaledRoundsMidpoint() = assertEquals(
+        // 1 of [0,2] -> 7.5 -> rounds to 8 (old truncation gave 7).
+        PinValue.Redstone(8),
+        StockEvaluators.Convert(
+            cfg {
+                putString("sourceType","INT"); putString("targetType","REDSTONE")
+                putString("mode","scaled"); putInt("min",0); putInt("max",2)
+            },
+            mapOf("in" to PinValue.Int(1)),
+        )["out"],
+    )
 }

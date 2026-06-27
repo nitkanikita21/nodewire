@@ -32,6 +32,12 @@ class PinValueConversionTest {
         assertEquals(PinValue.Int(8), PinValueConversion.convert(PinValue.Redstone(8), PinType.INT))
     }
 
+    @Test fun `bool to redstone is full signal`() {
+        // on/off → a true is a FULL signal (15), not 1.
+        assertEquals(PinValue.Redstone(15), PinValueConversion.convert(PinValue.Bool(true), PinType.REDSTONE))
+        assertEquals(PinValue.Redstone(0), PinValueConversion.convert(PinValue.Bool(false), PinType.REDSTONE))
+    }
+
     @Test fun `string parse to int`() {
         assertEquals(PinValue.Int(42), PinValueConversion.convert(PinValue.Str("42"), PinType.INT))
         assertEquals(PinValue.Int(0), PinValueConversion.convert(PinValue.Str("abc"), PinType.INT))

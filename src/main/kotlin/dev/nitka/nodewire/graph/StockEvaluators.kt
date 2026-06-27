@@ -1,6 +1,7 @@
 package dev.nitka.nodewire.graph
 
 import net.minecraft.nbt.CompoundTag
+import kotlin.math.roundToInt
 
 /**
  * Evaluators for the stock node types. Pure functions; no world access.
@@ -188,7 +189,7 @@ object StockEvaluators {
                     "threshold" -> if (x >= config.getInt("threshold")) 15 else 0
                     "scaled" -> {
                         val lo = config.getInt("min"); val hi = config.getInt("max")
-                        if (hi == lo) 0 else (((x - lo).toFloat() / (hi - lo)) * 15f).toInt().coerceIn(0, 15)
+                        if (hi == lo) 0 else (((x - lo).toFloat() / (hi - lo)) * 15f).roundToInt().coerceIn(0, 15)
                     }
                     else -> x.coerceIn(0, 15) // "clamp"
                 }
@@ -200,7 +201,7 @@ object StockEvaluators {
                     "threshold" -> if (x >= config.getFloat("thresholdF")) 15 else 0
                     else -> { // "scaled"
                         val lo = config.getFloat("minF"); val hi = config.getFloat("maxF")
-                        if (hi == lo) 0 else (((x - lo) / (hi - lo)) * 15f).toInt().coerceIn(0, 15)
+                        if (hi == lo) 0 else (((x - lo) / (hi - lo)) * 15f).roundToInt().coerceIn(0, 15)
                     }
                 }
                 PinValue.Redstone(v)
@@ -218,7 +219,9 @@ object StockEvaluators {
                 val v = when (mode) {
                     "scaled" -> {
                         val lo = config.getInt("min"); val hi = config.getInt("max")
-                        if (hi == lo) lo else lo + ((signal.toFloat() / 15f) * (hi - lo)).toInt()
+                        // Round the WHOLE mapped value — truncating the fraction
+                        // before adding lo pinned most of the range to lo.
+                        if (hi == lo) lo else (lo + (signal.toFloat() / 15f) * (hi - lo)).roundToInt()
                     }
                     else -> signal // "raw"
                 }
