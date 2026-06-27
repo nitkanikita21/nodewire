@@ -37,6 +37,12 @@ object Nodewire {
         // CBC ballistics for scripts (Cbc.shells()/solvePitch) + cannon-mount
         // yaw/pitch pins. Internally ModList-gated — safe no-op without CBC.
         dev.nitka.nodewire.integration.cbc.CbcIntegration.init()
+        // Per-world SERVER config (serverconfig/nodewire-server.toml) — currently
+        // just the pin-driven cannon-aim cheat toggle, read by the CBC mount port.
+        net.neoforged.fml.ModLoadingContext.get().activeContainer.registerConfig(
+            net.neoforged.fml.config.ModConfig.Type.SERVER,
+            dev.nitka.nodewire.config.NodewireConfig.SPEC,
+        )
         // Pin links survive Sable schematic copy-paste (blueprint mapper). Run at
         // common setup so the BE types are registered + .get()-able; internally
         // gated on the sable_schematic_api mod, so it's a safe no-op without it.

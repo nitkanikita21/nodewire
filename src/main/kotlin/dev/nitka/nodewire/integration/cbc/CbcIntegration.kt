@@ -1,6 +1,7 @@
 package dev.nitka.nodewire.integration.cbc
 
 import com.mojang.logging.LogUtils
+import dev.nitka.nodewire.config.NodewireConfig
 import dev.nitka.nodewire.graph.PinType
 import dev.nitka.nodewire.graph.PinValue
 import dev.nitka.nodewire.link.LinkContext
@@ -45,6 +46,14 @@ object CbcIntegration {
     private const val HANDLER_FQN = "rbasamoyai.createbigcannons.munitions.config.MunitionPropertiesHandler"
     private const val TYPE_HANDLER_FQN = "rbasamoyai.createbigcannons.munitions.config.PropertiesTypeHandler"
     private const val MOUNT_BE_FQN = "rbasamoyai.createbigcannons.cannon_control.cannon_mount.CannonMountBlockEntity"
+
+    /** CBC: Compact Mount addon — a pitch-only mount that does NOT extend
+     *  [MOUNT_BE_FQN] (it extends KineticBlockEntity, implements ExtendsCannonMount)
+     *  but carries the same `cannonPitch` field. No `cannonYaw` — it can't rotate. */
+    private const val COMPACT_MOUNT_BE_FQN = "com.cubester.cbc_compact_mount.content.CompactCannonMountBlockEntity"
+
+    /** Every mount-like BE we expose as pins, walked up the class hierarchy. */
+    private val MOUNT_FQNS = listOf(MOUNT_BE_FQN, COMPACT_MOUNT_BE_FQN)
 
     /** Wire the provider once at mod init. No-op when CBC is absent. */
     fun init() {
@@ -188,42 +197,89 @@ object CbcIntegration {
         return MountPort(be, fields)
     }
 
-    /** Reflected yaw/pitch fields, cached per concrete BE class. */
-    private class MountFields(val yaw: Field, val pitch: Field)
+    /** Reflected mount accessors, cached per concrete BE class. [yaw] is null for
+     *  pitch-only mounts (the Compact Mount addon has no `cannonYaw`); [contraption]
+     *  backs the `mounted` pin; [setPitch]/[setYaw] back the pin-driven-aim cheat. */
+    private class MountFields(
+        val yaw: Field?,
+        val pitch: Field,
+        val contraption: Method?,
+        val setPitch: Method?,
+        val setYaw: Method?,
+    )
 
     private val mountFieldCache = HashMap<Class<*>, MountFields?>()
 
     @Synchronized
     private fun mountFieldsFor(cls: Class<*>): MountFields? = mountFieldCache.getOrPut(cls) {
         var c: Class<*>? = cls
-        while (c != null && c.name != MOUNT_BE_FQN) c = c.superclass
+        while (c != null && c.name !in MOUNT_FQNS) c = c.superclass
         if (c == null) return@getOrPut null
         runCatching {
-            val yaw = c.getDeclaredField("cannonYaw").apply { isAccessible = true }
+            // `cannonPitch` is required; `cannonYaw` is optional — the Compact
+            // Mount can't rotate, so it omits the field.
             val pitch = c.getDeclaredField("cannonPitch").apply { isAccessible = true }
-            MountFields(yaw, pitch)
+            val yaw = runCatching { c.getDeclaredField("cannonYaw").apply { isAccessible = true } }.getOrNull()
+            // No-arg `getContraption()` → the assembled cannon (or null). Optional
+            // so a mount lacking it still links its angle pins.
+            val contraption = runCatching { c.getDeclaredMethod("getContraption").apply { isAccessible = true } }.getOrNull()
+            // Public aim setters (pin-driven-aim cheat). getMethod walks the
+            // hierarchy + interfaces — compact mounts inherit setPitch from
+            // ControlPitchContraption but have no setYaw (no yaw axis).
+            val fl = Float::class.javaPrimitiveType
+            val setPitch = runCatching { c.getMethod("setPitch", fl) }.getOrNull()
+            val setYaw = runCatching { c.getMethod("setYaw", fl) }.getOrNull()
+            MountFields(yaw, pitch, contraption, setPitch, setYaw)
         }.getOrNull()
     }
 
     private class MountPort(private val be: BlockEntity, private val fields: MountFields) : PinPort {
-        override fun pinOutputs(ctx: LinkContext): List<LinkPin> = listOf(
-            LinkPin(YAW_PIN, PinType.FLOAT, "cannon yaw"),
-            LinkPin(PITCH_PIN, PinType.FLOAT, "cannon pitch"),
-            LinkPin(POS_PIN, PinType.VEC3, "mount position"),
-            LinkPin(POS_TEXT_PIN, PinType.STRING, "mount position (text)"),
+        /** Pitch-only mounts (Compact Mount) drop every yaw-derived pin. */
+        private val hasYaw: Boolean get() = fields.yaw != null
+
+        override fun pinOutputs(ctx: LinkContext): List<LinkPin> = buildList {
+            if (hasYaw) add(LinkPin(YAW_PIN, PinType.FLOAT, "cannon yaw"))
+            add(LinkPin(PITCH_PIN, PinType.FLOAT, "cannon pitch"))
+            add(LinkPin(POS_PIN, PinType.VEC3, "mount position"))
+            add(LinkPin(POS_TEXT_PIN, PinType.STRING, "mount position (text)"))
+            // Is a cannon currently assembled on the mount?
+            if (fields.contraption != null) add(LinkPin(MOUNTED_PIN, PinType.BOOL, "mounted"))
             // Motion (derived from the per-tick angle delta — CBC exposes no
             // target/speed directly): is the barrel still slewing?
-            LinkPin(PITCHING_PIN, PinType.BOOL, "pitching"),
-            LinkPin(YAWING_PIN, PinType.BOOL, "yawing"),
-            LinkPin(AIMING_PIN, PinType.BOOL, "aiming"),
-            LinkPin(PITCH_SPEED_PIN, PinType.FLOAT, "pitch speed °/t"),
-            LinkPin(YAW_SPEED_PIN, PinType.FLOAT, "yaw speed °/t"),
-        )
+            add(LinkPin(PITCHING_PIN, PinType.BOOL, "pitching"))
+            if (hasYaw) add(LinkPin(YAWING_PIN, PinType.BOOL, "yawing"))
+            add(LinkPin(AIMING_PIN, PinType.BOOL, "aiming"))
+            add(LinkPin(PITCH_SPEED_PIN, PinType.FLOAT, "pitch speed °/t"))
+            if (hasYaw) add(LinkPin(YAW_SPEED_PIN, PinType.FLOAT, "yaw speed °/t"))
+        }
+
+        // ── pin-driven aim (cheat) ────────────────────────────────────────
+        // Input pins exist ONLY when the server config enables the cheat; with
+        // it off the mount is read-only and there's nothing to link into.
+
+        override fun pinInputs(ctx: LinkContext): List<LinkPin> {
+            if (!NodewireConfig.pinDrivenCannonAim.get()) return emptyList()
+            return buildList {
+                if (fields.setPitch != null) add(LinkPin(TARGET_PITCH_PIN, PinType.FLOAT, "target pitch"))
+                if (fields.setYaw != null) add(LinkPin(TARGET_YAW_PIN, PinType.FLOAT, "target yaw"))
+            }
+        }
+
+        override fun writePin(id: String, value: PinValue) {
+            if (!NodewireConfig.pinDrivenCannonAim.get()) return
+            val angle = (value as? PinValue.Float)?.value ?: return
+            val setter = when (id) {
+                TARGET_PITCH_PIN -> fields.setPitch
+                TARGET_YAW_PIN -> fields.setYaw
+                else -> null
+            } ?: return
+            runCatching { setter.invoke(be, angle) }
+        }
 
         override fun readPin(id: String): PinReading? = when (id) {
             YAW_PIN, PITCH_PIN -> {
                 val field = if (id == YAW_PIN) fields.yaw else fields.pitch
-                runCatching { field.getFloat(be) }.getOrNull()
+                field?.let { f -> runCatching { f.getFloat(be) }.getOrNull() }
                     ?.let { PinReading(PinValue.Float(it)) }
             }
             // VEC3 pins carry doubles since the JOML migration, so the
@@ -234,6 +290,15 @@ object CbcIntegration {
             // Text variant kept for string-based fire-control wiring.
             POS_TEXT_PIN -> worldCenter()?.let {
                 PinReading(PinValue.Str("${it.x} ${it.y} ${it.z}"))
+            }
+            // `mounted` — true once a cannon is assembled on the mount. A failed
+            // reflective call yields no reading (target keeps its last value).
+            MOUNTED_PIN -> {
+                val m = fields.contraption ?: return null
+                runCatching { m.invoke(be) }.fold(
+                    onSuccess = { PinReading(PinValue.Bool(it != null)) },
+                    onFailure = { null },
+                )
             }
             PITCHING_PIN, YAWING_PIN, AIMING_PIN, PITCH_SPEED_PIN, YAW_SPEED_PIN -> {
                 val m = motionFor(be, fields) ?: return null
@@ -289,7 +354,9 @@ object CbcIntegration {
      *  thread (PinLinkEngine); null if the reflected fields can't be read. */
     @Synchronized
     private fun motionFor(be: BlockEntity, fields: MountFields): MountMotion? {
-        val yaw = runCatching { fields.yaw.getFloat(be) }.getOrNull() ?: return null
+        // yaw is absent on pitch-only mounts → treat it as constant 0, so the
+        // yaw-delta stays 0 (no slew on an axis that can't move).
+        val yaw = fields.yaw?.let { runCatching { it.getFloat(be) }.getOrNull() ?: return null } ?: 0f
         val pitch = runCatching { fields.pitch.getFloat(be) }.getOrNull() ?: return null
         val m = mountMotion.getOrPut(be) { MountMotion() }
         m.tick(be.level?.gameTime ?: 0L, yaw, pitch)
@@ -300,6 +367,9 @@ object CbcIntegration {
     const val PITCH_PIN = "cannon_pitch"
     const val POS_PIN = "position"
     const val POS_TEXT_PIN = "position_text"
+    const val MOUNTED_PIN = "mounted"
+    const val TARGET_PITCH_PIN = "target_pitch"
+    const val TARGET_YAW_PIN = "target_yaw"
     const val PITCHING_PIN = "pitching"
     const val YAWING_PIN = "yawing"
     const val AIMING_PIN = "aiming"
