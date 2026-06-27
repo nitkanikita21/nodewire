@@ -1,0 +1,14 @@
+{
+  "required": false,
+  "minVersion": "0.8",
+  "package": "dev.nitka.nodewire.mixin.offroad",
+  "compatibilityLevel": "JAVA_17",
+  "refmap": "nodewire.refmap.json",
+  "mixins": [
+    "MixinWheelMountBlockEntity"
+  ],
+  "server": [],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

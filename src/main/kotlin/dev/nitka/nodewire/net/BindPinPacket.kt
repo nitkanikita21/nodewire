@@ -6,6 +6,9 @@ import com.mojang.serialization.codecs.RecordCodecBuilder
 import dev.nitka.nodewire.Nodewire
 import dev.nitka.nodewire.block.LogicBlockEntity
 import dev.nitka.nodewire.endpoint.EndpointRef
+import dev.nitka.nodewire.graph.PinValueConversion
+import dev.nitka.nodewire.link.HostlessLink
+import dev.nitka.nodewire.link.HostlessLinkStore
 import dev.nitka.nodewire.link.LinkContext
 import dev.nitka.nodewire.link.PinLink
 import dev.nitka.nodewire.link.PinLinkEngine
@@ -13,6 +16,7 @@ import dev.nitka.nodewire.link.PinLinkSink
 import dev.nitka.nodewire.link.PinPorts
 import net.minecraft.ChatFormatting
 import net.minecraft.network.RegistryFriendlyByteBuf
+import net.minecraft.server.level.ServerLevel
 import net.minecraft.network.chat.Component
 import net.minecraft.network.codec.ByteBufCodecs
 import net.minecraft.network.codec.StreamCodec
@@ -128,6 +132,25 @@ data class BindPinPacket(
                 } else {
                     notify(player, "Channel '${packet.sourcePin}' can't drive redstone")
                 }
+                return
+            }
+
+            // Host-less target: a foreign block (no PinLinkSink BE) exposing a
+            // writable input pin — e.g. a CBC cannon mount's target_pitch. The
+            // link can't live on the target, so the level itself hosts it.
+            val tgtPort = PinPorts.portFor(level, packet.target)
+            val tgtPos = packet.target.payload.blockPos
+            val tgtPin = tgtPort?.pinInputs(LinkContext(level, tgtPos, level.getBlockState(tgtPos)))
+                ?.firstOrNull { it.id == packet.targetPin }
+            if (tgtPin != null && level is ServerLevel) {
+                if (!PinValueConversion.canConvert(srcPin.type, tgtPin.type)) {
+                    notify(player, "Pin '${packet.targetPin}' type mismatch (${srcPin.type.name.lowercase()})")
+                    return
+                }
+                HostlessLinkStore.of(level).add(
+                    HostlessLink(packet.source, packet.sourcePin, packet.target, packet.targetPin),
+                )
+                confirm(player, "Linked ${srcPin.label} → ${packet.targetPin}")
                 return
             }
 

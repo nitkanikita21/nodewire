@@ -1,6 +1,7 @@
 package dev.nitka.nodewire.integration.sable
 
 import dev.nitka.nodewire.Registry
+import dev.rew1nd.sableschematicapi.api.blueprint.SableBlueprintEventRegistry
 import dev.rew1nd.sableschematicapi.api.blueprint.SableBlueprintMapperRegistry
 import net.minecraft.world.level.block.entity.BlockEntityType
 import net.neoforged.fml.ModList
@@ -30,5 +31,8 @@ object SableSchematicIntegration {
         for (type in types) {
             SableBlueprintMapperRegistry.register(type, SablePinLinkMapper)
         }
+        // Level-hosted links have no BE to ride; the blueprint-level event mapper
+        // collects/rebuilds them at save/place time.
+        SableBlueprintEventRegistry.register(SableHostlessLinkMapper)
     }
 }

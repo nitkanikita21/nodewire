@@ -4,6 +4,7 @@ import dev.nitka.nodewire.client.highlight.BlockHighlightRenderer
 import dev.nitka.nodewire.graph.PinType
 import dev.nitka.nodewire.graph.PinValueConversion
 import dev.nitka.nodewire.item.ChannelLinkToolItem
+import dev.nitka.nodewire.link.HostlessLinkStore
 import dev.nitka.nodewire.link.LinkContext
 import dev.nitka.nodewire.link.LinkPin
 import dev.nitka.nodewire.link.PinLink
@@ -11,6 +12,7 @@ import dev.nitka.nodewire.link.PinLinkSink
 import dev.nitka.nodewire.link.PinPorts
 import net.minecraft.client.Minecraft
 import net.minecraft.core.BlockPos
+import net.minecraft.world.level.Level
 import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.HitResult
 
@@ -95,10 +97,13 @@ object LinkHud {
         val outs = port.pinOutputs(ctx)
         val ins = port.pinInputs(ctx)
 
-        // Incoming links stored on this block (the SINK), client-synced via
-        // getUpdateTag — used to read out a bound input's source + offer unbind.
+        // Incoming links feeding this block's input pins — used to read out a
+        // bound input's source + offer unbind. A PinLinkSink BE carries them in
+        // NBT (client-synced via getUpdateTag); a FOREIGN target (CBC mount, …)
+        // has no BE of ours, so its host-less links come from the level store.
         val sinkLinks: List<PinLink> =
-            (level.getBlockEntity(pos) as? PinLinkSink)?.pinLinks()?.toList() ?: emptyList()
+            (level.getBlockEntity(pos) as? PinLinkSink)?.pinLinks()?.toList()
+                ?: hostlessLinksFor(level, pos)
         fun linkFor(pinId: String): PinLink? = sinkLinks.firstOrNull { it.targetPin == pinId }
 
         val newRows = buildList {
@@ -166,6 +171,24 @@ object LinkHud {
         armedType = null
         sameAsSource = false
         lastPos = null
+    }
+
+    /**
+     * Host-less links targeting [pos], surfaced as synthetic [PinLink]s so the
+     * existing bound-row readout + MMB-unbind path works on a foreign target.
+     * These live in the server-side [HostlessLinkStore], so we read them off the
+     * INTEGRATED server — singleplayer only; on a dedicated server foreign-target
+     * rows don't surface (rebind to replace). Defensive: an off-thread store read
+     * can rarely race the level tick, so a failure degrades to "no rows".
+     */
+    private fun hostlessLinksFor(level: Level, pos: BlockPos): List<PinLink> {
+        val server = Minecraft.getInstance().singleplayerServer ?: return emptyList()
+        val serverLevel = server.getLevel(level.dimension()) ?: return emptyList()
+        return runCatching {
+            HostlessLinkStore.of(serverLevel).links()
+                .filter { it.target.payload.blockPos == pos }
+                .map { PinLink(it.source, it.sourcePin, it.targetPin) }
+        }.getOrDefault(emptyList())
     }
 
     private const val HOVER_HIGHLIGHT_MS = 250L

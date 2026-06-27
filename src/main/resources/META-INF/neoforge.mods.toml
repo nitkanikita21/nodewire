@@ -13,6 +13,11 @@ description='''${mod_description}'''
 [[mixins]]
 config="nodewire.mixins.json"
 
+# Optional: offroad Wheel Mount → PinLinkSink. required:false in the config,
+# so the mixin is silently skipped when offroad isn't installed.
+[[mixins]]
+config="nodewire.offroad.mixins.json"
+
 [[dependencies.${mod_id}]]
 modId="neoforge"
 type="required"

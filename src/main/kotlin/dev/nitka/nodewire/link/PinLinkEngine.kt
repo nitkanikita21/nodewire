@@ -2,41 +2,31 @@ package dev.nitka.nodewire.link
 
 import dev.nitka.nodewire.endpoint.EndpointRef
 import dev.nitka.nodewire.graph.PinType
-import dev.nitka.nodewire.graph.PinValue
 import dev.nitka.nodewire.graph.PinValueConversion
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.entity.BlockEntity
-import net.minecraft.world.phys.Vec3
 
 /**
- * The single delivery loop behind every [PinLink]. Called from each sink's
- * server ticker (LogicBlock / ScreenBlock / CameraBlock):
+ * The consumer-hosted pin-link host: pulls every [PinLink] stored on one
+ * [PinLinkSink] BE from that block's server ticker (LogicBlock / ScreenBlock /
+ * CameraBlock). The per-link delivery body — resolve, range-gate, type-check,
+ * read, event-pin latch — lives in [PinLinkDelivery]; this engine just iterates
+ * the sink's links, applies the [PinLinkDelivery.Outcome], and owns the two
+ * pieces of sink-local bookkeeping the shared body can't:
  *
- *  1. PRUNE links whose source is loaded but no longer offers the pin, or
- *     whose target pin vanished / stopped type-converting. Unloaded sources
- *     are tolerated (the pin just goes quiet) — breaking a binding because a
- *     chunk unloaded would surprise the user.
- *  2. PULL: resolve each source port, [PinPort.readPin] the source pin,
- *     [PinPort.writePin] the raw value into the sink's input pin. Event pins
- *     ([PinReading.pulseStamp]) latch per link and deliver a 1-tick pulse.
- *  3. CLEAR pins that were fed last tick but not this one
- *     ([PinPort.clearPin]) so last-writer-wins slots never hold stale values
- *     after an unlink/source loss.
+ *  * PRUNE — drop links the delivery body marked [PinLinkDelivery.Outcome.Prune]
+ *    and replicate the change.
+ *  * CLEAR — [PinPort.clearPin] pins fed last tick but not this one, so
+ *    last-writer-wins slots never hold stale values after an unlink/source loss.
  */
 object PinLinkEngine {
 
-    private val LOG = com.mojang.logging.LogUtils.getLogger()
-
-    /** Per-link delivery diagnostics, one line per link every N ticks.
-     *  Cheap (no allocation on quiet sinks); grep `NW-LINK`. */
-    private const val DIAG_PERIOD_TICKS = 100L
-
     /** Max world distance (blocks) between a link's source and sink. Beyond it
      *  the pin goes quiet — wired channels are short-range on purpose; long-haul
-     *  data is the job of the (planned) radio channel system. */
+     *  data is the job of the (planned) radio channel system. Enforced by
+     *  [PinLinkDelivery]; also surfaced to the bind packet as the reach limit. */
     const val MAX_LINK_DISTANCE = 64.0
-    private const val MAX_LINK_DISTANCE_SQ = MAX_LINK_DISTANCE * MAX_LINK_DISTANCE
 
     /** Per-server-tick pull for one sink BE. No-ops unless [be] is a [PinLinkSink]. */
     fun tick(level: Level, be: BlockEntity) {
@@ -44,90 +34,28 @@ object PinLinkEngine {
         val links = sink.pinLinks()
         val scratch = sink.pinLinkScratch
         if (links.isEmpty() && scratch.lastDelivered.isEmpty()) return
-        val diag = level.gameTime % DIAG_PERIOD_TICKS == 0L
 
-        val ctx = LinkContext(level, be.blockPos, be.blockState)
-        val inputsById = sink.pinInputs(ctx).associateBy { it.id }
-        // Sub-level-aware world centre of this sink, for the range gate.
-        val sinkCenter = centerOf(level, EndpointRef.from(level, be.blockPos))
+        // Sub-level-aware endpoint of this sink: the delivery body range-gates
+        // against it and resolves it back to this very BE for the writePin.
+        val targetRef = EndpointRef.from(level, be.blockPos)
 
         val delivered = HashSet<String>()
         var changed = false
         val it = links.iterator()
         while (it.hasNext()) {
             val link = it.next()
-            // Target pin must still exist on the sink.
-            val tgtPin = inputsById[link.targetPin]
-            if (tgtPin == null) {
-                LOG.info("NW-LINK prune @{}: target pin '{}' gone", be.blockPos.toShortString(), link.targetPin)
-                it.remove(); changed = true; continue
-            }
-            val port = PinPorts.portFor(level, link.source)
-            if (port == null) {
-                // Unresolvable: prune only when the position is loaded and
-                // plainly not linkable any more; otherwise just go quiet.
-                val pos = link.source.payload.blockPos
-                if (level.isLoaded(pos) && level.getBlockState(pos).isAir) {
-                    LOG.info("NW-LINK prune @{}: source {} is air", be.blockPos.toShortString(), pos.toShortString())
-                    it.remove(); changed = true
-                } else if (diag) {
-                    LOG.info(
-                        "NW-LINK @{}: '{}'<-'{}' source {} UNRESOLVED (backend={}, loaded={})",
-                        be.blockPos.toShortString(), link.targetPin, link.sourcePin,
-                        pos.toShortString(), link.source.backendId, level.isLoaded(pos),
-                    )
-                }
-                continue
-            }
-            // Range gate: too far apart → go quiet (don't deliver, don't prune;
-            // structures move, so the link may come back into range).
-            val srcCenter = centerOf(level, link.source)
-            if (srcCenter.distanceToSqr(sinkCenter) > MAX_LINK_DISTANCE_SQ) {
-                if (diag) {
-                    LOG.info(
-                        "NW-LINK @{}: '{}'<-'{}' OUT OF RANGE ({}m > {}m)",
-                        be.blockPos.toShortString(), link.targetPin, link.sourcePin,
-                        "%.1f".format(Math.sqrt(srcCenter.distanceToSqr(sinkCenter))), MAX_LINK_DISTANCE,
-                    )
-                }
-                continue
-            }
-            val srcPin = port.pinOutputs(ctx).firstOrNull { p -> p.id == link.sourcePin }
-            if (srcPin == null || !PinValueConversion.canConvert(srcPin.type, tgtPin.type)) {
-                LOG.info(
-                    "NW-LINK prune @{}: source pin '{}' {} (port={})",
-                    be.blockPos.toShortString(), link.sourcePin,
-                    if (srcPin == null) "missing" else "type ${srcPin.type} !> ${tgtPin.type}",
-                    port.javaClass.simpleName,
+            when (
+                val outcome = PinLinkDelivery.deliver(
+                    level, link.source, link.sourcePin, targetRef, link.targetPin, link.seenStamp,
                 )
-                it.remove(); changed = true; continue
-            }
-            val reading = port.readPin(link.sourcePin)
-            if (reading == null) {
-                if (diag) {
-                    LOG.info(
-                        "NW-LINK @{}: '{}'<-'{}' read NULL (port={})",
-                        be.blockPos.toShortString(), link.targetPin, link.sourcePin, port.javaClass.simpleName,
-                    )
+            ) {
+                is PinLinkDelivery.Outcome.Delivered -> {
+                    link.seenStamp = outcome.seenStamp
+                    delivered.add(link.targetPin)
                 }
-                continue
+                PinLinkDelivery.Outcome.Quiet -> Unit // keep the link, leave its pin
+                PinLinkDelivery.Outcome.Prune -> { it.remove(); changed = true }
             }
-            if (diag) {
-                LOG.info(
-                    "NW-LINK @{}: '{}' <- '{}' = {}",
-                    be.blockPos.toShortString(), link.targetPin, link.sourcePin, reading.value,
-                )
-            }
-            val value = if (reading.pulseStamp >= 0L) {
-                // Event pin: deliver once per stamp change, default otherwise.
-                val fresh = reading.pulseStamp > link.seenStamp
-                if (fresh) link.seenStamp = reading.pulseStamp
-                if (fresh) reading.value else quiescent(reading.value, srcPin.type)
-            } else {
-                reading.value
-            }
-            sink.writePin(link.targetPin, value)
-            delivered.add(link.targetPin)
         }
 
         // Pins fed last tick but silent now → reset so e.g. a Screen blanks
@@ -174,14 +102,4 @@ object PinLinkEngine {
         if (removed) sink.onPinLinksChanged()
         return removed
     }
-
-    /** Sub-level-aware world centre of an endpoint, or its block centre. */
-    private fun centerOf(level: Level, ref: EndpointRef): Vec3 =
-        ref.worldCenter(level) ?: Vec3.atCenterOf(ref.payload.blockPos)
-
-    private fun quiescent(firedValue: PinValue, declared: PinType): PinValue =
-        when (firedValue) {
-            is PinValue.Bool -> PinValue.Bool(false)
-            else -> PinValue.default(declared)
-        }
 }

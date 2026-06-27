@@ -77,6 +77,16 @@ object PinPorts {
 
         override fun readPin(id: String): PinReading? =
             parts.firstNotNullOfOrNull { it.readPin(id) }
+
+        // Writes/clears must reach the part that owns the pin (e.g. a CBC mount's
+        // target_pitch). Pin ids are disjoint by construction, so forwarding to
+        // every part is safe — only the owner reacts, the rest no-op. Without
+        // this, delivery into a composite-wrapped foreign target silently drops.
+        override fun writePin(id: String, value: PinValue) =
+            parts.forEach { it.writePin(id, value) }
+
+        override fun clearPin(id: String) =
+            parts.forEach { it.clearPin(id) }
     }
 
     /** Aeronautics block: every catalog channel for its kind is an output

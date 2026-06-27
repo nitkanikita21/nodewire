@@ -61,6 +61,8 @@ object Nodewire {
             dev.nitka.nodewire.radio.RadioRegistry.clearAll()
             // Drop far-camera chunk-stream tracking (Pillar 2 Stage A).
             dev.nitka.nodewire.camerachunk.CameraChunkServer.clearAll()
+            // Drop host-less link clear-tracking so it can't ghost into a rejoin.
+            dev.nitka.nodewire.link.HostlessLinkEngine.clearAll()
         }
         // Pillar 2 Stage A — far-camera chunk streaming: per server-player tick
         // refreshes force-load tickets + flushes loaded zone chunks; logout releases.
@@ -78,7 +80,18 @@ object Nodewire {
         // that dimension's transmitters so the registry can't leak across reloads.
         FORGE_BUS.addListener<net.neoforged.neoforge.event.level.LevelEvent.Unload> { e ->
             val lvl = e.level as? net.minecraft.world.level.Level ?: return@addListener
-            if (!lvl.isClientSide) dev.nitka.nodewire.radio.RadioRegistry.clear(lvl.dimension())
+            if (!lvl.isClientSide) {
+                dev.nitka.nodewire.radio.RadioRegistry.clear(lvl.dimension())
+                dev.nitka.nodewire.link.HostlessLinkEngine.clear(lvl.dimension())
+            }
+        }
+        // Host-less pin links (foreign→foreign, e.g. a logic pin driving a CBC
+        // cannon mount's target_pitch) have no BE of ours to tick them — the
+        // level itself hosts them. Pull every ServerLevel's store once per tick.
+        FORGE_BUS.addListener<net.neoforged.neoforge.event.tick.LevelTickEvent.Post> { e ->
+            (e.level as? net.minecraft.server.level.ServerLevel)?.let {
+                dev.nitka.nodewire.link.HostlessLinkEngine.tick(it)
+            }
         }
         FORGE_BUS.addListener(HighlightServerCommand::register)
         FORGE_BUS.addListener(dev.nitka.nodewire.integration.tweakedcontroller.ControllerBindHandler::onRightClickItem)

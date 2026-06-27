@@ -267,7 +267,15 @@ object CbcIntegration {
 
         override fun writePin(id: String, value: PinValue) {
             if (!NodewireConfig.pinDrivenCannonAim.get()) return
-            val angle = (value as? PinValue.Float)?.value ?: return
+            // Bind admits any source that converts to FLOAT (INT/REDSTONE/BOOL),
+            // but delivery hands us the RAW value — coerce here at the write site.
+            val angle = when (value) {
+                is PinValue.Float -> value.value
+                is PinValue.Int -> value.value.toFloat()
+                is PinValue.Redstone -> value.value.toFloat()
+                is PinValue.Bool -> if (value.value) 1f else 0f
+                else -> return
+            }
             val setter = when (id) {
                 TARGET_PITCH_PIN -> fields.setPitch
                 TARGET_YAW_PIN -> fields.setYaw
