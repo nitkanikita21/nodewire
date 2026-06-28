@@ -188,7 +188,13 @@ public abstract class MixinWheelMountBlockEntity implements PinLinkSink {
     private void nodewire$tickLinks(CallbackInfo ci) {
         BlockEntity self = (BlockEntity) (Object) this;
         Level level = self.getLevel();
-        if (level == null || level.isClientSide) return;
+        if (level == null) return;
+        if (level.isClientSide) {
+            // Track on the client so the wire renderer can draw links landing on us
+            // (we're not a LogicBlockEntity, so the logic tracker never sees us).
+            dev.nitka.nodewire.client.wire.ClientForeignSinkTracker.register(self);
+            return;
+        }
         PinLinkEngine.INSTANCE.tick(level, self);
     }
 
@@ -201,7 +207,8 @@ public abstract class MixinWheelMountBlockEntity implements PinLinkSink {
         at = @At("TAIL")
     )
     private void nodewire$write(CompoundTag tag, HolderLookup.Provider registries, boolean clientPacket, CallbackInfo ci) {
-        if (clientPacket) return;
+        // Replicated to the client too — the wire renderer reads pinLinks() off the
+        // client copy to draw the wire that lands on this mount.
         WheelMountPinGlue.writePinLinks(tag, this.nodewire$pinLinks);
     }
 

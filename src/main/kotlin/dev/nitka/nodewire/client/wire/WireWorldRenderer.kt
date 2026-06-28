@@ -3,9 +3,9 @@ package dev.nitka.nodewire.client.wire
 import dev.nitka.nodewire.block.ChannelBinding
 import dev.nitka.nodewire.block.LogicBlockEntity
 import dev.nitka.nodewire.graph.PinType
+import dev.nitka.nodewire.link.HostlessLinkStore
 import net.createmod.catnip.outliner.Outliner
 import net.minecraft.client.Minecraft
-import net.minecraft.world.phys.AABB
 import net.minecraft.world.phys.Vec3
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent
 
@@ -29,6 +29,9 @@ object WireWorldRenderer {
 
     private const val WIRE_WIDTH = 1.0f / 16f
 
+    /** Endpoint-outline colour — every block taking part in a wire gets one. */
+    private val BOX_COLOR = 0xFFB83030.toInt()
+
     /** Keys shown last frame — diffed so retired wires get removed promptly. */
     private val shownKeys = HashSet<Any>()
 
@@ -47,10 +50,17 @@ object WireWorldRenderer {
 
         val outliner = Outliner.getInstance()
         val frameKeys = HashSet<Any>()
+        // Every block that takes part in ANY wire (source or target, of any kind)
+        // is outlined exactly once from here — so the box logic is uniform instead
+        // of each collect pass deciding for itself. pos.asLong() -> world centre.
+        val boxes = HashMap<Long, Vec3>()
 
         if (holdingLinkTool(player)) {
             val tracked = ClientLogicBlockTracker.all()
-            if (tracked.isNotEmpty()) collect(level, tracked, outliner, frameKeys)
+            if (tracked.isNotEmpty()) collect(level, tracked, outliner, frameKeys, boxes)
+            collectHostless(level, outliner, frameKeys, boxes)
+            collectForeignSinks(level, outliner, frameKeys, boxes)
+            for ((key, center) in boxes) box(outliner, frameKeys, "nw:box:$key", level, net.minecraft.core.BlockPos.of(key), center, BOX_COLOR)
         }
 
         // Retire keys no longer present (tool put away, binding removed).
@@ -67,6 +77,7 @@ object WireWorldRenderer {
         tracked: Collection<LogicBlockEntity>,
         outliner: Outliner,
         frameKeys: MutableSet<Any>,
+        boxes: MutableMap<Long, Vec3>,
     ) {
         // ── gather + fan-slot assignment (stable iteration = stable slots) ──
         val outCount = HashMap<Long, Int>()
@@ -113,6 +124,7 @@ object WireWorldRenderer {
             line(outliner, frameKeys, "nw:bind:$sk:$dk:${rb.binding.sourceChannelName}",
                 fanOffset(srcC, rb.srcIdx, outTotal[sk]!!), fanOffset(dstC, rb.dstIdx, inTotal[dk]!!),
                 colorForBinding(rb.source, rb.binding.sourceChannelName))
+            boxes[sk] = srcC; boxes[dk] = dstC
         }
         for (rr in pinLinkList) {
             val dk = rr.logic.blockPos.asLong()
@@ -127,7 +139,7 @@ object WireWorldRenderer {
             line(outliner, frameKeys, "nw:pin:$sk:$dk:${rr.link.targetPin}",
                 fanOffset(srcC, srcIdx, outTotal[sk]!!), fanOffset(dstC, rr.dstIdx, inTotal[dk]!!),
                 colorForType(tgtType ?: PinType.REDSTONE))
-            box(outliner, frameKeys, "nw:pinbox:$sk", srcC, 0xFFB83030.toInt())
+            boxes[sk] = srcC; boxes[dk] = dstC
         }
         for (sb in sideList) {
             val sk = sb.source.blockPos.asLong()
@@ -138,6 +150,54 @@ object WireWorldRenderer {
             val dst = Vec3(tCenter.x + wn.x * 0.5, tCenter.y + wn.y * 0.5, tCenter.z + wn.z * 0.5)
             line(outliner, frameKeys, "nw:side:$sk:${sb.binding.targetSide}:${sb.binding.sourceChannelName}",
                 fanOffset(srcC, sb.srcIdx, outTotal[sk]!!), dst, colorForBinding(sb.source, sb.binding.sourceChannelName))
+            boxes[sk] = srcC; boxes[sb.binding.target.payload.blockPos.asLong()] = tCenter
+        }
+    }
+
+    /**
+     * Host-less links have no BE hosting them — they live in the per-level
+     * [HostlessLinkStore], so the logic-block walk can't surface them. Read them
+     * straight off the INTEGRATED server (singleplayer only; on a dedicated server
+     * the store isn't synced to the client, so foreign->foreign wires won't draw —
+     * same limitation as the LinkHud surfacing). Endpoints are Sable-aware via
+     * [worldCenter]. Drawn center-to-center (these are rare foreign->foreign links).
+     */
+    private fun collectHostless(level: net.minecraft.world.level.Level, outliner: Outliner, frameKeys: MutableSet<Any>, boxes: MutableMap<Long, Vec3>) {
+        val server = Minecraft.getInstance().singleplayerServer ?: return
+        val serverLevel = server.getLevel(level.dimension()) ?: return
+        val links = runCatching { HostlessLinkStore.of(serverLevel).links() }.getOrNull() ?: return
+        for (link in links) {
+            val srcC = link.source.worldCenter(level) ?: Vec3.atCenterOf(link.source.payload.blockPos)
+            val dstC = link.target.worldCenter(level) ?: Vec3.atCenterOf(link.target.payload.blockPos)
+            val sk = link.source.payload.blockPos.asLong()
+            val dk = link.target.payload.blockPos.asLong()
+            line(outliner, frameKeys, "nw:hl:$sk:$dk:${link.sourcePin}:${link.targetPin}", srcC, dstC, 0xFFE8C85C.toInt())
+            boxes[sk] = srcC; boxes[dk] = dstC
+        }
+    }
+
+    /**
+     * Links landing on a foreign [dev.nitka.nodewire.link.PinLinkSink] BE (the
+     * offroad wheel mount) — these are BE-local (stored on that BE), not in the
+     * host-less store, and the BE isn't a LogicBlockEntity, so the logic walk
+     * misses them. The BE replicates its `pin_links` to the client, so we read
+     * them off the client copy here. Removed BEs are pruned defensively.
+     */
+    private fun collectForeignSinks(level: net.minecraft.world.level.Level, outliner: Outliner, frameKeys: MutableSet<Any>, boxes: MutableMap<Long, Vec3>) {
+        val sinks = ClientForeignSinkTracker.all()
+        if (sinks.isEmpty()) return
+        for (be in sinks.toList()) {
+            if (be.isRemoved || be.level !== level) { ClientForeignSinkTracker.unregister(be); continue }
+            val sink = be as? dev.nitka.nodewire.link.PinLinkSink ?: continue
+            val dstC = dev.nitka.nodewire.endpoint.EndpointRef.from(level, be.blockPos).worldCenter(level)
+                ?: Vec3.atCenterOf(be.blockPos)
+            for (link in sink.pinLinks()) {
+                val srcC = link.source.worldCenter(level) ?: Vec3.atCenterOf(link.source.payload.blockPos)
+                val sk = link.source.payload.blockPos.asLong()
+                val dk = be.blockPos.asLong()
+                line(outliner, frameKeys, "nw:fs:$sk:$dk:${link.targetPin}", srcC, dstC, 0xFFE8C85C.toInt())
+                boxes[sk] = srcC; boxes[dk] = dstC
+            }
         }
     }
 
@@ -146,9 +206,37 @@ object WireWorldRenderer {
         frameKeys.add(key)
     }
 
-    private fun box(outliner: Outliner, frameKeys: MutableSet<Any>, key: String, center: Vec3, color: Int) {
-        outliner.showAABB(key, AABB.ofSize(center, 1.02, 1.02, 1.02)).lineWidth(WIRE_WIDTH).colored(color).disableCull()
-        frameKeys.add(key)
+    /**
+     * Block outline as 12 edge lines, ORIENTED by the block's Sable pose — an
+     * axis-aligned [AABB] would ignore a sub-level's rotation and float off a
+     * block on an angled ship. The basis vectors are rotated through
+     * [dev.nitka.nodewire.endpoint.EndpointRef.worldDirection] (identity for a
+     * plain block, the render-pose rotation on a sub-level), so the box hugs the
+     * block whatever its orientation. [center] is already the Sable-aware centre.
+     */
+    private fun box(
+        outliner: Outliner, frameKeys: MutableSet<Any>, key: String,
+        level: net.minecraft.world.level.Level, pos: net.minecraft.core.BlockPos, center: Vec3, color: Int,
+    ) {
+        val ref = dev.nitka.nodewire.endpoint.EndpointRef.from(level, pos)
+        val h = 0.51
+        val ex = (ref.worldDirection(level, Vec3(1.0, 0.0, 0.0)) ?: Vec3(1.0, 0.0, 0.0)).scale(h)
+        val ey = (ref.worldDirection(level, Vec3(0.0, 1.0, 0.0)) ?: Vec3(0.0, 1.0, 0.0)).scale(h)
+        val ez = (ref.worldDirection(level, Vec3(0.0, 0.0, 1.0)) ?: Vec3(0.0, 0.0, 1.0)).scale(h)
+        fun corner(sx: Double, sy: Double, sz: Double): Vec3 =
+            center.add(ex.scale(sx)).add(ey.scale(sy)).add(ez.scale(sz))
+        val c = arrayOf(
+            corner(-1.0, -1.0, -1.0), corner(1.0, -1.0, -1.0), corner(1.0, -1.0, 1.0), corner(-1.0, -1.0, 1.0),
+            corner(-1.0, 1.0, -1.0), corner(1.0, 1.0, -1.0), corner(1.0, 1.0, 1.0), corner(-1.0, 1.0, 1.0),
+        )
+        val edges = intArrayOf(0, 1, 1, 2, 2, 3, 3, 0, 4, 5, 5, 6, 6, 7, 7, 4, 0, 4, 1, 5, 2, 6, 3, 7)
+        var i = 0
+        while (i < edges.size) {
+            val lk = "$key:e${i / 2}"
+            outliner.showLine(lk, c[edges[i]], c[edges[i + 1]]).lineWidth(WIRE_WIDTH).colored(color).disableLineNormals().disableCull()
+            frameKeys.add(lk)
+            i += 2
+        }
     }
 
     private fun sourceWorldCenter(be: LogicBlockEntity, level: net.minecraft.world.level.Level): Vec3? =

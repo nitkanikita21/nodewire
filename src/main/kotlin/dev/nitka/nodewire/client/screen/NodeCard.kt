@@ -364,10 +364,12 @@ private fun InputPinRow(
     val chip = pinChipText(pin, valueFlowingInto(nodeId, pin.id))
     val editor = LocalEditorState.current
     // An incoming edge to this pin suppresses the inline editor — the
-    // wire's value wins and the field would just be misleading.
-    val hasIncomingEdge = remember(editor, nodeId, pin.id) {
+    // wire's value wins and the field would just be misleading. Computed
+    // inline (NOT remember'd on stable keys) so it tracks edges being
+    // added/removed — the keys (editor/node/pin) don't change when an edge
+    // appears, which would leave a remember stale and the field showing.
+    val hasIncomingEdge =
         editor?.graph?.edges?.any { it.to.node == nodeId && it.to.pin == pin.id } == true
-    }
     // Look up the editor spec from the canonical NodeType; the saved
     // pin's type is the fallback for reshape pins (e.g. Switch.case_N)
     // not present in the canonical inputs list.
