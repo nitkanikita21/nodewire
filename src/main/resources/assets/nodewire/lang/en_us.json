@@ -5,6 +5,7 @@
   "block.nodewire.static_camera_block": "Fixed Camera",
   "block.nodewire.telemetry_block": "Telemetry Block",
   "block.nodewire.control_block": "Control Block",
+  "block.nodewire.control_panel": "Control Panel",
   "block.nodewire.radio_transmitter": "Radio Transmitter",
   "block.nodewire.radio_receiver": "Radio Receiver",
   "block.nodewire.ar_hub_block": "AR Hub",

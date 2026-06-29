@@ -1,0 +1,5 @@
+{
+  "comment": "Placeholder — the block renders INVISIBLE; the plate + elements are BER-drawn (later slice). Particle texture only.",
+  "parent": "block/block",
+  "textures": { "particle": "minecraft:block/iron_block" }
+}

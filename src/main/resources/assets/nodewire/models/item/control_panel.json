@@ -1,0 +1,4 @@
+{
+  "comment": "Placeholder inventory icon (the block is invisible in-world) — replaced by the asset generator.",
+  "parent": "minecraft:block/iron_block"
+}

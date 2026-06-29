@@ -8,6 +8,8 @@ import dev.nitka.nodewire.block.LogicBlock
 import dev.nitka.nodewire.block.LogicBlockEntity
 import dev.nitka.nodewire.block.ControlBlock
 import dev.nitka.nodewire.block.ControlBlockEntity
+import dev.nitka.nodewire.block.ControlPanelBlock
+import dev.nitka.nodewire.block.ControlPanelBlockEntity
 import dev.nitka.nodewire.block.ScreenBlock
 import dev.nitka.nodewire.block.ScreenBlockEntity
 import dev.nitka.nodewire.block.TelemetryBlock
@@ -94,6 +96,16 @@ object Registry {
     val CONTROL_BLOCK_ITEM: DeferredItem<BlockItem> =
         ITEMS.registerSimpleBlockItem(CONTROL_BLOCK)
 
+    /** Thin, no-collision instrument panel — a 16×16 grid of placed controls
+     *  and indicators, each exposed as a pin. noCollission: entities pass
+     *  through; noOcclusion: the plate + elements are BER-drawn, not a cube. */
+    val CONTROL_PANEL: DeferredBlock<ControlPanelBlock> = BLOCKS.register("control_panel") { _ ->
+        ControlPanelBlock(BlockBehaviour.Properties.ofFullCopy(Blocks.IRON_BLOCK).noOcclusion().noCollission())
+    }
+
+    val CONTROL_PANEL_ITEM: DeferredItem<BlockItem> =
+        ITEMS.registerSimpleBlockItem(CONTROL_PANEL)
+
     val RADIO_TRANSMITTER_BLOCK: DeferredBlock<RadioTransmitterBlock> = BLOCKS.register("radio_transmitter") { _ ->
         RadioTransmitterBlock(BlockBehaviour.Properties.ofFullCopy(Blocks.IRON_BLOCK))
     }
@@ -153,6 +165,7 @@ object Registry {
                     output.accept(STATIC_CAMERA_BLOCK_ITEM.get())
                     output.accept(TELEMETRY_BLOCK_ITEM.get())
                     output.accept(CONTROL_BLOCK_ITEM.get())
+                    output.accept(CONTROL_PANEL_ITEM.get())
                     output.accept(RADIO_TRANSMITTER_BLOCK_ITEM.get())
                     output.accept(RADIO_RECEIVER_BLOCK_ITEM.get())
                     output.accept(AR_HUB_BLOCK_ITEM.get())
@@ -199,6 +212,13 @@ object Registry {
         BLOCK_ENTITIES.register("control_block") { _ ->
             BlockEntityType.Builder
                 .of(::ControlBlockEntity, CONTROL_BLOCK.get())
+                .build(null)
+        }
+
+    val CONTROL_PANEL_BE: DeferredHolder<BlockEntityType<*>, BlockEntityType<ControlPanelBlockEntity>> =
+        BLOCK_ENTITIES.register("control_panel") { _ ->
+            BlockEntityType.Builder
+                .of(::ControlPanelBlockEntity, CONTROL_PANEL.get())
                 .build(null)
         }
 
