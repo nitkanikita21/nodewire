@@ -1,6 +1,7 @@
 package dev.nitka.nodewire.item
 
 import dev.nitka.nodewire.block.ControlPanelBlock
+import dev.nitka.nodewire.block.ControlPanelBlockEntity
 import dev.nitka.nodewire.net.RemoveElementPacket
 import net.minecraft.world.InteractionResult
 import net.minecraft.world.item.Item
@@ -21,9 +22,17 @@ class PanelKeyItem(props: Properties) : Item(props) {
         if (state.block !is ControlPanelBlock) return super.useOn(context)
         if (context.clickedFace != state.getValue(ControlPanelBlock.FACE)) return InteractionResult.PASS
         if (!level.isClientSide) return InteractionResult.CONSUME
-        // Sneak-RMB → configure (screen wired later); plain RMB → remove.
-        if (context.player?.isShiftKeyDown == true) return InteractionResult.SUCCESS
         val hit = ControlPanelBlock.gridHit(state, pos, context.clickLocation) ?: return InteractionResult.PASS
+        // Sneak-RMB → open the element's config screen (client-only); plain RMB → remove.
+        if (context.player?.isShiftKeyDown == true) {
+            val be = level.getBlockEntity(pos) as? ControlPanelBlockEntity
+            val el = be?.elementAt(hit.cell)
+            if (el != null) {
+                dev.nitka.nodewire.client.screen.ControlPanelElementConfigScreen
+                    .open(pos, el.cellX, el.cellY, el.typeId, el.config)
+            }
+            return InteractionResult.SUCCESS
+        }
         PacketDistributor.sendToServer(RemoveElementPacket(pos, hit.cell.x, hit.cell.y))
         return InteractionResult.SUCCESS
     }
