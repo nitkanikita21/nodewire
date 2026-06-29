@@ -191,14 +191,18 @@ class ControlPanelBlock(props: Properties) : Block(props), EntityBlock {
 
         private const val T = 2.0 / 16.0 // 2px plate thickness
 
-        /** Per-face 2px slab flush to the mounting face (outward face = [FACE]). */
+        /**
+         * Per-face 2px slab on the **mounting** (−FACE) side of the cell, so the
+         * thin plate sits against the block it's attached to and the display faces
+         * outward along [FACE]. Matches the renderer's display plane.
+         */
         private val SHAPES: Map<Direction, VoxelShape> = mapOf(
             Direction.UP to Shapes.box(0.0, 0.0, 0.0, 1.0, T, 1.0),
             Direction.DOWN to Shapes.box(0.0, 1.0 - T, 0.0, 1.0, 1.0, 1.0),
-            Direction.NORTH to Shapes.box(0.0, 0.0, 0.0, 1.0, 1.0, T),
-            Direction.SOUTH to Shapes.box(0.0, 0.0, 1.0 - T, 1.0, 1.0, 1.0),
-            Direction.WEST to Shapes.box(0.0, 0.0, 0.0, T, 1.0, 1.0),
-            Direction.EAST to Shapes.box(1.0 - T, 0.0, 0.0, 1.0, 1.0, 1.0),
+            Direction.SOUTH to Shapes.box(0.0, 0.0, 0.0, 1.0, 1.0, T),
+            Direction.NORTH to Shapes.box(0.0, 0.0, 1.0 - T, 1.0, 1.0, 1.0),
+            Direction.EAST to Shapes.box(0.0, 0.0, 0.0, T, 1.0, 1.0),
+            Direction.WEST to Shapes.box(1.0 - T, 0.0, 0.0, 1.0, 1.0, 1.0),
         )
     }
 }
