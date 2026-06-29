@@ -2,7 +2,9 @@ package dev.nitka.nodewire.block
 
 import dev.nitka.nodewire.Registry
 import dev.nitka.nodewire.block.panel.PanelElementStore
+import dev.nitka.nodewire.block.panel.PanelElements
 import dev.nitka.nodewire.block.panel.PanelGrid
+import dev.nitka.nodewire.block.panel.PanelPinDir
 import dev.nitka.nodewire.block.panel.PanelPins
 import dev.nitka.nodewire.block.panel.PlacedElement
 import dev.nitka.nodewire.graph.PinValue
@@ -80,6 +82,46 @@ class ControlPanelBlockEntity(pos: BlockPos, state: BlockState) :
 
     fun setElementConfig(cell: PanelGrid.Cell, config: CompoundTag) {
         if (store.setConfig(cell, config)) pushSync()
+    }
+
+    /**
+     * Apply a player operate (RMB) to the interactive element covering [cell].
+     * [uFrac]/[vFrac] are the sub-cell hit fraction (slider/knob analog input);
+     * [sneak] reverses a selector. Returns true if an interactive element was hit.
+     */
+    fun handleOperate(cell: PanelGrid.Cell, uFrac: Double, vFrac: Double, sneak: Boolean, gameTime: Long): Boolean {
+        val e = store.elementAt(cell) ?: return false
+        val type = PanelElements.byId(e.typeId) ?: return false
+        if (type.pinDir != PanelPinDir.OUTPUT) return false
+        val anchor = PanelGrid.Cell(e.cellX, e.cellY)
+        val cfg = e.config
+        when (e.typeId) {
+            "toggle" -> setElementValue(anchor, if (e.value != 0.0) 0.0 else 1.0)
+            "momentary" -> setElementValue(anchor, 1.0, pulse = gameTime)
+            "selector" -> {
+                val positions = if (cfg.contains("positions")) cfg.getInt("positions").coerceAtLeast(1) else 2
+                setElementValue(anchor, PanelGrid.selectorNext(e.value.toInt(), positions, sneak).toDouble())
+            }
+            "slider" -> {
+                val min = if (cfg.contains("min")) cfg.getDouble("min") else 0.0
+                val max = if (cfg.contains("max")) cfg.getDouble("max") else 1.0
+                val step = if (cfg.contains("step")) cfg.getDouble("step") else 0.0
+                val horizontal = e.cols >= e.rows
+                val frac = if (horizontal) (cell.x - anchor.x + uFrac) / e.cols else (cell.y - anchor.y + vFrac) / e.rows
+                setElementValue(anchor, PanelGrid.sliderValue(frac, min, max, step))
+            }
+            "knob" -> {
+                val min = if (cfg.contains("min")) cfg.getDouble("min") else 0.0
+                val max = if (cfg.contains("max")) cfg.getDouble("max") else 1.0
+                val step = if (cfg.contains("step")) cfg.getDouble("step") else 0.0
+                val sweep = if (cfg.contains("sweep")) cfg.getDouble("sweep") else 270.0
+                val hx = (cell.x - anchor.x) + uFrac
+                val hy = (cell.y - anchor.y) + vFrac
+                setElementValue(anchor, PanelGrid.knobValue(hx - e.cols / 2.0, hy - e.rows / 2.0, min, max, sweep, step))
+            }
+            else -> return false
+        }
+        return true
     }
 
     // ── unified pin links ─────────────────────────────────────────────────

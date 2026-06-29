@@ -1,9 +1,20 @@
 package dev.nitka.nodewire.block
 
+import dev.nitka.nodewire.block.panel.PanelGrid
+import dev.nitka.nodewire.item.ChannelLinkToolItem
+import dev.nitka.nodewire.item.PanelElementItem
+import dev.nitka.nodewire.item.PanelKeyItem
 import net.minecraft.core.BlockPos
 import net.minecraft.core.Direction
+import net.minecraft.world.InteractionHand
+import net.minecraft.world.InteractionResult
+import net.minecraft.world.ItemInteractionResult
+import net.minecraft.world.entity.player.Player
+import net.minecraft.world.item.ItemStack
 import net.minecraft.world.item.context.BlockPlaceContext
 import net.minecraft.world.level.BlockGetter
+import net.minecraft.world.phys.BlockHitResult
+import net.minecraft.world.phys.Vec3
 import net.minecraft.world.level.Level
 import net.minecraft.world.level.block.Block
 import net.minecraft.world.level.block.EntityBlock
@@ -75,6 +86,71 @@ class ControlPanelBlock(props: Properties) : Block(props), EntityBlock {
     override fun newBlockEntity(pos: BlockPos, state: BlockState): BlockEntity =
         ControlPanelBlockEntity(pos, state)
 
+    /**
+     * Empty-hand RMB on the display face → operate the element under the cursor.
+     * Sneak is forwarded (a selector steps backwards); other interactive
+     * elements ignore it.
+     */
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun useWithoutItem(
+        state: BlockState,
+        level: Level,
+        pos: BlockPos,
+        player: Player,
+        hit: BlockHitResult,
+    ): InteractionResult {
+        if (hit.direction != state.getValue(FACE)) return InteractionResult.PASS
+        if (level.isClientSide) return InteractionResult.SUCCESS
+        val be = level.getBlockEntity(pos) as? ControlPanelBlockEntity ?: return InteractionResult.PASS
+        return operate(level, be, state, pos, player, hit)
+    }
+
+    /**
+     * Item-in-hand RMB. Element items, the Panel Key and the Link Tool own their
+     * own face interactions (place / remove / configure / bind) — pass through to
+     * their `useOn`. A plain non-sneak click with any other item operates the
+     * element (so an operator can tap a button with a controller in hand).
+     */
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun useItemOn(
+        stack: ItemStack,
+        state: BlockState,
+        level: Level,
+        pos: BlockPos,
+        player: Player,
+        hand: InteractionHand,
+        hit: BlockHitResult,
+    ): ItemInteractionResult {
+        val item = stack.item
+        if (item is PanelElementItem || item is PanelKeyItem || item is ChannelLinkToolItem) {
+            return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
+        }
+        if (player.isShiftKeyDown || hit.direction != state.getValue(FACE)) {
+            return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
+        }
+        if (level.isClientSide) return ItemInteractionResult.SUCCESS
+        val be = level.getBlockEntity(pos) as? ControlPanelBlockEntity
+            ?: return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
+        return if (operate(level, be, state, pos, player, hit) == InteractionResult.CONSUME) {
+            ItemInteractionResult.CONSUME
+        } else {
+            ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
+        }
+    }
+
+    private fun operate(
+        level: Level,
+        be: ControlPanelBlockEntity,
+        state: BlockState,
+        pos: BlockPos,
+        player: Player,
+        hit: BlockHitResult,
+    ): InteractionResult {
+        val gh = gridHit(state, pos, hit.location) ?: return InteractionResult.PASS
+        val handled = be.handleOperate(gh.cell, gh.uFrac, gh.vFrac, player.isShiftKeyDown, level.gameTime)
+        return if (handled) InteractionResult.CONSUME else InteractionResult.PASS
+    }
+
     @Suppress("UNCHECKED_CAST")
     override fun <T : BlockEntity> getTicker(
         level: Level,
@@ -95,6 +171,23 @@ class ControlPanelBlock(props: Properties) : Block(props), EntityBlock {
 
         /** In-plane rotation of the 16×16 grid, in 90° steps (0..3). */
         val SPIN: IntegerProperty = IntegerProperty.create("spin", 0, 3)
+
+        /** World hit [loc] on a panel at [pos] → its grid cell + sub-cell fraction. */
+        fun gridHit(state: BlockState, pos: BlockPos, loc: Vec3): PanelGrid.Hit? =
+            PanelGrid.hitToGrid(
+                state.getValue(FACE),
+                state.getValue(SPIN),
+                loc.x - pos.x,
+                loc.y - pos.y,
+                loc.z - pos.z,
+            )
+
+        /** Snap a footprint anchor so a `cols×rows` element stays on the grid. */
+        fun clampAnchor(cell: PanelGrid.Cell, cols: Int, rows: Int): PanelGrid.Cell =
+            PanelGrid.Cell(
+                cell.x.coerceIn(0, PanelGrid.SIZE - cols),
+                cell.y.coerceIn(0, PanelGrid.SIZE - rows),
+            )
 
         private const val T = 2.0 / 16.0 // 2px plate thickness
 

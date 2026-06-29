@@ -6,6 +6,7 @@ import dev.nitka.nodewire.client.camera.CameraBlockRenderer
 import dev.nitka.nodewire.client.command.HighlightCommand
 import dev.nitka.nodewire.client.control.ControlSession
 import dev.nitka.nodewire.client.highlight.BlockHighlightRenderer
+import dev.nitka.nodewire.client.panel.ControlPanelBlockRenderer
 import dev.nitka.nodewire.client.link.LinkHud
 import dev.nitka.nodewire.client.link.LinkHudRenderer
 import dev.nitka.nodewire.client.script.ClientScriptCommand
@@ -83,6 +84,11 @@ object NodewireClient {
             event.registerBlockEntityRenderer(
                 dev.nitka.nodewire.Registry.CAMERA_BLOCK_BE.get(),
                 ::CameraBlockRenderer,
+            )
+            // Control Panel: procedural plate + element quads.
+            event.registerBlockEntityRenderer(
+                dev.nitka.nodewire.Registry.CONTROL_PANEL_BE.get(),
+                ::ControlPanelBlockRenderer,
             )
         }
         // Bake the camera's two moving sub-models as standalone models so the

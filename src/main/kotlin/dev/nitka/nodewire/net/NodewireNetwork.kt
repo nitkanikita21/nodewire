@@ -32,6 +32,9 @@ object NodewireNetwork {
         registrar.playToServer(SetLinkToolModePacket.TYPE, SetLinkToolModePacket.STREAM_CODEC, SetLinkToolModePacket::handle)
         registrar.playToServer(ControlInputPacket.TYPE, ControlInputPacket.STREAM_CODEC, ControlInputPacket::handle)
         registrar.playToServer(SetControlConfigPacket.TYPE, SetControlConfigPacket.STREAM_CODEC, SetControlConfigPacket::handle)
+        // Control Panel: place / remove elements in-world.
+        registrar.playToServer(PlaceElementPacket.TYPE, PlaceElementPacket.STREAM_CODEC, PlaceElementPacket::handle)
+        registrar.playToServer(RemoveElementPacket.TYPE, RemoveElementPacket.STREAM_CODEC, RemoveElementPacket::handle)
         // Pillar 2 Stage A: client asks the server to force-load + stream far-camera chunks.
         registrar.playToServer(CameraZonesPacket.TYPE, CameraZonesPacket.STREAM_CODEC, CameraZonesPacket::handle)
         // Server → client packets
