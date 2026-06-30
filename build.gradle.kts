@@ -255,21 +255,22 @@ dependencies {
 
     // --- Sable itself — runtime, required by Create Aeronautics anyway ---
     // Aeronautics declares Sable as a hard dependency, so the dev runtime has to
-    // ship Sable; pinning 1.2.2 (latest 1.21.1 NeoForge build). Sable replaces
+    // ship Sable; pinning 2.0.3 (latest 1.21.1 NeoForge build). Sable replaces
     // the Companion impl via Gradle capability resolution, so live sub-level
     // queries actually return real data at runtime.
-    runtimeOnly("maven.modrinth:sable:1.2.2+mc1.21.1")
+    runtimeOnly("maven.modrinth:sable:2.0.3+mc1.21.1")
 
-    // --- Create Aeronautics 1.2.1 (via Modrinth maven) ---
+    // --- Create Aeronautics 1.3.0 (via Modrinth maven) ---
     // Curse Maven rejects this project with 403 (monetized status on
     // CurseForge), so we pull from Modrinth instead. Aircraft built by
     // Aeronautics ARE Sable sub-levels, so they're already claimed
     // transparently by SableSubLevelBackend — no additional backend code
-    // needed for v1. The dep isr kept compileOnly + runtimeOnly so we can
+    // needed for v1. The dep is kept compileOnly + runtimeOnly so we can
     // call into Aeronautics-specific APIs later (signal sources on
     // aircraft, propeller hooks, etc.) without making it a hard dep.
-    compileOnly("maven.modrinth:create-aeronautics:1.2.1+mc1.21.1")
-    runtimeOnly("maven.modrinth:create-aeronautics:1.2.1+mc1.21.1")
+    // 1.3.0 is the build that pairs with Sable 2.x.
+    compileOnly("maven.modrinth:create-aeronautics:1.3.0+mc1.21.1")
+    runtimeOnly("maven.modrinth:create-aeronautics:1.3.0+mc1.21.1")
 
     // --- Create: Tweaked Controllers 1.2.7 (NeoForge 1.21.1) ---
     // Pulled from Modrinth, not Curse Maven: cursemaven.com now answers 402
@@ -284,7 +285,7 @@ dependencies {
     // neoforge.mods.toml-style descriptor and references
     // net.neoforged.neoforge.capabilities.BlockCapability via
     // dan200.computercraft.api.peripheral.PeripheralCapability).
-    val ccVer = "1.119.0"
+    val ccVer = "1.120.0"
     compileOnly("cc.tweaked:cc-tweaked-${mcVer}-forge:${ccVer}")
     runtimeOnly("cc.tweaked:cc-tweaked-${mcVer}-forge:${ccVer}")
     testImplementation("cc.tweaked:cc-tweaked-${mcVer}-forge:${ccVer}")
@@ -315,13 +316,13 @@ dependencies {
     implementation("com.github.bawnorton.mixinsquared:mixinsquared-neoforge:0.3.7-beta.2")
 
     // JEI — recipe viewer (NeoForge variant for 1.21.1)
-    compileOnly("mezz.jei:jei-${mcVer}-neoforge-api:19.21.0.247")
-    compileOnly("mezz.jei:jei-${mcVer}-common-api:19.21.0.247")
-    runtimeOnly("mezz.jei:jei-${mcVer}-neoforge:19.21.0.247")
+    compileOnly("mezz.jei:jei-${mcVer}-neoforge-api:19.27.0.343")
+    compileOnly("mezz.jei:jei-${mcVer}-common-api:19.27.0.343")
+    runtimeOnly("mezz.jei:jei-${mcVer}-neoforge:19.27.0.343")
 
     // EMI — NeoForge variant for 1.21.1
-    compileOnly("dev.emi:emi-neoforge:1.1.18+${mcVer}")
-    runtimeOnly("dev.emi:emi-neoforge:1.1.18+${mcVer}")
+    compileOnly("dev.emi:emi-neoforge:1.1.24+${mcVer}")
+    runtimeOnly("dev.emi:emi-neoforge:1.1.24+${mcVer}")
 
     // --- Compose UI framework (unchanged) ---
     compileOnly("org.jetbrains.compose.runtime:runtime:1.7.0") {
