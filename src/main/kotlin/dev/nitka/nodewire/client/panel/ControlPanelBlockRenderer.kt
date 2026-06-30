@@ -9,9 +9,12 @@ import dev.nitka.nodewire.block.panel.PanelElements
 import dev.nitka.nodewire.block.panel.PanelGrid
 import dev.nitka.nodewire.block.panel.PlacedElement
 import dev.nitka.nodewire.client.video.VideoBlit
+import dev.nitka.nodewire.client.video.VideoManager
 import dev.nitka.nodewire.item.PanelElementItem
 import dev.nitka.nodewire.item.PanelKeyItem
 import net.minecraft.client.Minecraft
+import net.minecraft.client.gui.Font
+import net.minecraft.client.renderer.LightTexture
 import net.minecraft.client.renderer.MultiBufferSource
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderer
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider
@@ -50,24 +53,43 @@ class ControlPanelBlockRenderer(
         light: Int,
         overlay: Int,
     ) {
+        // Never draw during a camera capture pass — the capture re-enters
+        // renderLevel and an extra BER here breaks it (leaking the JOML modelview
+        // stack → "max stack size of 16"). Same guard as ScreenBlockRenderer.
+        if (VideoManager.isCapturing()) return
+
         val elements = be.elements()
         val face = be.blockState.getValue(ControlPanelBlock.FACE)
         val spin = be.blockState.getValue(ControlPanelBlock.SPIN)
 
         poseStack.pushPose()
         val matrix = poseStack.last().pose()
+        val font = Minecraft.getInstance().font
         val consumer = buffers.getBuffer(VideoBlit.plainTypeFor(whiteTexId()))
 
+        // All colour quads first, into a single held buffer. Text is collected and
+        // drawn LAST: font.drawInBatch switches the MultiBufferSource's active
+        // buffer (text render type), which would end this quad buffer mid-stream
+        // and crash the next quad with "Not building!".
+        val texts = ArrayList<TextDraw>()
         rect(consumer, matrix, face, spin, 0.0, 0.0, 1.0, 1.0, COL_PLATE, OUT_PLATE)
-        for (e in elements) drawElement(consumer, matrix, face, spin, e)
+        for (e in elements) drawElement(consumer, matrix, face, spin, e, texts)
         drawGuide(consumer, matrix, be, face, spin)
+        for (t in texts) drawText(matrix, buffers, font, face, spin, t.u0, t.v0, t.u1, t.v1, t.text, t.color)
         poseStack.popPose()
     }
 
     override fun getRenderBoundingBox(be: ControlPanelBlockEntity): net.minecraft.world.phys.AABB =
         net.minecraft.world.phys.AABB(be.blockPos)
 
-    private fun drawElement(consumer: VertexConsumer, m: Matrix4f, face: Direction, spin: Int, e: PlacedElement) {
+    private fun drawElement(
+        consumer: VertexConsumer,
+        m: Matrix4f,
+        face: Direction,
+        spin: Int,
+        e: PlacedElement,
+        texts: MutableList<TextDraw>,
+    ) {
         if (PanelElements.byId(e.typeId) == null) return
         val gap = ELEMENT_GAP
         val u0 = (e.cellX + gap) / 16.0
@@ -126,11 +148,18 @@ class ControlPanelBlockRenderer(
             }
             "numeric" -> {
                 body(COL_SCREEN)
-                val frac = norm(e.value, d("min", 0.0), d("max", 1.0))
-                over(u0, v1 - (v1 - v0) * 0.18, u0 + frac * (u1 - u0), v1, COL_FILL)
+                val decimals = d("decimals", 1.0).toInt().coerceIn(0, 6)
+                val num = formatNum(e.value, decimals) + cfg.getString("suffix")
+                val label = cfg.getString("label")
+                val text = if (label.isNotEmpty()) "$label $num" else num
+                texts.add(TextDraw(u0, v0, u1, v1, text, COL_TEXT))
             }
             "screen" -> body(COL_SCREEN)
-            "label" -> body(COL_LABEL)
+            "label" -> {
+                body(COL_LABEL)
+                val text = cfg.getString("text")
+                if (text.isNotEmpty()) texts.add(TextDraw(u0, v0, u1, v1, text, COL_TEXT))
+            }
             else -> body(COL_BODY)
         }
     }
@@ -164,6 +193,74 @@ class ControlPanelBlockRenderer(
     private fun norm(value: Double, min: Double, max: Double): Double {
         if (max == min) return 0.0
         return ((value - min) / (max - min)).coerceIn(0.0, 1.0)
+    }
+
+    /**
+     * Draw [text] fitted + centred into the grid rect, oriented to the [face]
+     * (any face / spin). Builds a basis matrix from the surface axes: text-x →
+     * grid-u, text-y → grid-v, text-z → outward normal, then scales to fit.
+     */
+    private fun drawText(
+        m: Matrix4f,
+        buffers: MultiBufferSource,
+        font: Font,
+        face: Direction,
+        spin: Int,
+        u0: Double,
+        v0: Double,
+        u1: Double,
+        v1: Double,
+        text: String,
+        argb: Int,
+    ) {
+        if (text.isEmpty()) return
+        val o = PanelSurface.local(u0, v0, face, spin, OUT_TEXT)
+        val ue = PanelSurface.local(u1, v0, face, spin, OUT_TEXT)
+        val ve = PanelSurface.local(u0, v1, face, spin, OUT_TEXT)
+        val ux = floatArrayOf(ue[0] - o[0], ue[1] - o[1], ue[2] - o[2])
+        val vy = floatArrayOf(ve[0] - o[0], ve[1] - o[1], ve[2] - o[2])
+        val rectW = len3(ux)
+        val rectH = len3(vy)
+        val w = font.width(text).toFloat()
+        if (rectW <= 0f || rectH <= 0f || w <= 0f) return
+        val ud = norm3(ux)
+        val vd = norm3(vy)
+        val lineH = 8f
+        val scale = minOf(rectW / w, rectH / lineH) * 0.85f
+        val offU = (rectW - w * scale) / 2f
+        val offV = (rectH - lineH * scale) / 2f
+        val ox = o[0] + ud[0] * offU + vd[0] * offV
+        val oy = o[1] + ud[1] * offU + vd[1] * offV
+        val oz = o[2] + ud[2] * offU + vd[2] * offV
+        val n = normalOf(face)
+        // JOML column-major: (col0 | col1 | col2 | col3).
+        val basis = Matrix4f(
+            ud[0] * scale, ud[1] * scale, ud[2] * scale, 0f,
+            vd[0] * scale, vd[1] * scale, vd[2] * scale, 0f,
+            n[0], n[1], n[2], 0f,
+            ox, oy, oz, 1f,
+        )
+        val full = Matrix4f(m).mul(basis)
+        font.drawInBatch(text, 0f, 0f, argb, false, full, buffers, Font.DisplayMode.NORMAL, 0, LightTexture.FULL_BRIGHT)
+    }
+
+    private fun formatNum(value: Double, decimals: Int): String =
+        String.format(java.util.Locale.ROOT, "%.${decimals}f", value)
+
+    private fun len3(v: FloatArray): Float = kotlin.math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
+
+    private fun norm3(v: FloatArray): FloatArray {
+        val l = len3(v)
+        return if (l <= 0f) v else floatArrayOf(v[0] / l, v[1] / l, v[2] / l)
+    }
+
+    private fun normalOf(face: Direction): FloatArray = when (face) {
+        Direction.UP -> floatArrayOf(0f, 1f, 0f)
+        Direction.DOWN -> floatArrayOf(0f, -1f, 0f)
+        Direction.NORTH -> floatArrayOf(0f, 0f, -1f)
+        Direction.SOUTH -> floatArrayOf(0f, 0f, 1f)
+        Direction.EAST -> floatArrayOf(1f, 0f, 0f)
+        Direction.WEST -> floatArrayOf(-1f, 0f, 0f)
     }
 
     /**
@@ -220,6 +317,16 @@ class ControlPanelBlockRenderer(
         rect(consumer, m, face, spin, u1 - w, v0, u1 + w, v1, color, OUT_GHOST) // right
     }
 
+    /** A deferred text draw (collected during the quad pass, drawn after it). */
+    private class TextDraw(
+        val u0: Double,
+        val v0: Double,
+        val u1: Double,
+        val v1: Double,
+        val text: String,
+        val color: Int,
+    )
+
     companion object {
         private const val ELEMENT_GAP = 0.06 // cell inset between an element body and its footprint
         private const val OUT_PLATE = 0.010
@@ -227,9 +334,11 @@ class ControlPanelBlockRenderer(
         private const val OUT_OVER = 0.020
         private const val OUT_GRID = 0.025
         private const val OUT_GHOST = 0.029
+        private const val OUT_TEXT = 0.022
         private const val GRID_HW = 0.0016 // grid-line half-width in grid (u,v) units
         private const val GHOST_HW = 0.004
 
+        private val COL_TEXT = 0xFFE8F0F0.toInt()
         private val COL_GRID = 0xFF9AA0A6.toInt()
         private val COL_FREE = 0xFF3FD24A.toInt()
         private val COL_BLOCKED = 0xFFE0403A.toInt()
