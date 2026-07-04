@@ -1,1 +1,1 @@
-{ "parent": "minecraft:item/stick" }
+{ "parent": "minecraft:item/generated", "textures": { "layer0": "nodewire:item/panel_key" } }

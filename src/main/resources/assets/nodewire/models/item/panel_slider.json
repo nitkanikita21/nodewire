@@ -1,1 +1,1 @@
-{ "parent": "minecraft:block/iron_block" }
+{ "parent": "minecraft:item/generated", "textures": { "layer0": "nodewire:item/panel_slider" } }
