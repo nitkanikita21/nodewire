@@ -50,6 +50,47 @@ class ControlPanelBlockEntity(pos: BlockPos, state: BlockState) :
     /** Transient per-momentary-pin "fired at gameTime" stamps (operate flow). */
     private val pulseStamps: MutableMap<String, Long> = mutableMapOf()
 
+    // ── mini-screen video (per "screen" element) ──────────────────────────
+    // Only the bare UUID handle crosses the wire (the net invariant); the BER
+    // blits the handle's client-local VideoManager surface into the element
+    // rect. Client refcounts via one ScreenHandleTracker per element pin.
+    private val videoHandles: MutableMap<String, java.util.UUID> = mutableMapOf()
+    private val videoTrackers: MutableMap<String, ScreenHandleTracker> = mutableMapOf()
+
+    /** CLIENT (BER): the live video handle for a screen element's pin, or null. */
+    fun videoHandle(pinId: String): java.util.UUID? = videoHandles[pinId]
+
+    private fun writeVideoHandle(pinId: String, handle: java.util.UUID?) {
+        val changed = if (handle == null) videoHandles.remove(pinId) != null
+        else videoHandles.put(pinId, handle) != handle
+        if (!changed) return
+        setChanged()
+        val lvl = level
+        if (lvl != null && !lvl.isClientSide) {
+            lvl.sendBlockUpdated(blockPos, blockState, blockState, Block.UPDATE_CLIENTS)
+        } else {
+            retargetClientRefcounts()
+        }
+    }
+
+    /** CLIENT: reconcile every element tracker to the current handle map. */
+    private fun retargetClientRefcounts() {
+        // Retarget live pins, then release trackers whose pin vanished.
+        for ((pin, handle) in videoHandles) trackerFor(pin).onHandle(handle)
+        val stale = videoTrackers.keys - videoHandles.keys
+        for (pin in stale) videoTrackers.remove(pin)?.onUnload()
+    }
+
+    private fun trackerFor(pin: String): ScreenHandleTracker = videoTrackers.getOrPut(pin) {
+        ScreenHandleTracker(object : ScreenHandleTracker.Refcounter {
+            override fun acquire(handle: java.util.UUID) =
+                dev.nitka.nodewire.client.video.VideoManager.acquire(handle)
+
+            override fun release(handle: java.util.UUID) =
+                dev.nitka.nodewire.client.video.VideoManager.release(handle)
+        })
+    }
+
     // ── element editing (server) ──────────────────────────────────────────
     fun elements(): List<PlacedElement> = store.all()
 
@@ -64,10 +105,14 @@ class ControlPanelBlockEntity(pos: BlockPos, state: BlockState) :
         return ok
     }
 
-    /** Remove the element covering [cell]; drop its stale pulse stamp + sync. */
+    /** Remove the element covering [cell]; drop its stale pulse stamp, video
+     *  handle and any links landing on its pin, then sync. */
     fun removeElementAt(cell: PanelGrid.Cell): PlacedElement? {
         val removed = store.removeAt(cell) ?: return null
-        pulseStamps.remove(removed.pinId())
+        val pin = removed.pinId()
+        pulseStamps.remove(pin)
+        videoHandles.remove(pin)
+        pinLinks.removeAll { it.targetPin == pin }
         pushSync()
         return removed
     }
@@ -146,7 +191,10 @@ class ControlPanelBlockEntity(pos: BlockPos, state: BlockState) :
 
     override fun writePin(id: String, value: PinValue) {
         val e = store.all().firstOrNull { it.pinId() == id } ?: return
-        // VIDEO (mini-screen) routes through a dedicated handle path — added later.
+        if (e.typeId == "screen") {
+            if (value is PinValue.Video) writeVideoHandle(id, ScreenBlockEntity.decodeHandle(value))
+            return
+        }
         val v = when (value) {
             is PinValue.Bool -> if (value.value) 1.0 else 0.0
             is PinValue.Int -> value.value.toDouble()
@@ -159,6 +207,10 @@ class ControlPanelBlockEntity(pos: BlockPos, state: BlockState) :
 
     override fun clearPin(id: String) {
         val e = store.all().firstOrNull { it.pinId() == id } ?: return
+        if (e.typeId == "screen") {
+            writeVideoHandle(id, null)
+            return
+        }
         setElementValue(PanelGrid.Cell(e.cellX, e.cellY), 0.0)
     }
 
@@ -172,6 +224,11 @@ class ControlPanelBlockEntity(pos: BlockPos, state: BlockState) :
         if (pinLinks.isNotEmpty()) {
             PinLink.CODEC.listOf().encodeStart(NbtOps.INSTANCE, pinLinks.toList())
                 .result().ifPresent { tag.put(TAG_PIN_LINKS, it) }
+        }
+        if (videoHandles.isNotEmpty()) {
+            val v = CompoundTag()
+            for ((pin, handle) in videoHandles) v.putUUID(pin, handle)
+            tag.put(TAG_VIDEO, v)
         }
     }
 
@@ -187,6 +244,27 @@ class ControlPanelBlockEntity(pos: BlockPos, state: BlockState) :
             PinLink.CODEC.listOf().parse(NbtOps.INSTANCE, tag.get(TAG_PIN_LINKS))
                 .result().ifPresent { pinLinks.addAll(it) }
         }
+        videoHandles.clear()
+        if (tag.contains(TAG_VIDEO)) {
+            val v = tag.getCompound(TAG_VIDEO)
+            for (key in v.allKeys) {
+                if (v.hasUUID(key)) videoHandles[key] = v.getUUID(key)
+            }
+        }
+        if (level?.isClientSide == true) retargetClientRefcounts()
+    }
+
+    override fun onLoad() {
+        super.onLoad()
+        if (level?.isClientSide == true) retargetClientRefcounts()
+    }
+
+    override fun setRemoved() {
+        if (level?.isClientSide == true) {
+            for (t in videoTrackers.values) t.onUnload()
+            videoTrackers.clear()
+        }
+        super.setRemoved()
     }
 
     override fun getUpdateTag(registries: HolderLookup.Provider): CompoundTag =
@@ -206,5 +284,6 @@ class ControlPanelBlockEntity(pos: BlockPos, state: BlockState) :
     companion object {
         private const val TAG_ELEMENTS = "elements"
         private const val TAG_PIN_LINKS = "pin_links"
+        private const val TAG_VIDEO = "video_handles"
     }
 }

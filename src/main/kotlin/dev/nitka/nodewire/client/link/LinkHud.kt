@@ -138,6 +138,25 @@ object LinkHud {
             highlight = rows.indexOfFirst { it.active }
         }
 
+        // Control Panel: pointing wins. The pin of the ELEMENT under the
+        // crosshair auto-highlights every tick, so binding is literally "point
+        // at the toggle and click" — no scrolling through a long pin list.
+        // (Scroll still works on any other block, and on a panel while aiming
+        // at an empty cell.)
+        val state = level.getBlockState(pos)
+        if (state.block is dev.nitka.nodewire.block.ControlPanelBlock &&
+            face == state.getValue(dev.nitka.nodewire.block.ControlPanelBlock.FACE)
+        ) {
+            val cell = dev.nitka.nodewire.block.ControlPanelBlock.gridHit(state, pos, hit.location)?.cell
+            val el = cell?.let {
+                (level.getBlockEntity(pos) as? dev.nitka.nodewire.block.ControlPanelBlockEntity)?.elementAt(it)
+            }
+            if (el != null) {
+                val idx = newRows.indexOfFirst { it.active && it.pin.id == el.pinId() }
+                if (idx >= 0) highlight = idx
+            }
+        }
+
         // Light up the source block of the hovered bound row (through walls), so
         // you see where the wire goes. Refreshed each tick → fades when you
         // scroll off / look away.

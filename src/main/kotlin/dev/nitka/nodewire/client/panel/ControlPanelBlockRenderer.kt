@@ -10,6 +10,7 @@ import dev.nitka.nodewire.block.panel.PanelGrid
 import dev.nitka.nodewire.block.panel.PlacedElement
 import dev.nitka.nodewire.client.video.VideoBlit
 import dev.nitka.nodewire.client.video.VideoManager
+import dev.nitka.nodewire.item.ChannelLinkToolItem
 import dev.nitka.nodewire.item.PanelElementItem
 import dev.nitka.nodewire.item.PanelKeyItem
 import net.minecraft.client.Minecraft
@@ -67,14 +68,16 @@ class ControlPanelBlockRenderer(
         val font = Minecraft.getInstance().font
         val consumer = buffers.getBuffer(VideoBlit.plainTypeFor(whiteTexId()))
 
-        // All colour quads first, into a single held buffer. Text is collected and
-        // drawn LAST: font.drawInBatch switches the MultiBufferSource's active
-        // buffer (text render type), which would end this quad buffer mid-stream
-        // and crash the next quad with "Not building!".
+        // All colour quads first, into a single held buffer. Video blits and text
+        // are collected and drawn LAST: requesting another render type (or
+        // font.drawInBatch) switches the MultiBufferSource's active buffer, which
+        // would end this quad buffer mid-stream and crash with "Not building!".
         val texts = ArrayList<TextDraw>()
+        val videos = ArrayList<VideoDraw>()
         rect(consumer, matrix, face, spin, 0.0, 0.0, 1.0, 1.0, COL_PLATE, OUT_PLATE)
-        for (e in elements) drawElement(consumer, matrix, face, spin, e, texts)
+        for (e in elements) drawElement(consumer, matrix, be, face, spin, e, texts, videos)
         drawGuide(consumer, matrix, be, face, spin)
+        for (v in videos) drawVideo(matrix, buffers, face, spin, v)
         for (t in texts) drawText(matrix, buffers, font, face, spin, t.u0, t.v0, t.u1, t.v1, t.text, t.color)
         poseStack.popPose()
     }
@@ -85,10 +88,12 @@ class ControlPanelBlockRenderer(
     private fun drawElement(
         consumer: VertexConsumer,
         m: Matrix4f,
+        be: ControlPanelBlockEntity,
         face: Direction,
         spin: Int,
         e: PlacedElement,
         texts: MutableList<TextDraw>,
+        videos: MutableList<VideoDraw>,
     ) {
         if (PanelElements.byId(e.typeId) == null) return
         val gap = ELEMENT_GAP
@@ -154,7 +159,10 @@ class ControlPanelBlockRenderer(
                 val text = if (label.isNotEmpty()) "$label $num" else num
                 texts.add(TextDraw(u0, v0, u1, v1, text, COL_TEXT))
             }
-            "screen" -> body(COL_SCREEN)
+            "screen" -> {
+                body(COL_SCREEN)
+                be.videoHandle(e.pinId())?.let { videos.add(VideoDraw(u0, v0, u1, v1, it)) }
+            }
             "label" -> {
                 body(COL_LABEL)
                 val text = cfg.getString("text")
@@ -277,7 +285,8 @@ class ControlPanelBlockRenderer(
         val player = mc.player ?: return
         val held = player.mainHandItem.item
         val element = held as? PanelElementItem
-        if (element == null && held !is PanelKeyItem) return
+        val isLinkTool = held is ChannelLinkToolItem
+        if (element == null && held !is PanelKeyItem && !isLinkTool) return
         val hr = mc.hitResult as? BlockHitResult ?: return
         if (hr.blockPos != be.blockPos || hr.direction != face) return
 
@@ -294,8 +303,12 @@ class ControlPanelBlockRenderer(
             val blocked = PanelGrid.overlaps(be.occupiedCells(), anchor, type.cols, type.rows)
             ghostOutline(consumer, m, face, spin, anchor.x, anchor.y, type.cols, type.rows, if (blocked) COL_BLOCKED else COL_FREE)
         } else {
+            // Panel Key: orange = removal/config target. Link Tool: cyan = the
+            // element whose pin arms/commits on click (mirrors LinkHud's
+            // pointing-wins highlight).
             be.elementAt(hit.cell)?.let {
-                ghostOutline(consumer, m, face, spin, it.cellX, it.cellY, it.cols, it.rows, COL_KEY)
+                val color = if (isLinkTool) COL_LINK else COL_KEY
+                ghostOutline(consumer, m, face, spin, it.cellX, it.cellY, it.cols, it.rows, color)
             }
         }
     }
@@ -327,6 +340,34 @@ class ControlPanelBlockRenderer(
         val color: Int,
     )
 
+    /** A deferred mini-screen video blit (drawn after the quad pass). */
+    private class VideoDraw(
+        val u0: Double,
+        val v0: Double,
+        val u1: Double,
+        val v1: Double,
+        val handle: java.util.UUID,
+    )
+
+    /**
+     * Blit a video handle's FBO into the element rect. UVs put texture v=0 at
+     * the rect's BOTTOM edge (grid v1) — FBO colour attachments are bottom-up,
+     * same convention as ScreenBlockRenderer.emitFace. Double-sided.
+     */
+    private fun drawVideo(m: Matrix4f, buffers: MultiBufferSource, face: Direction, spin: Int, v: VideoDraw) {
+        val surface = dev.nitka.nodewire.client.video.VideoManager.getOrCreate(v.handle)
+            as? dev.nitka.nodewire.client.video.GlVideoSurface ?: return
+        val consumer = buffers.getBuffer(VideoBlit.plainTypeFor(surface.colorTextureId()))
+        val tl = PanelSurface.local(v.u0, v.v0, face, spin, OUT_OVER)
+        val tr = PanelSurface.local(v.u1, v.v0, face, spin, OUT_OVER)
+        val br = PanelSurface.local(v.u1, v.v1, face, spin, OUT_OVER)
+        val bl = PanelSurface.local(v.u0, v.v1, face, spin, OUT_OVER)
+        fun vert(p: FloatArray, u: Float, vv: Float) =
+            consumer.addVertex(m, p[0], p[1], p[2]).setUv(u, vv).setColor(1f, 1f, 1f, 1f)
+        vert(tl, 0f, 1f); vert(bl, 0f, 0f); vert(br, 1f, 0f); vert(tr, 1f, 1f) // front
+        vert(tr, 1f, 1f); vert(br, 1f, 0f); vert(bl, 0f, 0f); vert(tl, 0f, 1f) // back
+    }
+
     companion object {
         private const val ELEMENT_GAP = 0.06 // cell inset between an element body and its footprint
         private const val OUT_PLATE = 0.010
@@ -343,6 +384,7 @@ class ControlPanelBlockRenderer(
         private val COL_FREE = 0xFF3FD24A.toInt()
         private val COL_BLOCKED = 0xFFE0403A.toInt()
         private val COL_KEY = 0xFFE8A23A.toInt()
+        private val COL_LINK = 0xFF5CC8E8.toInt()
 
         private const val COL_PLATE = 0xFF202225.toInt()
         private const val COL_BODY = 0xFF334455.toInt()
