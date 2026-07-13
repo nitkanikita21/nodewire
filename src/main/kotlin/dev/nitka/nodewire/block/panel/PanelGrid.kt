@@ -35,12 +35,14 @@ object PanelGrid {
         footprintCells(anchor, cols, rows).any { it in occupied }
 
     /**
-     * (u,v) in `[0,1)` on the hit [face], top-left origin, `v` down — mirrors the
-     * per-face right-axis convention in [dev.nitka.nodewire.block.ScreenSpan.touchPx]
+     * (u,v) on the hit [face], top-left origin, `v` down — mirrors the per-face
+     * right-axis convention in [dev.nitka.nodewire.block.ScreenSpan.touchPx]
      * (NORTH→`1-x`, SOUTH→`x`, WEST→`z`, EAST→`1-z`), with `v` flipped to y-down.
-     * Null when the block-local coords fall off the face.
+     * Coordinates CLAMP into the face instead of rejecting, so any ray that hits
+     * the panel's shape — including a raised element's SIDE wall, at any
+     * approach angle — resolves to the grid cell under it.
      */
-    private fun faceUv(face: Direction, x: Double, y: Double, z: Double): Pair<Double, Double>? {
+    private fun faceUv(face: Direction, x: Double, y: Double, z: Double): Pair<Double, Double> {
         val (u, v) = when (face) {
             Direction.SOUTH -> x to (1.0 - y)
             Direction.NORTH -> (1.0 - x) to (1.0 - y)
@@ -49,8 +51,8 @@ object PanelGrid {
             Direction.UP -> x to z
             Direction.DOWN -> x to (1.0 - z)
         }
-        if (u < 0.0 || u >= 1.0 || v < 0.0 || v >= 1.0) return null
-        return u to v
+        // Just under 1.0 so a clamped far-edge hit still lands in cell 15.
+        return u.coerceIn(0.0, 1.0 - 1.0e-9) to v.coerceIn(0.0, 1.0 - 1.0e-9)
     }
 
     /** Rotate `(u,v)` on the unit square by `spin × 90°` (CCW), wrapping negatives. */
@@ -65,10 +67,11 @@ object PanelGrid {
     /**
      * Map a block-local fractional hit (`hitX/Y/Z` ∈ `[0,1]`, i.e.
      * `BlockHitResult.location - blockPos` at the call site) on [face] with the
-     * given [spin] to a grid [Hit]. Null when the hit is off the face plane.
+     * given [spin] to a grid [Hit]. Coordinates clamp into the grid (see
+     * [faceUv]) so hits on raised element geometry always resolve.
      */
     fun hitToGrid(face: Direction, spin: Int, hitX: Double, hitY: Double, hitZ: Double): Hit? {
-        val (u0, v0) = faceUv(face, hitX, hitY, hitZ) ?: return null
+        val (u0, v0) = faceUv(face, hitX, hitY, hitZ)
         val (u, v) = applySpin(u0, v0, spin)
         val cx = floor(u * SIZE).toInt().coerceIn(0, SIZE - 1)
         val cy = floor(v * SIZE).toInt().coerceIn(0, SIZE - 1)

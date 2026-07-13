@@ -112,6 +112,10 @@ object NodewireClient {
         }
         FORGE_BUS.addListener(::onClientTick)
         FORGE_BUS.addListener<RenderLevelStageEvent>(WireWorldRenderer::render)
+        // Control Panel: outline only the ELEMENT under the crosshair.
+        FORGE_BUS.addListener<net.neoforged.neoforge.client.event.RenderHighlightEvent.Block>(
+            dev.nitka.nodewire.client.panel.PanelHighlightRenderer::onHighlight,
+        )
         FORGE_BUS.addListener<RenderLevelStageEvent>(BlockHighlightRenderer::onRender)
         // Phase 2c — CLIENT script frame driver (ONE stage; guards double-fire
         // internally) + the `/nodewire clientscripts <on|off>` kill-switch.

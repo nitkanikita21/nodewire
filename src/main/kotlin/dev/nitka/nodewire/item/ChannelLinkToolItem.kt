@@ -115,15 +115,23 @@ class ChannelLinkToolItem(props: Properties) : Item(props) {
             armSource(stack, level, pos, pin)
             return
         }
-        if (armed.source.payload.blockPos == pos) {
-            actionBar("Source and target must differ", true)
+        // Same-block links are legal (panel toggle → panel lamp); only the very
+        // same pin feeding itself is rejected.
+        if (armed.source.payload.blockPos == pos && armed.pin == pin.id) {
+            actionBar("A pin can't feed itself", true)
             return
         }
         PacketDistributor.sendToServer(
             BindPinPacket(armed.source, armed.pin, EndpointRef.from(level, pos), pin.id),
         )
-        clearArmedSource(stack)
-        actionBar("Linking ${armed.label} → ${pin.label} @ (${pos.x},${pos.y},${pos.z})…", false)
+        // Ctrl-held commit keeps the source armed — spray one output across
+        // several inputs without re-arming between clicks.
+        if (net.minecraft.client.gui.screens.Screen.hasControlDown()) {
+            actionBar("Linking ${armed.label} → ${pin.label}  (Ctrl — source kept)", false)
+        } else {
+            clearArmedSource(stack)
+            actionBar("Linking ${armed.label} → ${pin.label} @ (${pos.x},${pos.y},${pos.z})…", false)
+        }
     }
 
     /**

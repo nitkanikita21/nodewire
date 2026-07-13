@@ -20,7 +20,6 @@ class PanelKeyItem(props: Properties) : Item(props) {
         val pos = context.clickedPos
         val state = level.getBlockState(pos)
         if (state.block !is ControlPanelBlock) return super.useOn(context)
-        if (context.clickedFace != state.getValue(ControlPanelBlock.FACE)) return InteractionResult.PASS
         if (!level.isClientSide) return InteractionResult.CONSUME
         val hit = ControlPanelBlock.gridHit(state, pos, context.clickLocation) ?: return InteractionResult.PASS
         // Sneak-RMB → open the element's config screen (client-only); plain RMB → remove.

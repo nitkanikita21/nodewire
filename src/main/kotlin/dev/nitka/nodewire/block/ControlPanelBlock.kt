@@ -73,7 +73,12 @@ class ControlPanelBlock(props: Properties) : Block(props), EntityBlock {
         level: BlockGetter,
         pos: BlockPos,
         context: CollisionContext,
-    ): VoxelShape = SHAPES[state.getValue(FACE)] ?: Shapes.block()
+    ): VoxelShape =
+        // Plate + raised element boxes (BE-cached): the raycast targets
+        // individual elements from any angle, and the element under the cursor
+        // gets its own selection outline (PanelHighlightRenderer).
+        (level.getBlockEntity(pos) as? ControlPanelBlockEntity)?.blockShape()
+            ?: SHAPES[state.getValue(FACE)] ?: Shapes.block()
 
     @Suppress("OVERRIDE_DEPRECATION")
     override fun getCollisionShape(
@@ -87,9 +92,10 @@ class ControlPanelBlock(props: Properties) : Block(props), EntityBlock {
         ControlPanelBlockEntity(pos, state)
 
     /**
-     * Empty-hand RMB on the display face → operate the element under the cursor.
-     * Sneak is forwarded (a selector steps backwards); other interactive
-     * elements ignore it.
+     * Empty-hand RMB → operate the element under the cursor. The hit resolves
+     * through the raised element boxes in [getShape], so aiming at an element's
+     * side (any approach angle) works too. Sneak is forwarded (a selector steps
+     * backwards); other interactive elements ignore it.
      */
     @Suppress("OVERRIDE_DEPRECATION")
     override fun useWithoutItem(
@@ -99,7 +105,6 @@ class ControlPanelBlock(props: Properties) : Block(props), EntityBlock {
         player: Player,
         hit: BlockHitResult,
     ): InteractionResult {
-        if (hit.direction != state.getValue(FACE)) return InteractionResult.PASS
         if (level.isClientSide) return InteractionResult.SUCCESS
         val be = level.getBlockEntity(pos) as? ControlPanelBlockEntity ?: return InteractionResult.PASS
         return operate(level, be, state, pos, player, hit)
@@ -125,7 +130,7 @@ class ControlPanelBlock(props: Properties) : Block(props), EntityBlock {
         if (item is PanelElementItem || item is PanelKeyItem || item is ChannelLinkToolItem) {
             return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
         }
-        if (player.isShiftKeyDown || hit.direction != state.getValue(FACE)) {
+        if (player.isShiftKeyDown) {
             return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
         }
         if (level.isClientSide) return ItemInteractionResult.SUCCESS
@@ -189,11 +194,22 @@ class ControlPanelBlock(props: Properties) : Block(props), EntityBlock {
                 cell.y.coerceIn(0, PanelGrid.SIZE - rows),
             )
 
-        private const val T = 2.0 / 16.0 // 2px plate thickness
+        /** The bare 2px plate slab for [face] (the empty-panel raycast shape and
+         *  the hovered-outline fallback when no element is under the cursor). */
+        fun plateShape(face: Direction): VoxelShape = SHAPES[face] ?: Shapes.block()
 
         /**
-         * Per-face 2px slab on the **mounting** (−FACE) side of the cell, so the
-         * thin plate sits against the block it's attached to and the display faces
+         * Plate SHAPE thickness. Must hug the RENDERED plate front
+         * (`PanelSpace.FACE_GAP` + the plate outset ≈ 0.025): a thicker slab
+         * floats an invisible pick-plane in front of the drawn surface (parallax
+         * mis-picks at an angle) and swallows the raised element boxes (≤0.08),
+         * so the raycast could never target an element individually.
+         */
+        private const val T = 0.03
+
+        /**
+         * Per-face thin slab on the **mounting** (−FACE) side of the cell, so the
+         * plate sits against the block it's attached to and the display faces
          * outward along [FACE]. Matches the renderer's display plane.
          */
         private val SHAPES: Map<Direction, VoxelShape> = mapOf(

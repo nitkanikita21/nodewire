@@ -21,12 +21,20 @@ class PanelAnalogTest {
         assertEquals(2, PanelGrid.selectorNext(0, 3, true))
     }
 
-    @Test fun `outputs and inputs derive from element pin direction`() {
+    @Test fun `outputs and inputs derive from element pin specs`() {
         val els = listOf(
             PlacedElement("toggle", 0, 0, 2, 2, CompoundTag(), 0.0),
             PlacedElement("lamp", 4, 0, 1, 1, CompoundTag(), 0.0),
         )
+        // Primary pins keep the bare cell-anchor id; named pins are suffixed.
         assertEquals(listOf("toggle@0,0"), PanelPins.outputs(els).map { it.id })
-        assertEquals(listOf("lamp@4,0"), PanelPins.inputs(els).map { it.id })
+        assertEquals(listOf("toggle@0,0:set", "lamp@4,0"), PanelPins.inputs(els).map { it.id })
+    }
+
+    @Test fun `wire ids split back into base and pin name`() {
+        assertEquals("toggle@0,0", PanelPins.baseId("toggle@0,0:set"))
+        assertEquals("set", PanelPins.pinName("toggle@0,0:set"))
+        assertEquals("toggle@0,0", PanelPins.baseId("toggle@0,0"))
+        assertEquals("", PanelPins.pinName("toggle@0,0"))
     }
 }

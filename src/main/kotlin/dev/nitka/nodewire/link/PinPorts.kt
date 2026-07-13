@@ -125,10 +125,13 @@ object PinPorts {
      *    across all faces — not the incoming neighbour signal, which is 0 on a
      *    source. Plain decoration blocks no longer offer a redstone source.
      *  * input `redstone@<face>` — drive-by-wire onto that face, available on
-     *    EVERY block (you can power a lamp, door, any block). This input has NO
-     *    [PinPort.writePin] body: the bind packet routes it to the source
-     *    LogicBlock's [dev.nitka.nodewire.block.SideBinding] push path (a
-     *    stateless adapter can't emit into the signal map itself).
+     *    EVERY block (you can power a lamp, door, any block). A LogicBlock
+     *    source still commits the [dev.nitka.nodewire.block.SideBinding] push
+     *    path; ANY OTHER source (a Control Panel toggle, a foreign sensor)
+     *    lands as a host-less link whose delivery calls [writePin] here — the
+     *    port emits into the [dev.nitka.nodewire.signal.VirtualSignalMap]
+     *    itself, self-keyed by the target position (one contribution per
+     *    `(target, face)`).
      */
     private class RedstonePort(private val level: Level, private val pos: BlockPos) : PinPort {
         override fun pinOutputs(ctx: LinkContext): List<LinkPin> =
@@ -156,6 +159,33 @@ object PinPorts {
             // getBestNeighborSignal would read its inputs (0), not its output.
             val emitted = Direction.values().maxOf { state.getSignal(level, pos, it) }
             return PinReading(PinValue.Redstone(emitted))
+        }
+
+        /** Host-less delivery into `redstone@<face>`: emit into the virtual
+         *  signal map (self-keyed — one contribution per target+face) and wake
+         *  the neighbours so lamps/doors react immediately. Values arrive RAW;
+         *  convert here (BOOL true → 15, floats round, ints clamp). */
+        override fun writePin(id: String, value: PinValue) {
+            val face = sideOfRedstoneInput(id) ?: return
+            val power = (
+                dev.nitka.nodewire.graph.PinValueConversion.convert(value, PinType.REDSTONE)
+                    as? PinValue.Redstone
+                )?.value ?: return
+            push(face, power)
+        }
+
+        override fun clearPin(id: String) {
+            val face = sideOfRedstoneInput(id) ?: return
+            push(face, 0)
+        }
+
+        private fun push(face: Direction, power: Int) {
+            dev.nitka.nodewire.signal.VirtualSignalMap.of(level).put(pos, pos, face, power)
+            // Mirror the SideBinding push: nudge the virtual emitter cell and
+            // the target itself so both re-poll their signal.
+            val from = pos.relative(face)
+            level.updateNeighborsAt(from, level.getBlockState(from).block)
+            level.updateNeighborsAt(pos, level.getBlockState(pos).block)
         }
     }
 

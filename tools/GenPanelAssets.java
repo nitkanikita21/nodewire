@@ -109,6 +109,11 @@ public final class GenPanelAssets {
             writeJson(new File(modItem, "panel_" + id + ".json"),
                 "{ \"parent\": \"minecraft:item/generated\", \"textures\": { \"layer0\": \"nodewire:item/panel_" + id + "\" } }");
         }
+        // Screen size variants share the screen icon texture.
+        for (String id : new String[] {"screen_small", "screen_wide", "screen_large", "screen_full"}) {
+            writeJson(new File(modItem, "panel_" + id + ".json"),
+                "{ \"parent\": \"minecraft:item/generated\", \"textures\": { \"layer0\": \"nodewire:item/panel_screen\" } }");
+        }
         writeJson(new File(modItem, "panel_key.json"),
             "{ \"parent\": \"minecraft:item/generated\", \"textures\": { \"layer0\": \"nodewire:item/panel_key\" } }");
         writeJson(new File(modItem, "control_panel.json"),

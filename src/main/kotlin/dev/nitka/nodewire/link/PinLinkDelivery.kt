@@ -75,7 +75,10 @@ object PinLinkDelivery {
         // chunk is just unloaded (go quiet); a resolved target that no longer
         // offers the pin is a dead link (prune).
         val targetPort = PinPorts.portFor(level, target) ?: return Outcome.Quiet
-        val tgtPin = targetPort.pinInputs(ctxFor(level, target)).firstOrNull { it.id == targetPin }
+        // The redstone fallback's input pins are face-scoped — recover the face
+        // from the pin id so re-enumeration offers them (no clicked face here).
+        val tgtFace = PinPorts.sideOfRedstoneInput(targetPin)
+        val tgtPin = targetPort.pinInputs(ctxFor(level, target, tgtFace)).firstOrNull { it.id == targetPin }
         if (tgtPin == null) {
             LOG.info("NW-LINK prune @{}: target pin '{}' gone", tgtShort, targetPin)
             return Outcome.Prune
@@ -160,11 +163,12 @@ object PinLinkDelivery {
     private fun centerOf(level: Level, ref: EndpointRef): Vec3 =
         ref.worldCenter(level) ?: Vec3.atCenterOf(ref.payload.blockPos)
 
-    /** Server-side re-enumeration context for an endpoint's port (no clicked
-     *  face — the delivery side never has one). */
-    private fun ctxFor(level: Level, ref: EndpointRef): LinkContext {
+    /** Server-side re-enumeration context for an endpoint's port. [face] only
+     *  matters for face-scoped fallback pins (`redstone@<face>`) — recovered
+     *  from the pin id, since the delivery side has no clicked face. */
+    private fun ctxFor(level: Level, ref: EndpointRef, face: net.minecraft.core.Direction? = null): LinkContext {
         val pos = ref.payload.blockPos
-        return LinkContext(level, pos, level.getBlockState(pos))
+        return LinkContext(level, pos, level.getBlockState(pos), face)
     }
 
     private fun quiescent(firedValue: PinValue, declared: PinType): PinValue =

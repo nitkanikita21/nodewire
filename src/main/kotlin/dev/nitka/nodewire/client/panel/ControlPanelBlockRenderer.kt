@@ -27,20 +27,29 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * First-pass procedural renderer for the [ControlPanelBlock]: draws the plate
- * background and every placed element as flat colour quads on the panel face,
- * with the live operated/driven value as a state overlay (toggle colour, slider
- * thumb, bar fill, lamp glow, …).
+ * Fully-3D procedural renderer for the [ControlPanelBlock] — the Power-Grid
+ * look, but generated at draw time from prisms instead of baked models. Every
+ * element is a raised housing with shaded side walls; moving parts transform
+ * with the live value:
  *
- * Geometry is the exact inverse of [PanelGrid.hitToGrid] — grid `(u,v)` (top-left
- * origin, u right, v down) is un-spun and mapped back onto the panel's display
- * surface — so an element renders precisely where you click to hit its cell. The
- * surface sits 2px off the mounting wall (the [ControlPanelBlock] slab side);
- * plate / element / overlay get increasing outsets so coplanar quads don't
- * z-fight. Quads are double-sided and full-bright (HUD look).
+ *  * toggle — a lever WEDGE that flips up (on) / down (off);
+ *  * momentary — a cap that presses IN while active;
+ *  * selector — a rotary pointer stepping across the sweep;
+ *  * slider — a raised thumb riding the recessed track;
+ *  * knob — a rotating cap with a notch;
+ *  * lamp — a tinted dome (bright when lit);
+ *  * bar / numeric — an LCD housing with a recessed window carrying a glowing
+ *    fill / the value text;
+ *  * screen — a protruding bezel whose front face blits the video feed;
+ *  * label — a plate that SCALES to its text.
  *
- * Reuses [VideoBlit.plainTypeFor] + a 1×1 white texture (white × vertex colour =
- * a solid colour quad). Baked bodies / textures / value text are a later slice.
+ * Geometry is the exact inverse of [PanelGrid.hitToGrid] via [PanelSurface]
+ * (top-left origin, u right, v down; heights = outsets off the mounting wall),
+ * so an element renders precisely where you click it. Faces fake lighting by
+ * shading walls (top light / bottom dark). Buffer discipline: ALL colour quads
+ * go into one held buffer; video blits and text are collected and drawn LAST
+ * (requesting another render type mid-stream would end the quad buffer —
+ * "Not building!"). The whole BER skips camera-capture passes.
  */
 class ControlPanelBlockRenderer(
     @Suppress("UNUSED_PARAMETER") ctx: BlockEntityRendererProvider.Context,
@@ -54,9 +63,6 @@ class ControlPanelBlockRenderer(
         light: Int,
         overlay: Int,
     ) {
-        // Never draw during a camera capture pass — the capture re-enters
-        // renderLevel and an extra BER here breaks it (leaking the JOML modelview
-        // stack → "max stack size of 16"). Same guard as ScreenBlockRenderer.
         if (VideoManager.isCapturing()) return
 
         val elements = be.elements()
@@ -64,31 +70,30 @@ class ControlPanelBlockRenderer(
         val spin = be.blockState.getValue(ControlPanelBlock.SPIN)
 
         poseStack.pushPose()
-        val matrix = poseStack.last().pose()
+        val m = poseStack.last().pose()
         val font = Minecraft.getInstance().font
         val consumer = buffers.getBuffer(VideoBlit.plainTypeFor(whiteTexId()))
-
-        // All colour quads first, into a single held buffer. Video blits and text
-        // are collected and drawn LAST: requesting another render type (or
-        // font.drawInBatch) switches the MultiBufferSource's active buffer, which
-        // would end this quad buffer mid-stream and crash with "Not building!".
         val texts = ArrayList<TextDraw>()
         val videos = ArrayList<VideoDraw>()
-        rect(consumer, matrix, face, spin, 0.0, 0.0, 1.0, 1.0, COL_PLATE, OUT_PLATE)
-        for (e in elements) drawElement(consumer, matrix, be, face, spin, e, texts, videos)
-        drawGuide(consumer, matrix, be, face, spin)
-        for (v in videos) drawVideo(matrix, buffers, face, spin, v)
-        for (t in texts) drawText(matrix, buffers, font, face, spin, t.u0, t.v0, t.u1, t.v1, t.text, t.color)
+
+        rect(consumer, m, face, spin, 0.0, 0.0, 1.0, 1.0, COL_PLATE, OUT_PLATE)
+        for (e in elements) drawElement(consumer, m, be, font, face, spin, e, texts, videos)
+        drawGuide(consumer, m, be, face, spin)
+        for (v in videos) drawVideo(m, buffers, face, spin, v)
+        for (t in texts) drawText(m, buffers, font, face, spin, t)
         poseStack.popPose()
     }
 
     override fun getRenderBoundingBox(be: ControlPanelBlockEntity): net.minecraft.world.phys.AABB =
         net.minecraft.world.phys.AABB(be.blockPos)
 
+    // ── elements ──────────────────────────────────────────────────────────
+
     private fun drawElement(
         consumer: VertexConsumer,
         m: Matrix4f,
         be: ControlPanelBlockEntity,
+        font: Font,
         face: Direction,
         spin: Int,
         e: PlacedElement,
@@ -101,78 +106,150 @@ class ControlPanelBlockRenderer(
         val v0 = (e.cellY + gap) / 16.0
         val u1 = (e.cellX + e.cols - gap) / 16.0
         val v1 = (e.cellY + e.rows - gap) / 16.0
+        val cu = (u0 + u1) / 2
+        val cv = (v0 + v1) / 2
+        val w = u1 - u0
+        val h = v1 - v0
         val cfg = e.config
         fun d(key: String, dflt: Double) = if (cfg.contains(key)) cfg.getDouble(key) else dflt
         fun col(key: String, dflt: Int) = if (cfg.contains(key)) cfg.getInt(key) else dflt
-        fun body(argb: Int) = rect(consumer, m, face, spin, u0, v0, u1, v1, argb, OUT_BODY)
-        fun over(a: Double, b: Double, c: Double, dd: Double, argb: Int) =
-            rect(consumer, m, face, spin, a, b, c, dd, argb, OUT_OVER)
         val on = e.value != 0.0
 
         when (e.typeId) {
-            "toggle" -> body(if (on) COL_ON else COL_OFF)
-            "momentary" -> body(if (on) COL_PRESS else COL_BTN)
+            "toggle" -> {
+                box(consumer, m, face, spin, u0, v0, u1, v1, OUT_PLATE, H_BASE, COL_BODY)
+                // Lever wedge: tip points UP (−v) when on, DOWN when off.
+                val lw = w * 0.30
+                val lu0 = cu - lw / 2; val lu1 = cu + lw / 2
+                val lv0 = v0 + h * 0.14; val lv1 = v1 - h * 0.14
+                val hi = H_PART; val lo = H_BASE + 0.006
+                val tops = if (on) doubleArrayOf(hi, hi, lo, lo) else doubleArrayOf(lo, lo, hi, hi)
+                prism(
+                    consumer, m, face, spin,
+                    arrayOf(
+                        doubleArrayOf(lu0, lv0), doubleArrayOf(lu1, lv0),
+                        doubleArrayOf(lu1, lv1), doubleArrayOf(lu0, lv1),
+                    ),
+                    H_BASE, tops, if (on) COL_ON else COL_OFF,
+                )
+            }
+            "momentary" -> {
+                box(consumer, m, face, spin, u0, v0, u1, v1, OUT_PLATE, H_BASE, COL_BODY)
+                val inset = 0.22
+                val cap = if (on) H_BASE + 0.010 else H_PART
+                box(
+                    consumer, m, face, spin,
+                    u0 + w * inset, v0 + h * inset, u1 - w * inset, v1 - h * inset,
+                    H_BASE, cap, if (on) COL_PRESS else COL_BTN,
+                )
+            }
             "selector" -> {
-                body(COL_BODY)
+                box(consumer, m, face, spin, u0, v0, u1, v1, OUT_PLATE, H_BASE, COL_BODY)
                 val positions = d("positions", 2.0).toInt().coerceAtLeast(1)
                 val idx = e.value.toInt().coerceIn(0, positions - 1)
-                val segW = (u1 - u0) / positions
-                val mu0 = u0 + idx * segW
-                over(mu0, v0, mu0 + segW, v0 + (v1 - v0) * 0.25, COL_MARK)
+                val frac = if (positions <= 1) 0.0 else idx.toDouble() / (positions - 1)
+                val ang = Math.toRadians(frac * SELECTOR_SWEEP_DEG - SELECTOR_SWEEP_DEG / 2)
+                // Rotary pointer bar + a small hub.
+                rotBox(consumer, m, face, spin, cu, cv, w * 0.09, h * 0.34, ang, H_BASE, H_PART - 0.008, COL_MARK)
+                box(consumer, m, face, spin, cu - w * 0.10, cv - h * 0.10, cu + w * 0.10, cv + h * 0.10, H_BASE, H_PART - 0.004, COL_BODY_HI)
             }
             "slider" -> {
-                body(COL_TRACK)
+                box(consumer, m, face, spin, u0, v0, u1, v1, OUT_PLATE, H_TRACK, COL_BODY)
+                val horizontal = e.cols >= e.rows
+                // Recessed channel down the middle.
+                if (horizontal) rect(consumer, m, face, spin, u0 + w * 0.05, cv - h * 0.10, u1 - w * 0.05, cv + h * 0.10, COL_SLOT, H_TRACK + 0.002)
+                else rect(consumer, m, face, spin, cu - w * 0.10, v0 + h * 0.05, cu + w * 0.10, v1 - h * 0.05, COL_SLOT, H_TRACK + 0.002)
                 val frac = norm(e.value, d("min", 0.0), d("max", 1.0))
-                if (e.cols >= e.rows) {
-                    val tw = (u1 - u0) * 0.12
-                    val tx = (u0 + frac * (u1 - u0)).coerceIn(u0 + tw / 2, u1 - tw / 2)
-                    over(tx - tw / 2, v0, tx + tw / 2, v1, COL_THUMB)
+                if (horizontal) {
+                    val tw = w * 0.10
+                    val tx = (u0 + frac * w).coerceIn(u0 + tw / 2, u1 - tw / 2)
+                    box(consumer, m, face, spin, tx - tw / 2, v0 + h * 0.10, tx + tw / 2, v1 - h * 0.10, H_TRACK, H_PART, COL_THUMB)
                 } else {
-                    val th = (v1 - v0) * 0.12
-                    val ty = (v1 - frac * (v1 - v0)).coerceIn(v0 + th / 2, v1 - th / 2)
-                    over(u0, ty - th / 2, u1, ty + th / 2, COL_THUMB)
+                    val th = h * 0.10
+                    val ty = (v1 - frac * h).coerceIn(v0 + th / 2, v1 - th / 2)
+                    box(consumer, m, face, spin, u0 + w * 0.10, ty - th / 2, u1 - w * 0.10, ty + th / 2, H_TRACK, H_PART, COL_THUMB)
                 }
             }
             "knob" -> {
-                body(COL_BODY)
+                box(consumer, m, face, spin, u0, v0, u1, v1, OUT_PLATE, H_BASE, COL_BODY)
                 val frac = norm(e.value, d("min", 0.0), d("max", 1.0))
                 val ang = Math.toRadians(frac * d("sweep", 270.0))
-                val cu = (u0 + u1) / 2; val cv = (v0 + v1) / 2
-                val r = minOf(u1 - u0, v1 - v0) * 0.35
-                val mu = cu + sin(ang) * r; val mv = cv + cos(ang) * r // 0° = straight down (+v)
-                val s = (u1 - u0) * 0.10
-                over(mu - s, mv - s, mu + s, mv + s, COL_MARK)
+                // Rotating cap (square, spun with the value) + notch at the pointer end.
+                rotBox(consumer, m, face, spin, cu, cv, w * 0.30, h * 0.30, ang, H_BASE, H_PART, COL_BODY_HI)
+                val r = minOf(w, h) * 0.24
+                val nu = cu + sin(ang) * r
+                val nv = cv + cos(ang) * r
+                rotBox(consumer, m, face, spin, nu, nv, w * 0.05, h * 0.10, ang, H_PART, H_PART + 0.006, COL_MARK)
             }
-            "lamp" -> body(if (on) col("on_color", COL_LAMP_ON) else col("off_color", COL_LAMP_OFF))
+            "lamp" -> {
+                box(consumer, m, face, spin, u0, v0, u1, v1, OUT_PLATE, H_BASE - 0.006, COL_BODY)
+                val inset = 0.18
+                val color = if (on) col("on_color", COL_LAMP_ON) else col("off_color", COL_LAMP_OFF)
+                box(consumer, m, face, spin, u0 + w * inset, v0 + h * inset, u1 - w * inset, v1 - h * inset, H_BASE - 0.006, H_PART - 0.014, color)
+            }
             "bar" -> {
-                body(COL_TRACK)
+                // LCD housing (like the numeric "88" display) with a glowing bar.
+                box(consumer, m, face, spin, u0, v0, u1, v1, OUT_PLATE, H_BASE, COL_BODY)
+                val wi = 0.10
+                rect(consumer, m, face, spin, u0 + w * wi, v0 + h * wi, u1 - w * wi, v1 - h * wi, COL_SCREEN, H_BASE + 0.002)
                 val frac = norm(e.value, d("min", 0.0), d("max", 1.0))
                 val fill = col("color", COL_FILL)
-                if (e.cols >= e.rows) over(u0, v0, u0 + frac * (u1 - u0), v1, fill)
-                else over(u0, v1 - frac * (v1 - v0), u1, v1, fill)
+                if (e.cols >= e.rows) {
+                    rect(consumer, m, face, spin, u0 + w * wi, v0 + h * wi, u0 + w * wi + frac * w * (1 - 2 * wi), v1 - h * wi, fill, H_BASE + 0.004)
+                } else {
+                    rect(consumer, m, face, spin, u0 + w * wi, v1 - h * wi - frac * h * (1 - 2 * wi), u1 - w * wi, v1 - h * wi, fill, H_BASE + 0.004)
+                }
             }
             "numeric" -> {
-                body(COL_SCREEN)
+                box(consumer, m, face, spin, u0, v0, u1, v1, OUT_PLATE, H_BASE, COL_BODY)
+                val wi = 0.10
+                rect(consumer, m, face, spin, u0 + w * wi, v0 + h * wi, u1 - w * wi, v1 - h * wi, COL_SCREEN, H_BASE + 0.002)
                 val decimals = d("decimals", 1.0).toInt().coerceIn(0, 6)
                 val num = formatNum(e.value, decimals) + cfg.getString("suffix")
                 val label = cfg.getString("label")
                 val text = if (label.isNotEmpty()) "$label $num" else num
-                texts.add(TextDraw(u0, v0, u1, v1, text, COL_TEXT))
+                texts.add(TextDraw(u0 + w * wi, v0 + h * wi, u1 - w * wi, v1 - h * wi, text, COL_LCD, H_BASE + 0.004))
             }
-            "screen" -> {
-                body(COL_SCREEN)
-                be.videoHandle(e.pinId())?.let { videos.add(VideoDraw(u0, v0, u1, v1, it)) }
+            in SCREEN_IDS -> {
+                // Protruding bezel; the feed blits on its front face — only
+                // while powered (`enable` pin; e.value doubles as the flag).
+                box(consumer, m, face, spin, u0, v0, u1, v1, OUT_PLATE, H_BASE + 0.004, COL_BODY)
+                // Bezel width in grid units (constant, not footprint-relative,
+                // so big screens don't get comically thick frames).
+                val bw = minOf(w, h) * 0.06 + 0.002
+                rect(consumer, m, face, spin, u0 + bw, v0 + bw, u1 - bw, v1 - bw, COL_SCREEN, H_BASE + 0.006)
+                if (on) {
+                    be.videoHandle(e.pinId())?.let {
+                        videos.add(VideoDraw(u0 + bw, v0 + bw, u1 - bw, v1 - bw, it, H_BASE + 0.008))
+                    }
+                } else {
+                    // Standby dot in the window corner so an off screen reads
+                    // as powered-down, not broken.
+                    val d = minOf(w, h) * 0.04
+                    rect(consumer, m, face, spin, u1 - bw - 2 * d, v1 - bw - 2 * d, u1 - bw - d, v1 - bw - d, COL_OFF, H_BASE + 0.008)
+                }
             }
             "label" -> {
-                body(COL_LABEL)
+                // Plate hugs its text: width follows the rendered text length.
                 val text = cfg.getString("text")
-                if (text.isNotEmpty()) texts.add(TextDraw(u0, v0, u1, v1, text, COL_TEXT))
+                if (text.isEmpty()) {
+                    box(consumer, m, face, spin, u0, v0, u1, v1, OUT_PLATE, H_LABEL, COL_LABEL)
+                } else {
+                    val textW = font.width(text).toFloat()
+                    val scale = minOf(w.toFloat() * 0.92f / textW, h.toFloat() * 0.92f / LINE_H)
+                    val plateW = (textW * scale + h * 0.24).coerceAtMost(w)
+                    val pu0 = cu - plateW / 2; val pu1 = cu + plateW / 2
+                    box(consumer, m, face, spin, pu0, v0, pu1, v1, OUT_PLATE, H_LABEL, COL_LABEL)
+                    texts.add(TextDraw(pu0, v0, pu1, v1, text, COL_TEXT, H_LABEL + 0.002))
+                }
             }
-            else -> body(COL_BODY)
+            else -> box(consumer, m, face, spin, u0, v0, u1, v1, OUT_PLATE, H_BASE, COL_BODY)
         }
     }
 
-    /** Double-sided colour quad over grid rect [u0,v0]–[u1,v1] at [outset]. */
+    // ── 3D primitives (grid space → oriented world quads) ─────────────────
+
+    /** Flat colour rect at [outset] (windows, fills, plate, guide). */
     private fun rect(
         consumer: VertexConsumer,
         m: Matrix4f,
@@ -189,13 +266,104 @@ class ControlPanelBlockRenderer(
         val tr = PanelSurface.local(u1, v0, face, spin, outset)
         val br = PanelSurface.local(u1, v1, face, spin, outset)
         val bl = PanelSurface.local(u0, v1, face, spin, outset)
+        quad(consumer, m, tl, bl, br, tr, argb)
+    }
+
+    /** Axis-aligned raised box over the grid rect, from [hBot] to [hTop]. */
+    private fun box(
+        consumer: VertexConsumer,
+        m: Matrix4f,
+        face: Direction,
+        spin: Int,
+        u0: Double,
+        v0: Double,
+        u1: Double,
+        v1: Double,
+        hBot: Double,
+        hTop: Double,
+        argb: Int,
+    ) = prism(
+        consumer, m, face, spin,
+        arrayOf(
+            doubleArrayOf(u0, v0), doubleArrayOf(u1, v0),
+            doubleArrayOf(u1, v1), doubleArrayOf(u0, v1),
+        ),
+        hBot, doubleArrayOf(hTop, hTop, hTop, hTop), argb,
+    )
+
+    /** Raised box rotated by [angle] about ([cu],[cv]) — knob caps, pointers. */
+    private fun rotBox(
+        consumer: VertexConsumer,
+        m: Matrix4f,
+        face: Direction,
+        spin: Int,
+        cu: Double,
+        cv: Double,
+        halfW: Double,
+        halfH: Double,
+        angle: Double,
+        hBot: Double,
+        hTop: Double,
+        argb: Int,
+    ) {
+        val ca = cos(angle); val sa = sin(angle)
+        // Rotation that maps "down" (0,+v) onto (sin a, cos a) — matches the
+        // knob/selector value math (angle measured from straight-down).
+        fun rot(x: Double, y: Double) = doubleArrayOf(cu + x * ca + y * sa, cv - x * sa + y * ca)
+        prism(
+            consumer, m, face, spin,
+            arrayOf(rot(-halfW, -halfH), rot(halfW, -halfH), rot(halfW, halfH), rot(-halfW, halfH)),
+            hBot, doubleArrayOf(hTop, hTop, hTop, hTop), argb,
+        )
+    }
+
+    /**
+     * The core solid: a quad footprint (corners in grid space, order TL,TR,BR,BL)
+     * extruded from [hBot] to per-corner [hTops] (unequal tops = a wedge — the
+     * toggle lever). Front face full colour; walls shaded (top light, bottom
+     * dark, sides mid) for the fake-lit tactile look.
+     */
+    private fun prism(
+        consumer: VertexConsumer,
+        m: Matrix4f,
+        face: Direction,
+        spin: Int,
+        corners: Array<DoubleArray>,
+        hBot: Double,
+        hTops: DoubleArray,
+        argb: Int,
+    ) {
+        val top = Array(4) { PanelSurface.local(corners[it][0], corners[it][1], face, spin, hTops[it]) }
+        val bot = Array(4) { PanelSurface.local(corners[it][0], corners[it][1], face, spin, hBot) }
+        // Front face (TL,BL,BR,TR order like rect()).
+        quad(consumer, m, top[0], top[3], top[2], top[1], argb)
+        // Walls: 0-1 top edge, 1-2 right, 2-3 bottom, 3-0 left.
+        wall(consumer, m, bot[0], bot[1], top[1], top[0], shade(argb, 0.85f))
+        wall(consumer, m, bot[1], bot[2], top[2], top[1], shade(argb, 0.70f))
+        wall(consumer, m, bot[2], bot[3], top[3], top[2], shade(argb, 0.55f))
+        wall(consumer, m, bot[3], bot[0], top[0], top[3], shade(argb, 0.70f))
+    }
+
+    private fun wall(consumer: VertexConsumer, m: Matrix4f, a: FloatArray, b: FloatArray, c: FloatArray, d: FloatArray, argb: Int) =
+        quad(consumer, m, a, b, c, d, argb)
+
+    /** Double-sided colour quad (cull-proof on any panel face). */
+    private fun quad(consumer: VertexConsumer, m: Matrix4f, p0: FloatArray, p1: FloatArray, p2: FloatArray, p3: FloatArray, argb: Int) {
         val a = (argb ushr 24) and 0xFF
         val r = (argb ushr 16) and 0xFF
         val g = (argb ushr 8) and 0xFF
         val b = argb and 0xFF
         fun vert(p: FloatArray) = consumer.addVertex(m, p[0], p[1], p[2]).setUv(0f, 0f).setColor(r, g, b, a)
-        vert(tl); vert(bl); vert(br); vert(tr) // front
-        vert(tr); vert(br); vert(bl); vert(tl) // back (cull-proof)
+        vert(p0); vert(p1); vert(p2); vert(p3)
+        vert(p3); vert(p2); vert(p1); vert(p0)
+    }
+
+    private fun shade(argb: Int, f: Float): Int {
+        val a = (argb ushr 24) and 0xFF
+        val r = (((argb ushr 16) and 0xFF) * f).toInt().coerceIn(0, 255)
+        val g = (((argb ushr 8) and 0xFF) * f).toInt().coerceIn(0, 255)
+        val b = ((argb and 0xFF) * f).toInt().coerceIn(0, 255)
+        return (a shl 24) or (r shl 16) or (g shl 8) or b
     }
 
     private fun norm(value: Double, min: Double, max: Double): Double {
@@ -203,45 +371,52 @@ class ControlPanelBlockRenderer(
         return ((value - min) / (max - min)).coerceIn(0.0, 1.0)
     }
 
+    // ── deferred text / video ─────────────────────────────────────────────
+
+    private class TextDraw(
+        val u0: Double,
+        val v0: Double,
+        val u1: Double,
+        val v1: Double,
+        val text: String,
+        val color: Int,
+        val outset: Double,
+    )
+
+    private class VideoDraw(
+        val u0: Double,
+        val v0: Double,
+        val u1: Double,
+        val v1: Double,
+        val handle: java.util.UUID,
+        val outset: Double,
+    )
+
     /**
-     * Draw [text] fitted + centred into the grid rect, oriented to the [face]
-     * (any face / spin). Builds a basis matrix from the surface axes: text-x →
-     * grid-u, text-y → grid-v, text-z → outward normal, then scales to fit.
+     * Draw [t]'s text fitted + centred into its grid rect at its outset,
+     * oriented to the face via a basis matrix (text-x → grid-u, text-y →
+     * grid-v, text-z → outward normal).
      */
-    private fun drawText(
-        m: Matrix4f,
-        buffers: MultiBufferSource,
-        font: Font,
-        face: Direction,
-        spin: Int,
-        u0: Double,
-        v0: Double,
-        u1: Double,
-        v1: Double,
-        text: String,
-        argb: Int,
-    ) {
-        if (text.isEmpty()) return
-        val o = PanelSurface.local(u0, v0, face, spin, OUT_TEXT)
-        val ue = PanelSurface.local(u1, v0, face, spin, OUT_TEXT)
-        val ve = PanelSurface.local(u0, v1, face, spin, OUT_TEXT)
+    private fun drawText(m: Matrix4f, buffers: MultiBufferSource, font: Font, face: Direction, spin: Int, t: TextDraw) {
+        if (t.text.isEmpty()) return
+        val o = PanelSurface.local(t.u0, t.v0, face, spin, t.outset)
+        val ue = PanelSurface.local(t.u1, t.v0, face, spin, t.outset)
+        val ve = PanelSurface.local(t.u0, t.v1, face, spin, t.outset)
         val ux = floatArrayOf(ue[0] - o[0], ue[1] - o[1], ue[2] - o[2])
         val vy = floatArrayOf(ve[0] - o[0], ve[1] - o[1], ve[2] - o[2])
         val rectW = len3(ux)
         val rectH = len3(vy)
-        val w = font.width(text).toFloat()
+        val w = font.width(t.text).toFloat()
         if (rectW <= 0f || rectH <= 0f || w <= 0f) return
         val ud = norm3(ux)
         val vd = norm3(vy)
-        val lineH = 8f
-        val scale = minOf(rectW / w, rectH / lineH) * 0.85f
+        val scale = minOf(rectW / w, rectH / LINE_H) * 0.85f
         val offU = (rectW - w * scale) / 2f
-        val offV = (rectH - lineH * scale) / 2f
+        val offV = (rectH - LINE_H * scale) / 2f
         val ox = o[0] + ud[0] * offU + vd[0] * offV
         val oy = o[1] + ud[1] * offU + vd[1] * offV
         val oz = o[2] + ud[2] * offU + vd[2] * offV
         val n = normalOf(face)
-        // JOML column-major: (col0 | col1 | col2 | col3).
         val basis = Matrix4f(
             ud[0] * scale, ud[1] * scale, ud[2] * scale, 0f,
             vd[0] * scale, vd[1] * scale, vd[2] * scale, 0f,
@@ -249,7 +424,23 @@ class ControlPanelBlockRenderer(
             ox, oy, oz, 1f,
         )
         val full = Matrix4f(m).mul(basis)
-        font.drawInBatch(text, 0f, 0f, argb, false, full, buffers, Font.DisplayMode.NORMAL, 0, LightTexture.FULL_BRIGHT)
+        font.drawInBatch(t.text, 0f, 0f, t.color, false, full, buffers, Font.DisplayMode.NORMAL, 0, LightTexture.FULL_BRIGHT)
+    }
+
+    /** Blit a video handle's FBO into the element window (v=0 at the BOTTOM —
+     *  FBO colour attachments are bottom-up). Double-sided. */
+    private fun drawVideo(m: Matrix4f, buffers: MultiBufferSource, face: Direction, spin: Int, v: VideoDraw) {
+        val surface = VideoManager.getOrCreate(v.handle)
+            as? dev.nitka.nodewire.client.video.GlVideoSurface ?: return
+        val consumer = buffers.getBuffer(VideoBlit.plainTypeFor(surface.colorTextureId()))
+        val tl = PanelSurface.local(v.u0, v.v0, face, spin, v.outset)
+        val tr = PanelSurface.local(v.u1, v.v0, face, spin, v.outset)
+        val br = PanelSurface.local(v.u1, v.v1, face, spin, v.outset)
+        val bl = PanelSurface.local(v.u0, v.v1, face, spin, v.outset)
+        fun vert(p: FloatArray, u: Float, vv: Float) =
+            consumer.addVertex(m, p[0], p[1], p[2]).setUv(u, vv).setColor(1f, 1f, 1f, 1f)
+        vert(tl, 0f, 1f); vert(bl, 0f, 0f); vert(br, 1f, 0f); vert(tr, 1f, 1f)
+        vert(tr, 1f, 1f); vert(br, 1f, 0f); vert(bl, 0f, 0f); vert(tl, 0f, 1f)
     }
 
     private fun formatNum(value: Double, decimals: Int): String =
@@ -271,14 +462,14 @@ class ControlPanelBlockRenderer(
         Direction.WEST -> floatArrayOf(-1f, 0f, 0f)
     }
 
+    // ── placement / link guide ────────────────────────────────────────────
+
     /**
-     * Placement guide — the 16×16 grid plus a footprint ghost — shown only on the
-     * panel the local player points at while holding an element item / the Panel
-     * Key. Drawn in THIS pass at a higher outset than the elements, so it sits
-     * cleanly in front of the surface and never z-fights (no separate line pass).
-     * The ghost uses the same [ELEMENT_GAP] inset as the elements, so its size
-     * matches exactly: green = fits, red = blocked; orange outlines the Panel Key's
-     * removal target.
+     * The 16×16 grid + footprint ghost, shown on the panel the player points at
+     * while holding an element item (green fits / red blocked), the Panel Key
+     * (orange removal target) or the Link Tool (cyan — the element whose pin
+     * arms/commits, mirroring LinkHud's pointing-wins highlight). Drawn in THIS
+     * pass above the raised parts, so no separate line pass and no z-fighting.
      */
     private fun drawGuide(consumer: VertexConsumer, m: Matrix4f, be: ControlPanelBlockEntity, face: Direction, spin: Int) {
         val mc = Minecraft.getInstance()
@@ -288,12 +479,12 @@ class ControlPanelBlockRenderer(
         val isLinkTool = held is ChannelLinkToolItem
         if (element == null && held !is PanelKeyItem && !isLinkTool) return
         val hr = mc.hitResult as? BlockHitResult ?: return
-        if (hr.blockPos != be.blockPos || hr.direction != face) return
+        if (hr.blockPos != be.blockPos) return
 
         for (i in 0..16) {
             val t = i / 16.0
-            guideLine(consumer, m, face, spin, t, 0.0, t, 1.0)
-            guideLine(consumer, m, face, spin, 0.0, t, 1.0, t)
+            rect(consumer, m, face, spin, t - GRID_HW, 0.0, t + GRID_HW, 1.0, COL_GRID, OUT_GRID)
+            rect(consumer, m, face, spin, 0.0, t - GRID_HW, 1.0, t + GRID_HW, COL_GRID, OUT_GRID)
         }
 
         val hit = ControlPanelBlock.gridHit(be.blockState, be.blockPos, hr.location) ?: return
@@ -303,9 +494,6 @@ class ControlPanelBlockRenderer(
             val blocked = PanelGrid.overlaps(be.occupiedCells(), anchor, type.cols, type.rows)
             ghostOutline(consumer, m, face, spin, anchor.x, anchor.y, type.cols, type.rows, if (blocked) COL_BLOCKED else COL_FREE)
         } else {
-            // Panel Key: orange = removal/config target. Link Tool: cyan = the
-            // element whose pin arms/commits on click (mirrors LinkHud's
-            // pointing-wins highlight).
             be.elementAt(hit.cell)?.let {
                 val color = if (isLinkTool) COL_LINK else COL_KEY
                 ghostOutline(consumer, m, face, spin, it.cellX, it.cellY, it.cols, it.rows, color)
@@ -313,96 +501,65 @@ class ControlPanelBlockRenderer(
         }
     }
 
-    private fun guideLine(consumer: VertexConsumer, m: Matrix4f, face: Direction, spin: Int, u0: Double, v0: Double, u1: Double, v1: Double) {
-        val w = GRID_HW
-        if (u0 == u1) rect(consumer, m, face, spin, u0 - w, v0, u0 + w, v1, COL_GRID, OUT_GRID)
-        else rect(consumer, m, face, spin, u0, v0 - w, u1, v0 + w, COL_GRID, OUT_GRID)
-    }
-
     private fun ghostOutline(consumer: VertexConsumer, m: Matrix4f, face: Direction, spin: Int, cx: Int, cy: Int, cols: Int, rows: Int, color: Int) {
         val g = ELEMENT_GAP
         val u0 = (cx + g) / 16.0; val v0 = (cy + g) / 16.0
         val u1 = (cx + cols - g) / 16.0; val v1 = (cy + rows - g) / 16.0
         val w = GHOST_HW
-        rect(consumer, m, face, spin, u0, v0 - w, u1, v0 + w, color, OUT_GHOST) // top
-        rect(consumer, m, face, spin, u0, v1 - w, u1, v1 + w, color, OUT_GHOST) // bottom
-        rect(consumer, m, face, spin, u0 - w, v0, u0 + w, v1, color, OUT_GHOST) // left
-        rect(consumer, m, face, spin, u1 - w, v0, u1 + w, v1, color, OUT_GHOST) // right
-    }
-
-    /** A deferred text draw (collected during the quad pass, drawn after it). */
-    private class TextDraw(
-        val u0: Double,
-        val v0: Double,
-        val u1: Double,
-        val v1: Double,
-        val text: String,
-        val color: Int,
-    )
-
-    /** A deferred mini-screen video blit (drawn after the quad pass). */
-    private class VideoDraw(
-        val u0: Double,
-        val v0: Double,
-        val u1: Double,
-        val v1: Double,
-        val handle: java.util.UUID,
-    )
-
-    /**
-     * Blit a video handle's FBO into the element rect. UVs put texture v=0 at
-     * the rect's BOTTOM edge (grid v1) — FBO colour attachments are bottom-up,
-     * same convention as ScreenBlockRenderer.emitFace. Double-sided.
-     */
-    private fun drawVideo(m: Matrix4f, buffers: MultiBufferSource, face: Direction, spin: Int, v: VideoDraw) {
-        val surface = dev.nitka.nodewire.client.video.VideoManager.getOrCreate(v.handle)
-            as? dev.nitka.nodewire.client.video.GlVideoSurface ?: return
-        val consumer = buffers.getBuffer(VideoBlit.plainTypeFor(surface.colorTextureId()))
-        val tl = PanelSurface.local(v.u0, v.v0, face, spin, OUT_OVER)
-        val tr = PanelSurface.local(v.u1, v.v0, face, spin, OUT_OVER)
-        val br = PanelSurface.local(v.u1, v.v1, face, spin, OUT_OVER)
-        val bl = PanelSurface.local(v.u0, v.v1, face, spin, OUT_OVER)
-        fun vert(p: FloatArray, u: Float, vv: Float) =
-            consumer.addVertex(m, p[0], p[1], p[2]).setUv(u, vv).setColor(1f, 1f, 1f, 1f)
-        vert(tl, 0f, 1f); vert(bl, 0f, 0f); vert(br, 1f, 0f); vert(tr, 1f, 1f) // front
-        vert(tr, 1f, 1f); vert(br, 1f, 0f); vert(bl, 0f, 0f); vert(tl, 0f, 1f) // back
+        rect(consumer, m, face, spin, u0, v0 - w, u1, v0 + w, color, OUT_GHOST)
+        rect(consumer, m, face, spin, u0, v1 - w, u1, v1 + w, color, OUT_GHOST)
+        rect(consumer, m, face, spin, u0 - w, v0, u0 + w, v1, color, OUT_GHOST)
+        rect(consumer, m, face, spin, u1 - w, v0, u1 + w, v1, color, OUT_GHOST)
     }
 
     companion object {
+        /** All screen-variant type ids (shared render branch). */
+        private val SCREEN_IDS = PanelElements.ALL.map { it.id }.filter { PanelElements.isScreen(it) }.toSet()
+
         private const val ELEMENT_GAP = 0.06 // cell inset between an element body and its footprint
+        private const val LINE_H = 8f // vanilla font line height, px
+
+        // Heights = ABSOLUTE outsets off the mounting wall (block units).
+        // Max ~0.075 ≈ 1.2px of relief — tactile but still inside the block.
         private const val OUT_PLATE = 0.010
-        private const val OUT_BODY = 0.015
-        private const val OUT_OVER = 0.020
-        private const val OUT_GRID = 0.025
-        private const val OUT_GHOST = 0.029
-        private const val OUT_TEXT = 0.022
-        private const val GRID_HW = 0.0016 // grid-line half-width in grid (u,v) units
+        private const val H_TRACK = 0.022 // slider base
+        private const val H_LABEL = 0.020 // label plate
+        private const val H_BASE = 0.032 // element housings
+        private const val H_PART = 0.062 // caps / levers / thumbs / domes
+        private const val OUT_GRID = 0.072
+        private const val OUT_GHOST = 0.076
+        private const val GRID_HW = 0.0016
         private const val GHOST_HW = 0.004
 
-        private val COL_TEXT = 0xFFE8F0F0.toInt()
+        private const val SELECTOR_SWEEP_DEG = 270.0
+
+        private const val COL_PLATE = 0xFF202225.toInt()
+        private const val COL_BODY = 0xFF3A4048.toInt()
+        private const val COL_BODY_HI = 0xFF565E68.toInt()
+        private const val COL_SLOT = 0xFF14161A.toInt()
+        private const val COL_ON = 0xFF33CC44.toInt()
+        private const val COL_OFF = 0xFF8A4444.toInt()
+        private const val COL_BTN = 0xFF4A5C9A.toInt()
+        private const val COL_PRESS = 0xFF88AAFF.toInt()
+        private const val COL_MARK = 0xFFFFCC33.toInt()
+        private const val COL_THUMB = 0xFFCCCCCC.toInt()
+        private const val COL_LAMP_ON = 0xFFFF3333.toInt()
+        private const val COL_LAMP_OFF = 0xFF331111.toInt()
+        private const val COL_FILL = 0xFF33CCCC.toInt()
+        private const val COL_SCREEN = 0xFF050505.toInt()
+        private const val COL_LCD = 0xFF3FD24A.toInt()
+        private const val COL_LABEL = 0xFF2E3238.toInt()
+
+        private const val COL_TEXT = 0xFFE8F0F0.toInt()
         private val COL_GRID = 0xFF9AA0A6.toInt()
         private val COL_FREE = 0xFF3FD24A.toInt()
         private val COL_BLOCKED = 0xFFE0403A.toInt()
         private val COL_KEY = 0xFFE8A23A.toInt()
         private val COL_LINK = 0xFF5CC8E8.toInt()
 
-        private const val COL_PLATE = 0xFF202225.toInt()
-        private const val COL_BODY = 0xFF334455.toInt()
-        private const val COL_ON = 0xFF33CC44.toInt()
-        private const val COL_OFF = 0xFF553333.toInt()
-        private const val COL_BTN = 0xFF445588.toInt()
-        private const val COL_PRESS = 0xFF88AAFF.toInt()
-        private const val COL_MARK = 0xFFFFCC33.toInt()
-        private const val COL_TRACK = 0xFF1A1A1A.toInt()
-        private const val COL_THUMB = 0xFFCCCCCC.toInt()
-        private const val COL_LAMP_ON = 0xFFFF3333.toInt()
-        private const val COL_LAMP_OFF = 0xFF331111.toInt()
-        private const val COL_FILL = 0xFF33CCCC.toInt()
-        private const val COL_SCREEN = 0xFF050505.toInt()
-        private const val COL_LABEL = 0xFF2E2E2E.toInt()
-
         private var whiteTex: DynamicTexture? = null
 
+        /** 1×1 white texture id — tinted by vertex colour for solid quads. */
         private fun whiteTexId(): Int {
             var t = whiteTex
             if (t == null) {

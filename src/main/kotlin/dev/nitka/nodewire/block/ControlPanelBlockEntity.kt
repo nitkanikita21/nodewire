@@ -1,6 +1,7 @@
 package dev.nitka.nodewire.block
 
 import dev.nitka.nodewire.Registry
+import dev.nitka.nodewire.block.panel.ElementPin
 import dev.nitka.nodewire.block.panel.PanelElementStore
 import dev.nitka.nodewire.block.panel.PanelElements
 import dev.nitka.nodewire.block.panel.PanelGrid
@@ -50,6 +51,11 @@ class ControlPanelBlockEntity(pos: BlockPos, state: BlockState) :
     /** Transient per-momentary-pin "fired at gameTime" stamps (operate flow). */
     private val pulseStamps: MutableMap<String, Long> = mutableMapOf()
 
+    /** Mini-screen taps: element base pin id → last tap (0..1 within the
+     *  element window + gameTime). Surfaces via `:touch` / `:touch_down`. */
+    private data class Tap(val u: Double, val v: Double, val time: Long)
+    private val taps: MutableMap<String, Tap> = mutableMapOf()
+
     // ── mini-screen video (per "screen" element) ──────────────────────────
     // Only the bare UUID handle crosses the wire (the net invariant); the BER
     // blits the handle's client-local VideoManager surface into the element
@@ -59,6 +65,30 @@ class ControlPanelBlockEntity(pos: BlockPos, state: BlockState) :
 
     /** CLIENT (BER): the live video handle for a screen element's pin, or null. */
     fun videoHandle(pinId: String): java.util.UUID? = videoHandles[pinId]
+
+    // ── dynamic raycast shape (plate + raised element boxes) ──────────────
+    // Rebuilt lazily after any element mutation; lets the vanilla raycast (and
+    // therefore the selection outline, operate, place, bind) target individual
+    // element bodies from any approach angle.
+    @Volatile
+    private var shapeCache: net.minecraft.world.phys.shapes.VoxelShape? = null
+
+    fun blockShape(): net.minecraft.world.phys.shapes.VoxelShape {
+        shapeCache?.let { return it }
+        val face = blockState.getValue(ControlPanelBlock.FACE)
+        val spin = blockState.getValue(ControlPanelBlock.SPIN)
+        var shape = ControlPanelBlock.plateShape(face)
+        for (e in store.all()) {
+            shape = net.minecraft.world.phys.shapes.Shapes.or(
+                shape,
+                net.minecraft.world.phys.shapes.Shapes.create(
+                    dev.nitka.nodewire.block.panel.PanelSpace.elementBox(e, face, spin),
+                ),
+            )
+        }
+        shapeCache = shape
+        return shape
+    }
 
     private fun writeVideoHandle(pinId: String, handle: java.util.UUID?) {
         val changed = if (handle == null) videoHandles.remove(pinId) != null
@@ -105,14 +135,15 @@ class ControlPanelBlockEntity(pos: BlockPos, state: BlockState) :
         return ok
     }
 
-    /** Remove the element covering [cell]; drop its stale pulse stamp, video
-     *  handle and any links landing on its pin, then sync. */
+    /** Remove the element covering [cell]; drop its stale pulse stamp, taps,
+     *  video handle and any links landing on ANY of its pins, then sync. */
     fun removeElementAt(cell: PanelGrid.Cell): PlacedElement? {
         val removed = store.removeAt(cell) ?: return null
-        val pin = removed.pinId()
-        pulseStamps.remove(pin)
-        videoHandles.remove(pin)
-        pinLinks.removeAll { it.targetPin == pin }
+        val base = removed.pinId()
+        pulseStamps.remove(base)
+        taps.remove(base)
+        videoHandles.remove(base)
+        pinLinks.removeAll { PanelPins.baseId(it.targetPin) == base }
         pushSync()
         return removed
     }
@@ -137,7 +168,7 @@ class ControlPanelBlockEntity(pos: BlockPos, state: BlockState) :
     fun handleOperate(cell: PanelGrid.Cell, uFrac: Double, vFrac: Double, sneak: Boolean, gameTime: Long): Boolean {
         val e = store.elementAt(cell) ?: return false
         val type = PanelElements.byId(e.typeId) ?: return false
-        if (type.pinDir != PanelPinDir.OUTPUT) return false
+        if (!type.interactive) return false
         val anchor = PanelGrid.Cell(e.cellX, e.cellY)
         val cfg = e.config
         when (e.typeId) {
@@ -164,7 +195,17 @@ class ControlPanelBlockEntity(pos: BlockPos, state: BlockState) :
                 val hy = (cell.y - anchor.y) + vFrac
                 setElementValue(anchor, PanelGrid.knobValue(hx - e.cols / 2.0, hy - e.rows / 2.0, min, max, sweep, step))
             }
-            else -> return false
+            else -> {
+                // Mini touch-screens (any size): record the tap as a 0..1
+                // fraction within the element window; surfaces via `:touch` /
+                // `:touch_down`. A powered-down screen (enable=0, the default)
+                // ignores taps.
+                if (!PanelElements.isScreen(e.typeId)) return false
+                if (e.value == 0.0) return false
+                val tu = ((cell.x - anchor.x) + uFrac) / e.cols
+                val tv = ((cell.y - anchor.y) + vFrac) / e.rows
+                taps[e.pinId()] = Tap(tu, tv, gameTime)
+            }
         }
         return true
     }
@@ -178,40 +219,77 @@ class ControlPanelBlockEntity(pos: BlockPos, state: BlockState) :
 
     override fun pinInputs(ctx: LinkContext): List<LinkPin> = PanelPins.inputs(store.all())
 
+    /** Resolve an incoming wire id (`"type@x,y"` / `"type@x,y:name"`) to the
+     *  element + the catalog pin spec it addresses. */
+    private fun pinAt(id: String): Pair<PlacedElement, ElementPin>? {
+        val base = PanelPins.baseId(id)
+        val name = PanelPins.pinName(id)
+        val e = store.all().firstOrNull { it.pinId() == base } ?: return null
+        val spec = PanelElements.byId(e.typeId)?.pins?.firstOrNull { it.name == name } ?: return null
+        return e to spec
+    }
+
     override fun readPin(id: String): PinReading? {
-        val e = store.all().firstOrNull { it.pinId() == id } ?: return null
-        return when (e.typeId) {
-            "toggle" -> PinReading(PinValue.Bool(e.value != 0.0))
-            "momentary" -> PinReading(PinValue.Bool(e.value != 0.0), pulseStamp = pulseStamps[id] ?: -1L)
-            "selector" -> PinReading(PinValue.Int(e.value.toInt()))
-            "slider", "knob" -> PinReading(PinValue.Float(e.value.toFloat()))
-            else -> null // indicators / label produce nothing
+        val (e, spec) = pinAt(id) ?: return null
+        if (spec.dir != PanelPinDir.OUTPUT) return null
+        return when (spec.name) {
+            "" -> when (e.typeId) {
+                "toggle" -> PinReading(PinValue.Bool(e.value != 0.0))
+                "momentary" -> PinReading(PinValue.Bool(e.value != 0.0), pulseStamp = pulseStamps[id] ?: -1L)
+                "selector" -> PinReading(PinValue.Int(e.value.toInt()))
+                "slider", "knob" -> PinReading(PinValue.Float(e.value.toFloat()))
+                else -> null
+            }
+            "touch" -> taps[e.pinId()]?.let { PinReading(PinValue.Vec2(it.u, it.v)) }
+            "touch_down" -> taps[e.pinId()]?.let { PinReading(PinValue.Bool(true), pulseStamp = it.time) }
+            else -> null
         }
     }
 
     override fun writePin(id: String, value: PinValue) {
-        val e = store.all().firstOrNull { it.pinId() == id } ?: return
-        if (e.typeId == "screen") {
-            if (value is PinValue.Video) writeVideoHandle(id, ScreenBlockEntity.decodeHandle(value))
-            return
+        val (e, spec) = pinAt(id) ?: return
+        if (spec.dir != PanelPinDir.INPUT) return
+        when (spec.name) {
+            "" -> {
+                if (PanelElements.isScreen(e.typeId)) {
+                    if (value is PinValue.Video) writeVideoHandle(e.pinId(), ScreenBlockEntity.decodeHandle(value))
+                    return
+                }
+                numeric(value)?.let { setElementValue(PanelGrid.Cell(e.cellX, e.cellY), it) }
+            }
+            // Remote drive: the graph sets the control's state; the visual and
+            // the primary output follow (same slot as a player click).
+            "set" -> numeric(value)?.let { setElementValue(PanelGrid.Cell(e.cellX, e.cellY), it) }
+            // Screen power: e.value doubles as the enabled flag (fresh elements
+            // are 0 → OFF by default).
+            "enable" -> numeric(value)?.let {
+                setElementValue(PanelGrid.Cell(e.cellX, e.cellY), if (it != 0.0) 1.0 else 0.0)
+            }
         }
-        val v = when (value) {
-            is PinValue.Bool -> if (value.value) 1.0 else 0.0
-            is PinValue.Int -> value.value.toDouble()
-            is PinValue.Float -> value.value.toDouble()
-            is PinValue.Redstone -> value.value.toDouble()
-            else -> return
-        }
-        setElementValue(PanelGrid.Cell(e.cellX, e.cellY), v)
     }
 
     override fun clearPin(id: String) {
-        val e = store.all().firstOrNull { it.pinId() == id } ?: return
-        if (e.typeId == "screen") {
-            writeVideoHandle(id, null)
-            return
+        val (e, spec) = pinAt(id) ?: return
+        if (spec.dir != PanelPinDir.INPUT) return
+        when (spec.name) {
+            "" -> {
+                if (PanelElements.isScreen(e.typeId)) writeVideoHandle(e.pinId(), null)
+                else setElementValue(PanelGrid.Cell(e.cellX, e.cellY), 0.0)
+            }
+            // A silenced `set` keeps the last state — the control latches, the
+            // player can still operate it by hand.
+            "set" -> {}
+            // A silenced `enable` powers the screen DOWN (screens default off).
+            "enable" -> setElementValue(PanelGrid.Cell(e.cellX, e.cellY), 0.0)
         }
-        setElementValue(PanelGrid.Cell(e.cellX, e.cellY), 0.0)
+    }
+
+    private fun numeric(value: PinValue): Double? = when (value) {
+        is PinValue.Bool -> if (value.value) 1.0 else 0.0
+        is PinValue.Int -> value.value.toDouble()
+        is PinValue.Float -> value.value.toDouble()
+        is PinValue.Redstone -> value.value.toDouble()
+        else -> null
     }
 
     // ── persistence + client sync ─────────────────────────────────────────
@@ -251,6 +329,7 @@ class ControlPanelBlockEntity(pos: BlockPos, state: BlockState) :
                 if (v.hasUUID(key)) videoHandles[key] = v.getUUID(key)
             }
         }
+        shapeCache = null
         if (level?.isClientSide == true) retargetClientRefcounts()
     }
 
@@ -274,6 +353,7 @@ class ControlPanelBlockEntity(pos: BlockPos, state: BlockState) :
         ClientboundBlockEntityDataPacket.create(this)
 
     private fun pushSync() {
+        shapeCache = null
         setChanged()
         val lvl = level ?: return
         if (!lvl.isClientSide) {
