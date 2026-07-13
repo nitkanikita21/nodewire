@@ -70,7 +70,9 @@ object LinkHud {
     var sameAsSource: Boolean = false
         private set
 
-    private var lastPos: BlockPos? = null
+    /** Scroll-position scope: the targeted block, plus the hovered element on
+     *  a Control Panel (so moving between elements resets the highlight). */
+    private var lastScope: Any? = null
 
     /** Recompute from the crosshair + tool state. Call once per client tick. */
     fun update() {
@@ -89,7 +91,11 @@ object LinkHud {
         val armed = ChannelLinkToolItem.readArmedSource(stack)
         armedLabel = armed?.label
         armedType = armed?.type
-        sameAsSource = armed != null && armed.source.payload.blockPos == pos
+        // Same-BLOCK links are legal (a panel toggle can feed a lamp on the
+        // same panel) — only a pin linked onto ITSELF is meaningless, filtered
+        // per-row below. The flag only drives the "same block" HUD hint when
+        // nothing at all is selectable here.
+        val samePos = armed != null && armed.source.payload.blockPos == pos
 
         val port = PinPorts.at(level, pos, face)
         if (port == null) return clear()
@@ -117,26 +123,50 @@ object LinkHud {
                 }
             } else {
                 // Targeting: INPUT pins. Compatible ones commit; bound ones are
-                // selectable for unbind even when incompatible.
+                // selectable for unbind even when incompatible. The only self-
+                // restriction: a pin can't feed itself.
                 ins.forEach { p ->
                     val l = linkFor(p.id)
-                    val compatible = !sameAsSource && PinValueConversion.canConvert(armed.type, p.type)
+                    val selfPin = samePos && p.id == armed.pin
+                    val compatible = !selfPin && PinValueConversion.canConvert(armed.type, p.type)
                     add(Row(p, output = false, active = compatible || l != null, canBind = compatible, link = l))
                 }
             }
         }
 
-        // Reset the highlight to the first active row whenever the targeted
-        // block changes; otherwise keep the player's scroll position.
-        if (pos != lastPos) {
-            lastPos = pos
-            highlight = newRows.indexOfFirst { it.active }
+        // Control Panel: the window scopes to the ELEMENT under the crosshair —
+        // only its pins are listed (a dense panel would otherwise flood the
+        // picker with every element's pins). Aiming at bare plate lists nothing;
+        // scroll cycles within the hovered element's own pins (`set`, `touch`…).
+        var scopedRows = newRows
+        var scopeKey: Any = pos
+        val state = level.getBlockState(pos)
+        if (state.block is dev.nitka.nodewire.block.ControlPanelBlock) {
+            val cell = dev.nitka.nodewire.block.ControlPanelBlock.gridHit(state, pos, hit.location)?.cell
+            val el = cell?.let {
+                (level.getBlockEntity(pos) as? dev.nitka.nodewire.block.ControlPanelBlockEntity)?.elementAt(it)
+            }
+            val base = el?.pinId()
+            scopedRows = if (base == null) emptyList()
+            else newRows.filter { dev.nitka.nodewire.block.panel.PanelPins.baseId(it.pin.id) == base }
+            scopeKey = pos to base
         }
-        rows = newRows
+
+        // Reset the highlight to the first active row whenever the targeted
+        // block (or hovered panel element) changes; otherwise keep the
+        // player's scroll position.
+        if (scopeKey != lastScope) {
+            lastScope = scopeKey
+            highlight = scopedRows.indexOfFirst { it.active }
+        }
+        rows = scopedRows
         targetPos = pos
         if (highlight !in rows.indices || !rows[highlight].active) {
             highlight = rows.indexOfFirst { it.active }
         }
+        // "Same block" header hint only when the armed source's own block offers
+        // nothing bindable at all (same-block pin-to-pin links are fine).
+        sameAsSource = samePos && rows.none { it.canBind }
 
         // Light up the source block of the hovered bound row (through walls), so
         // you see where the wire goes. Refreshed each tick → fades when you
@@ -170,7 +200,7 @@ object LinkHud {
         armedLabel = null
         armedType = null
         sameAsSource = false
-        lastPos = null
+        lastScope = null
     }
 
     /**

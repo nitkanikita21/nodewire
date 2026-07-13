@@ -27,6 +27,9 @@ object SableSchematicIntegration {
             Registry.RADIO_RECEIVER_BE.get(),
             Registry.RADIO_TRANSMITTER_BE.get(),
             Registry.AR_HUB_BE.get(),
+            // Control Panel: the element list rides the BE NBT as-is; only its
+            // `pin_links` need the endpoint remap this mapper does.
+            Registry.CONTROL_PANEL_BE.get(),
         )
         for (type in types) {
             SableBlueprintMapperRegistry.register(type, SablePinLinkMapper)

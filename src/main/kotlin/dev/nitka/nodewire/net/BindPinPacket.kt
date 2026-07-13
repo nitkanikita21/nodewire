@@ -87,8 +87,12 @@ data class BindPinPacket(
             if (player.distanceToSqr(srcCenter) > MAX_SOURCE_REACH_SQ) {
                 notify(player, "Source block is too far away"); return
             }
-            if (packet.source.payload.blockPos == packet.target.payload.blockPos) {
-                notify(player, "Source and target must differ"); return
+            // Same-block links are fine (multi-pin panels feed themselves:
+            // toggle → lamp on one plate) — only pin-to-itself is meaningless.
+            if (packet.source.payload.blockPos == packet.target.payload.blockPos &&
+                packet.sourcePin == packet.targetPin
+            ) {
+                notify(player, "A pin can't feed itself"); return
             }
             val maxSq = PinLinkEngine.MAX_LINK_DISTANCE * PinLinkEngine.MAX_LINK_DISTANCE
             if (srcCenter.distanceToSqr(tgtCenter) > maxSq) {
@@ -119,28 +123,33 @@ data class BindPinPacket(
                 return
             }
 
-            // Foreign target: only the redstone fallback input exists there.
+            // Redstone-face target + LogicBlock source: keep the established
+            // SideBinding push path (per-source isolation, replicated to the
+            // client). Any OTHER source falls through to the host-less path
+            // below — RedstonePort.writePin emits into the VirtualSignalMap, so
+            // a Control Panel toggle (or any foreign pin) can drive a face too.
             val face = PinPorts.sideOfRedstoneInput(packet.targetPin)
             if (face != null) {
                 val srcBe = packet.source.resolve(level) as? LogicBlockEntity
-                if (srcBe == null) {
-                    notify(player, "Only a Logic Block channel can drive a redstone face"); return
+                if (srcBe != null) {
+                    if (srcBe.addSideBinding(packet.sourcePin, packet.target.payload.blockPos, face)) {
+                        level.sendBlockUpdated(srcBe.blockPos, srcBe.blockState, srcBe.blockState, Block.UPDATE_CLIENTS)
+                        confirm(player, "Linked ${packet.sourcePin} → redstone ${face.name.lowercase()}")
+                    } else {
+                        notify(player, "Channel '${packet.sourcePin}' can't drive redstone")
+                    }
+                    return
                 }
-                if (srcBe.addSideBinding(packet.sourcePin, packet.target.payload.blockPos, face)) {
-                    level.sendBlockUpdated(srcBe.blockPos, srcBe.blockState, srcBe.blockState, Block.UPDATE_CLIENTS)
-                    confirm(player, "Linked ${packet.sourcePin} → redstone ${face.name.lowercase()}")
-                } else {
-                    notify(player, "Channel '${packet.sourcePin}' can't drive redstone")
-                }
-                return
             }
 
             // Host-less target: a foreign block (no PinLinkSink BE) exposing a
-            // writable input pin — e.g. a CBC cannon mount's target_pitch. The
-            // link can't live on the target, so the level itself hosts it.
+            // writable input pin — a CBC cannon mount's target_pitch, or the
+            // redstone fallback's `redstone@<face>`. The link can't live on the
+            // target, so the level itself hosts it. [face] threads into the
+            // context so the face-scoped redstone input pin enumerates.
             val tgtPort = PinPorts.portFor(level, packet.target)
             val tgtPos = packet.target.payload.blockPos
-            val tgtPin = tgtPort?.pinInputs(LinkContext(level, tgtPos, level.getBlockState(tgtPos)))
+            val tgtPin = tgtPort?.pinInputs(LinkContext(level, tgtPos, level.getBlockState(tgtPos), face))
                 ?.firstOrNull { it.id == packet.targetPin }
             if (tgtPin != null && level is ServerLevel) {
                 if (!PinValueConversion.canConvert(srcPin.type, tgtPin.type)) {

@@ -6,6 +6,7 @@ import dev.nitka.nodewire.client.camera.CameraBlockRenderer
 import dev.nitka.nodewire.client.command.HighlightCommand
 import dev.nitka.nodewire.client.control.ControlSession
 import dev.nitka.nodewire.client.highlight.BlockHighlightRenderer
+import dev.nitka.nodewire.client.panel.ControlPanelBlockRenderer
 import dev.nitka.nodewire.client.link.LinkHud
 import dev.nitka.nodewire.client.link.LinkHudRenderer
 import dev.nitka.nodewire.client.script.ClientScriptCommand
@@ -84,6 +85,11 @@ object NodewireClient {
                 dev.nitka.nodewire.Registry.CAMERA_BLOCK_BE.get(),
                 ::CameraBlockRenderer,
             )
+            // Control Panel: procedural plate + element quads.
+            event.registerBlockEntityRenderer(
+                dev.nitka.nodewire.Registry.CONTROL_PANEL_BE.get(),
+                ::ControlPanelBlockRenderer,
+            )
         }
         // Bake the camera's two moving sub-models as standalone models so the
         // BER (and the future Flywheel visual) can fetch them.
@@ -106,6 +112,10 @@ object NodewireClient {
         }
         FORGE_BUS.addListener(::onClientTick)
         FORGE_BUS.addListener<RenderLevelStageEvent>(WireWorldRenderer::render)
+        // Control Panel: outline only the ELEMENT under the crosshair.
+        FORGE_BUS.addListener<net.neoforged.neoforge.client.event.RenderHighlightEvent.Block>(
+            dev.nitka.nodewire.client.panel.PanelHighlightRenderer::onHighlight,
+        )
         FORGE_BUS.addListener<RenderLevelStageEvent>(BlockHighlightRenderer::onRender)
         // Phase 2c — CLIENT script frame driver (ONE stage; guards double-fire
         // internally) + the `/nodewire clientscripts <on|off>` kill-switch.

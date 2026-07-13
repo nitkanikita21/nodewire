@@ -8,12 +8,16 @@ import dev.nitka.nodewire.block.LogicBlock
 import dev.nitka.nodewire.block.LogicBlockEntity
 import dev.nitka.nodewire.block.ControlBlock
 import dev.nitka.nodewire.block.ControlBlockEntity
+import dev.nitka.nodewire.block.ControlPanelBlock
+import dev.nitka.nodewire.block.ControlPanelBlockEntity
 import dev.nitka.nodewire.block.ScreenBlock
 import dev.nitka.nodewire.block.ScreenBlockEntity
 import dev.nitka.nodewire.block.TelemetryBlock
 import dev.nitka.nodewire.block.TelemetryBlockEntity
 import dev.nitka.nodewire.item.ArGlassesItem
 import dev.nitka.nodewire.item.ChannelLinkToolItem
+import dev.nitka.nodewire.item.PanelElementItem
+import dev.nitka.nodewire.item.PanelKeyItem
 import dev.nitka.nodewire.radio.RadioAntennaItem
 import dev.nitka.nodewire.radio.RadioReceiverBlock
 import dev.nitka.nodewire.radio.RadioReceiverBlockEntity
@@ -94,6 +98,27 @@ object Registry {
     val CONTROL_BLOCK_ITEM: DeferredItem<BlockItem> =
         ITEMS.registerSimpleBlockItem(CONTROL_BLOCK)
 
+    /** Thin, no-collision instrument panel — a 16×16 grid of placed controls
+     *  and indicators, each exposed as a pin. noCollission: entities pass
+     *  through; noOcclusion: the plate + elements are BER-drawn, not a cube. */
+    val CONTROL_PANEL: DeferredBlock<ControlPanelBlock> = BLOCKS.register("control_panel") { _ ->
+        ControlPanelBlock(BlockBehaviour.Properties.ofFullCopy(Blocks.IRON_BLOCK).noOcclusion().noCollission())
+    }
+
+    val CONTROL_PANEL_ITEM: DeferredItem<BlockItem> =
+        ITEMS.registerSimpleBlockItem(CONTROL_PANEL)
+
+    /** One placeable item per element-catalog type, registered `panel_<id>`. */
+    val PANEL_ELEMENT_ITEMS: Map<String, DeferredItem<PanelElementItem>> =
+        dev.nitka.nodewire.block.panel.PanelElements.ALL.associate { type ->
+            type.id to ITEMS.register("panel_${type.id}") { _ -> PanelElementItem(Item.Properties(), type.id) }
+        }
+
+    /** Service tool: remove (RMB) / configure (sneak-RMB) panel elements. */
+    val PANEL_KEY: DeferredItem<PanelKeyItem> = ITEMS.register("panel_key") { _ ->
+        PanelKeyItem(Item.Properties().stacksTo(1))
+    }
+
     val RADIO_TRANSMITTER_BLOCK: DeferredBlock<RadioTransmitterBlock> = BLOCKS.register("radio_transmitter") { _ ->
         RadioTransmitterBlock(BlockBehaviour.Properties.ofFullCopy(Blocks.IRON_BLOCK))
     }
@@ -153,6 +178,9 @@ object Registry {
                     output.accept(STATIC_CAMERA_BLOCK_ITEM.get())
                     output.accept(TELEMETRY_BLOCK_ITEM.get())
                     output.accept(CONTROL_BLOCK_ITEM.get())
+                    output.accept(CONTROL_PANEL_ITEM.get())
+                    PANEL_ELEMENT_ITEMS.values.forEach { output.accept(it.get()) }
+                    output.accept(PANEL_KEY.get())
                     output.accept(RADIO_TRANSMITTER_BLOCK_ITEM.get())
                     output.accept(RADIO_RECEIVER_BLOCK_ITEM.get())
                     output.accept(AR_HUB_BLOCK_ITEM.get())
@@ -199,6 +227,13 @@ object Registry {
         BLOCK_ENTITIES.register("control_block") { _ ->
             BlockEntityType.Builder
                 .of(::ControlBlockEntity, CONTROL_BLOCK.get())
+                .build(null)
+        }
+
+    val CONTROL_PANEL_BE: DeferredHolder<BlockEntityType<*>, BlockEntityType<ControlPanelBlockEntity>> =
+        BLOCK_ENTITIES.register("control_panel") { _ ->
+            BlockEntityType.Builder
+                .of(::ControlPanelBlockEntity, CONTROL_PANEL.get())
                 .build(null)
         }
 
