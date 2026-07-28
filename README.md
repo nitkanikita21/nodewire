@@ -9,6 +9,7 @@
 </p>
 
 <p align="center">
+  <a href="https://modrinth.com/mod/nodewire"><img src="https://img.shields.io/modrinth/v/nodewire?style=flat-square&logo=modrinth&logoColor=white&label=version&color=00af5c" alt="Modrinth version"/></a>
   <a href="https://modrinth.com/mod/nodewire"><img src="https://img.shields.io/modrinth/dt/nodewire?style=flat-square&logo=modrinth&logoColor=white&label=downloads&color=00af5c" alt="Modrinth downloads"/></a>
   <a href="https://discord.gg/QtgrdA6Rje"><img src="https://img.shields.io/badge/discord-join-5865f2?style=flat-square&logo=discord&logoColor=white" alt="Discord"/></a>
   <img src="https://img.shields.io/badge/status-early%20development-f59e0b?style=flat-square" alt="Status: early development"/>
@@ -39,7 +40,7 @@
 - Build plugin: **`net.neoforged.moddev` 2.0.141** (ModDevGradle, non-legacy)
 - Java toolchain: **21**
 - Custom UI framework on top of **Compose runtime 1.7.0** (no Skiko, no AWT) + **Yoga** (AppliedEnergistics fork, rebuilt for Java 21)
-- Integrations: Sable (via Sable Companion), Create 6.0.10, Create Aeronautics 1.2.1, Create Big Cannons 5.11, Tweaked Controllers 1.2.7, CC: Tweaked, JEI, EMI
+- Integrations: Sable 2.0.3 (via Sable Companion), Create 6.0.10, Create Aeronautics 1.3.0, Create Big Cannons 5.11, Tweaked Controllers 1.2.7, CC: Tweaked, JEI, EMI
 - Optional addon: **`nodewire_scripting`** — bundles the Kotlin compiler for in-game Script nodes (core works without it; script nodes then show a diagnostic)
 
 ## Build
