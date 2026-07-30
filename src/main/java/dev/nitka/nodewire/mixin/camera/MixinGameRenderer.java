@@ -1,12 +1,14 @@
 package dev.nitka.nodewire.mixin.camera;
 
 import dev.nitka.nodewire.client.camera.VideoCameraCapture;
+import net.minecraft.client.Camera;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.renderer.GameRenderer;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
  * Drives the client-local camera-feed capture loop. We inject at the
@@ -30,5 +32,18 @@ public abstract class MixinGameRenderer {
     )
     private void nodewire$captureCameras(DeltaTracker deltaTracker, boolean renderLevel, CallbackInfo ci) {
         VideoCameraCapture.captureFeeds(deltaTracker);
+    }
+
+    /**
+     * During a feed capture, force the nested {@code renderLevel}'s FOV to the
+     * feed's {@code fov} pin value. {@code getFov} feeds both the projection
+     * matrix and the fog setup, so this is the single seam that makes the pin
+     * actually change the captured picture (outside a capture the override is
+     * null and vanilla behaviour is untouched).
+     */
+    @Inject(method = "getFov(Lnet/minecraft/client/Camera;FZ)D", at = @At("HEAD"), cancellable = true)
+    private void nodewire$overrideCaptureFov(Camera camera, float partialTick, boolean useFovSetting, CallbackInfoReturnable<Double> cir) {
+        Double fov = VideoCameraCapture.captureFovOverride();
+        if (fov != null) cir.setReturnValue(fov);
     }
 }

@@ -125,7 +125,7 @@ class CameraBlockEntity(pos: BlockPos, state: BlockState) :
 
     /** Field of view in degrees. Default 90, clamped 30..110. */
     fun fovDeg(): Double {
-        val raw = (channelInputs[FOV_CHANNEL] as? PinValue.Float)?.value?.toDouble() ?: 90.0
+        val raw = numericParam(FOV_CHANNEL)?.toDouble() ?: 90.0
         return Mth.clamp(raw, 30.0, 110.0)
     }
 
@@ -133,13 +133,24 @@ class CameraBlockEntity(pos: BlockPos, state: BlockState) :
     fun enabled(): Boolean = (channelInputs[ENABLE_CHANNEL] as? PinValue.Bool)?.value ?: true
 
     /** Yaw offset in degrees. Default 0. */
-    fun yawDeg(): Float = (channelInputs[YAW_CHANNEL] as? PinValue.Float)?.value ?: 0f
+    fun yawDeg(): Float = numericParam(YAW_CHANNEL) ?: 0f
 
     /** Pitch offset in degrees. Default 0. */
-    fun pitchDeg(): Float = (channelInputs[PITCH_CHANNEL] as? PinValue.Float)?.value ?: 0f
+    fun pitchDeg(): Float = numericParam(PITCH_CHANNEL) ?: 0f
 
     /** Roll offset in degrees (turret gimbal head). Default 0. */
-    fun rollDeg(): Float = (channelInputs[ROLL_CHANNEL] as? PinValue.Float)?.value ?: 0f
+    fun rollDeg(): Float = numericParam(ROLL_CHANNEL) ?: 0f
+
+    /** Channel values arrive RAW (the PinPort contract: consumers convert at the
+     *  read site) — an INT/REDSTONE source used to be silently ignored by the
+     *  old `as? PinValue.Float` cast, leaving the param at its default. */
+    private fun numericParam(name: String): Float? {
+        val raw = channelInputs[name] ?: return null
+        return (
+            dev.nitka.nodewire.graph.PinValueConversion.convert(raw, dev.nitka.nodewire.graph.PinType.FLOAT)
+                as? PinValue.Float
+            )?.value
+    }
 
     /**
      * [ChannelInputSink] entry point — cross-block delivery of a camera param.

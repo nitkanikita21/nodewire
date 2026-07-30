@@ -51,6 +51,20 @@ object VideoCameraCapture {
         if (VideoManager.isCapturing()) allChangedDuringCapture = true
     }
 
+    /**
+     * The FOV (degrees) the CURRENT feed's nested renderLevel must use, or null
+     * outside a capture. Render-thread only. Read by
+     * [dev.nitka.nodewire.mixin.camera.MixinGameRenderer]'s `getFov` hook — the
+     * nested renderLevel computes both its projection matrix and fog from
+     * `GameRenderer.getFov`, so overriding there is what actually makes the
+     * `fov` pin change the picture (the pin used to affect only `project()`).
+     */
+    private var captureFov: Double? = null
+
+    /** The active capture FOV override, or null (mixin entry point). */
+    @JvmStatic
+    fun captureFovOverride(): Double? = captureFov
+
     /** Sodium/Embeddium replace the chunk renderer (they don't read vanilla
      *  sectionOcclusionGraph), so the per-feed graph swap can't help — gate it off
      *  and fall back to the plain in-place capture. */
@@ -268,6 +282,7 @@ object VideoCameraCapture {
                     // writes to feed storage, not the player's graph.
                     val feedVa = lr.viewArea
                     if (playerGraph != null && feedVa != null) lr.sectionOcclusionGraph = feed.feedGraph(feedVa)
+                    captureFov = feed.fovDeg()
                     mc.gameRenderer.renderLevel(DeltaTracker.ONE)
 
                     feed.lastActiveTimeSec = now
@@ -287,6 +302,7 @@ object VideoCameraCapture {
             } // end DhCaptureGuard.aroundCapture
         } finally {
             // --- RESTORE ---
+            captureFov = null
             markerEntity.discard()
             mc.cameraEntity = oldCamEntity
             window.setWidth(oldWidth)
