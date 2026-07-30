@@ -115,6 +115,10 @@ auto-convert to scalars — use `Vec Make` / `Vec Split`.
 A `Script` node runs a **Kotlin script** (`*.nw.kts`) compiled in-game (the optional
 `nodewire_scripting` addon carries the compiler; without it script nodes show a diagnostic and output defaults).
 
+> This is the quick tour. The **full guide** — coroutine behaviors, server→client state
+> replication, the client side, sandbox rules and complete example scripts — is in
+> [`scripting.md`](scripting.md).
+
 ```kotlin
 val dist = input<Float>("dist")          // becomes an input pin
 val elev = output<Float>("elevation")    // becomes an output pin
