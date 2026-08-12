@@ -96,6 +96,12 @@ object NodewireClient {
         bus.addListener<net.neoforged.neoforge.client.event.ModelEvent.RegisterAdditional> { event ->
             event.register(CameraBlockRenderer.YAW_MODEL)
             event.register(CameraBlockRenderer.HEAD_MODEL)
+            // Control Panel element bodies (Dashpanels-derived, MIT).
+            dev.nitka.nodewire.client.panel.PanelModel.registerAdditional(event)
+        }
+        // Snapshot the baked panel models once per bake (Dashpanels' hook).
+        bus.addListener<net.neoforged.neoforge.client.event.ModelEvent.BakingCompleted> { event ->
+            dev.nitka.nodewire.client.panel.PanelModel.bakingCompleted(event)
         }
         // Custom core shader: screen video-noise (signal-strength → grain). If it
         // fails to compile the screen just blits cleanly (instance stays null).

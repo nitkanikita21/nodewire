@@ -76,9 +76,16 @@ class ControlPanelBlockRenderer(
         val texts = ArrayList<TextDraw>()
         val videos = ArrayList<VideoDraw>()
 
-        rect(consumer, m, face, spin, 0.0, 0.0, 1.0, 1.0, COL_PLATE, OUT_PLATE)
         for (e in elements) drawElement(consumer, m, be, font, face, spin, e, texts, videos)
         drawGuide(consumer, m, be, face, spin)
+        // Baked pass (Dashpanels pipeline port) AFTER the colour-quad pass —
+        // model/text buffers switch the active buffer, ending the quad one.
+        pushSurfaceBasis(poseStack, face, spin)
+        PanelModel.PLATE.render(poseStack, buffers, net.minecraft.client.renderer.RenderType.cutout(), light)
+        for (e in elements) {
+            if (e.typeId in BAKED_TYPES) drawBaked(poseStack, buffers, font, e, light)
+        }
+        poseStack.popPose()
         for (v in videos) drawVideo(m, buffers, face, spin, v)
         for (t in texts) drawText(m, buffers, font, face, spin, t)
         poseStack.popPose()
@@ -101,6 +108,7 @@ class ControlPanelBlockRenderer(
         videos: MutableList<VideoDraw>,
     ) {
         if (PanelElements.byId(e.typeId) == null) return
+        if (e.typeId in BAKED_TYPES) return // Dashpanels-model pass below
         val gap = ELEMENT_GAP
         val u0 = (e.cellX + gap) / 16.0
         val v0 = (e.cellY + gap) / 16.0
@@ -116,33 +124,6 @@ class ControlPanelBlockRenderer(
         val on = e.value != 0.0
 
         when (e.typeId) {
-            "toggle" -> {
-                box(consumer, m, face, spin, u0, v0, u1, v1, OUT_PLATE, H_BASE, COL_BODY)
-                // Lever wedge: tip points UP (−v) when on, DOWN when off.
-                val lw = w * 0.30
-                val lu0 = cu - lw / 2; val lu1 = cu + lw / 2
-                val lv0 = v0 + h * 0.14; val lv1 = v1 - h * 0.14
-                val hi = H_PART; val lo = H_BASE + 0.006
-                val tops = if (on) doubleArrayOf(hi, hi, lo, lo) else doubleArrayOf(lo, lo, hi, hi)
-                prism(
-                    consumer, m, face, spin,
-                    arrayOf(
-                        doubleArrayOf(lu0, lv0), doubleArrayOf(lu1, lv0),
-                        doubleArrayOf(lu1, lv1), doubleArrayOf(lu0, lv1),
-                    ),
-                    H_BASE, tops, if (on) COL_ON else COL_OFF,
-                )
-            }
-            "momentary" -> {
-                box(consumer, m, face, spin, u0, v0, u1, v1, OUT_PLATE, H_BASE, COL_BODY)
-                val inset = 0.22
-                val cap = if (on) H_BASE + 0.010 else H_PART
-                box(
-                    consumer, m, face, spin,
-                    u0 + w * inset, v0 + h * inset, u1 - w * inset, v1 - h * inset,
-                    H_BASE, cap, if (on) COL_PRESS else COL_BTN,
-                )
-            }
             "selector" -> {
                 box(consumer, m, face, spin, u0, v0, u1, v1, OUT_PLATE, H_BASE, COL_BODY)
                 val positions = d("positions", 2.0).toInt().coerceAtLeast(1)
@@ -170,23 +151,6 @@ class ControlPanelBlockRenderer(
                     box(consumer, m, face, spin, u0 + w * 0.10, ty - th / 2, u1 - w * 0.10, ty + th / 2, H_TRACK, H_PART, COL_THUMB)
                 }
             }
-            "knob" -> {
-                box(consumer, m, face, spin, u0, v0, u1, v1, OUT_PLATE, H_BASE, COL_BODY)
-                val frac = norm(e.value, d("min", 0.0), d("max", 1.0))
-                val ang = Math.toRadians(frac * d("sweep", 270.0))
-                // Rotating cap (square, spun with the value) + notch at the pointer end.
-                rotBox(consumer, m, face, spin, cu, cv, w * 0.30, h * 0.30, ang, H_BASE, H_PART, COL_BODY_HI)
-                val r = minOf(w, h) * 0.24
-                val nu = cu + sin(ang) * r
-                val nv = cv + cos(ang) * r
-                rotBox(consumer, m, face, spin, nu, nv, w * 0.05, h * 0.10, ang, H_PART, H_PART + 0.006, COL_MARK)
-            }
-            "lamp" -> {
-                box(consumer, m, face, spin, u0, v0, u1, v1, OUT_PLATE, H_BASE - 0.006, COL_BODY)
-                val inset = 0.18
-                val color = if (on) col("on_color", COL_LAMP_ON) else col("off_color", COL_LAMP_OFF)
-                box(consumer, m, face, spin, u0 + w * inset, v0 + h * inset, u1 - w * inset, v1 - h * inset, H_BASE - 0.006, H_PART - 0.014, color)
-            }
             "bar" -> {
                 // LCD housing (like the numeric "88" display) with a glowing bar.
                 box(consumer, m, face, spin, u0, v0, u1, v1, OUT_PLATE, H_BASE, COL_BODY)
@@ -199,16 +163,6 @@ class ControlPanelBlockRenderer(
                 } else {
                     rect(consumer, m, face, spin, u0 + w * wi, v1 - h * wi - frac * h * (1 - 2 * wi), u1 - w * wi, v1 - h * wi, fill, H_BASE + 0.004)
                 }
-            }
-            "numeric" -> {
-                box(consumer, m, face, spin, u0, v0, u1, v1, OUT_PLATE, H_BASE, COL_BODY)
-                val wi = 0.10
-                rect(consumer, m, face, spin, u0 + w * wi, v0 + h * wi, u1 - w * wi, v1 - h * wi, COL_SCREEN, H_BASE + 0.002)
-                val decimals = d("decimals", 1.0).toInt().coerceIn(0, 6)
-                val num = formatNum(e.value, decimals) + cfg.getString("suffix")
-                val label = cfg.getString("label")
-                val text = if (label.isNotEmpty()) "$label $num" else num
-                texts.add(TextDraw(u0 + w * wi, v0 + h * wi, u1 - w * wi, v1 - h * wi, text, COL_LCD, H_BASE + 0.004))
             }
             in SCREEN_IDS -> {
                 // Protruding bezel; the feed blits on its front face — only
@@ -229,22 +183,137 @@ class ControlPanelBlockRenderer(
                     rect(consumer, m, face, spin, u1 - bw - 2 * d, v1 - bw - 2 * d, u1 - bw - d, v1 - bw - d, COL_OFF, H_BASE + 0.008)
                 }
             }
-            "label" -> {
-                // Plate hugs its text: width follows the rendered text length.
-                val text = cfg.getString("text")
-                if (text.isEmpty()) {
-                    box(consumer, m, face, spin, u0, v0, u1, v1, OUT_PLATE, H_LABEL, COL_LABEL)
-                } else {
-                    val textW = font.width(text).toFloat()
-                    val scale = minOf(w.toFloat() * 0.92f / textW, h.toFloat() * 0.92f / LINE_H)
-                    val plateW = (textW * scale + h * 0.24).coerceAtMost(w)
-                    val pu0 = cu - plateW / 2; val pu1 = cu + plateW / 2
-                    box(consumer, m, face, spin, pu0, v0, pu1, v1, OUT_PLATE, H_LABEL, COL_LABEL)
-                    texts.add(TextDraw(pu0, v0, pu1, v1, text, COL_TEXT, H_LABEL + 0.002))
-                }
-            }
             else -> box(consumer, m, face, spin, u0, v0, u1, v1, OUT_PLATE, H_BASE, COL_BODY)
         }
+    }
+
+    // ── Dashpanels-pipeline baked pass ────────────────────────────────────
+    // A 1:1 port of Dashpanels' AbstractPanelRenderer module frame + the
+    // individual module renders (MIT, BoxxedDev): per module, translate to its
+    // cell anchor, rotate 180° about the FOOTPRINT CENTRE (their models are
+    // authored flipped), then replay the module's own part transforms.
+
+    /** Push a unit basis mapping model X→grid-u, Y→outward normal, Z→grid-v
+     *  with the origin at grid (0,0) on the plate plane — our stand-in for
+     *  their facing-rotation + `renderTransform` (natural scale: 1 model
+     *  sixteenth = 1 grid cell). */
+    private fun pushSurfaceBasis(pose: PoseStack, face: Direction, spin: Int) {
+        val o = PanelSurface.local(0.0, 0.0, face, spin, OUT_PLATE)
+        val ue = PanelSurface.local(0.5, 0.0, face, spin, OUT_PLATE)
+        val ve = PanelSurface.local(0.0, 0.5, face, spin, OUT_PLATE)
+        val ud = norm3(floatArrayOf(ue[0] - o[0], ue[1] - o[1], ue[2] - o[2]))
+        val vd = norm3(floatArrayOf(ve[0] - o[0], ve[1] - o[1], ve[2] - o[2]))
+        val n = normalOf(face)
+        pose.pushPose()
+        pose.mulPose(
+            Matrix4f(
+                ud[0], ud[1], ud[2], 0f,
+                n[0], n[1], n[2], 0f,
+                vd[0], vd[1], vd[2], 0f,
+                o[0], o[1], o[2], 1f,
+            ),
+        )
+    }
+
+    private fun drawBaked(pose: PoseStack, buffers: MultiBufferSource, font: Font, e: PlacedElement, light: Int) {
+        val on = e.value != 0.0
+        val cfg = e.config
+        fun d(key: String, dflt: Double) = if (cfg.contains(key)) cfg.getDouble(key) else dflt
+        fun col(key: String, dflt: Int) = if (cfg.contains(key)) cfg.getInt(key) else dflt
+        val solid = net.minecraft.client.renderer.RenderType.solid()
+        val cutout = net.minecraft.client.renderer.RenderType.cutout()
+        val translucent = net.minecraft.client.renderer.RenderType.translucent()
+
+        pose.pushPose()
+        // Dashpanels' individualModuleTransform: edge epsilon keeps edge-column
+        // quads off the panel border; then the module frame (180° about centre).
+        val eps = when {
+            e.cellX == 0 -> 0.0001f
+            e.cellX + e.cols == 16 -> -0.0001f
+            else -> 0f
+        }
+        pose.translate(e.cellX / 16f + eps, 0f, e.cellY / 16f)
+        pose.rotateAround(com.mojang.math.Axis.YP.rotationDegrees(180f), e.cols / 32f, 0f, e.rows / 32f)
+
+        when (e.typeId) {
+            "toggle" -> (if (on) PanelModel.SWITCH_ON else PanelModel.SWITCH_OFF).render(pose, buffers, solid, light)
+            "momentary" -> {
+                PanelModel.MOMENTARY_BASE.render(pose, buffers, solid, light)
+                pose.pushPose()
+                pose.translate(0.0, if (on) -0.5 / 16.0 + 0.001 else 0.0, 0.0)
+                PanelModel.MOMENTARY_BUTTON.render(pose, buffers, solid, light)
+                pose.popPose()
+            }
+            "lamp" -> {
+                pose.pushPose()
+                pose.translate(0.0, 0.0, 0.5 / 16.0)
+                PanelModel.BULB_BASE.render(pose, buffers, solid, light)
+                val tint = col("on_color", COL_LAMP_ON) and 0xFFFFFF
+                val bulb = if (on) PanelModel.BULB_ON else PanelModel.BULB_OFF
+                bulb.render(pose, buffers, translucent, if (on) LightTexture.FULL_BRIGHT else light, tint)
+                pose.popPose()
+            }
+            "knob" -> {
+                val ang = norm(e.value, d("min", 0.0), d("max", 1.0)) * d("sweep", 270.0)
+                pose.pushPose()
+                pose.rotateAround(com.mojang.math.Axis.YP.rotationDegrees((ang - 45.0).toFloat()), 1 / 16f, 0f, 1 / 16f)
+                PanelModel.KNOB.render(pose, buffers, solid, light)
+                pose.popPose()
+            }
+            "label" -> {
+                pose.pushPose()
+                pose.translate(0f, 0.001f, 0f)
+                PanelModel.LABEL.render(pose, buffers, cutout, light)
+                pose.popPose()
+                moduleText(pose, buffers, font, cfg.getString("text"), 0xFF2A2D31.toInt(), e.cols, e.rows, 0.003f)
+            }
+            "numeric" -> {
+                pose.pushPose()
+                pose.translate(0f, -1 / 32f, 0f)
+                PanelModel.SEVEN_SEGMENT.render(pose, buffers, solid, light)
+                pose.popPose()
+                val decimals = d("decimals", 1.0).toInt().coerceIn(0, 6)
+                val num = formatNum(e.value, decimals) + cfg.getString("suffix")
+                moduleText(pose, buffers, font, num, COL_LCD, e.cols, e.rows, 1 / 32f, fullBright = true)
+            }
+        }
+        pose.popPose()
+    }
+
+    /**
+     * Text laid flat on a module's face — Dashpanels' seven-segment recipe
+     * (lay flat with X+90°, then Z+180° so it reads correctly through the
+     * module frame's 180° flip), generalised: centred on the footprint and
+     * scaled down to fit it.
+     */
+    private fun moduleText(
+        pose: PoseStack,
+        buffers: MultiBufferSource,
+        font: Font,
+        text: String,
+        argb: Int,
+        cols: Int,
+        rows: Int,
+        yLift: Float,
+        fullBright: Boolean = false,
+    ) {
+        if (text.isEmpty()) return
+        val w = font.width(text).toFloat()
+        // Font units at scale 1/32: one grid cell = 2 units.
+        val maxW = cols * 2f - 1f
+        val maxH = rows * 2f - 0.5f
+        val fit = minOf(1f, maxW / w, maxH / LINE_H)
+        pose.pushPose()
+        pose.translate(cols / 32f, yLift, rows / 32f) // footprint centre
+        pose.scale(fit / 32f, fit / 32f, fit / 32f)
+        pose.mulPose(com.mojang.math.Axis.XP.rotationDegrees(90f))
+        pose.mulPose(com.mojang.math.Axis.ZP.rotationDegrees(180f))
+        font.drawInBatch(
+            text, -w / 2f, -LINE_H / 2f, argb, false,
+            pose.last().pose(), buffers, Font.DisplayMode.POLYGON_OFFSET, 0,
+            if (fullBright) LightTexture.FULL_BRIGHT else LightTexture.FULL_BRIGHT,
+        )
+        pose.popPose()
     }
 
     // ── 3D primitives (grid space → oriented world quads) ─────────────────
@@ -516,6 +585,9 @@ class ControlPanelBlockRenderer(
         /** All screen-variant type ids (shared render branch). */
         private val SCREEN_IDS = PanelElements.ALL.map { it.id }.filter { PanelElements.isScreen(it) }.toSet()
 
+        /** Types rendered through the Dashpanels baked pipeline. */
+        private val BAKED_TYPES = setOf("toggle", "momentary", "lamp", "knob", "label", "numeric")
+
         private const val ELEMENT_GAP = 0.06 // cell inset between an element body and its footprint
         private const val LINE_H = 8f // vanilla font line height, px
 
@@ -526,8 +598,8 @@ class ControlPanelBlockRenderer(
         private const val H_LABEL = 0.020 // label plate
         private const val H_BASE = 0.032 // element housings
         private const val H_PART = 0.062 // caps / levers / thumbs / domes
-        private const val OUT_GRID = 0.072
-        private const val OUT_GHOST = 0.076
+        private const val OUT_GRID = 0.150 // above the tallest baked bodies
+        private const val OUT_GHOST = 0.155
         private const val GRID_HW = 0.0016
         private const val GHOST_HW = 0.004
 

@@ -123,3 +123,5 @@ This project is in early development. If you'd like to contribute:
 ## License
 
 [MIT](LICENSE) © 2026 nitka
+
+Panel element models & textures adapted from [Dashpanels](https://github.com/BoxxedDev/control-panels) by BoxxedDev (MIT) — see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).

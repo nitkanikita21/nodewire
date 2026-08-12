@@ -21,9 +21,9 @@ class PanelElementTypeTest {
         )
     }
 
-    @Test fun `toggle is a 2x2 BOOL output with a remote set input`() {
+    @Test fun `toggle is a switch-footprint BOOL output with a remote set input`() {
         val t = PanelElements.byId("toggle")!!
-        assertEquals(2, t.cols); assertEquals(2, t.rows)
+        assertEquals(2, t.cols); assertEquals(3, t.rows) // Dashpanels switch module
         assertEquals(listOf(PinType.BOOL), t.outputs.map { it.type })
         assertEquals("", t.outputs.single().name) // primary keeps the bare id
         assertEquals(listOf("set"), t.inputs.map { it.name })
@@ -31,9 +31,9 @@ class PanelElementTypeTest {
         assertTrue(t.interactive)
     }
 
-    @Test fun `lamp is a 1x1 BOOL input and not interactive`() {
+    @Test fun `lamp is a 1x2 BOOL input and not interactive`() {
         val l = PanelElements.byId("lamp")!!
-        assertEquals(1, l.cols); assertEquals(1, l.rows)
+        assertEquals(1, l.cols); assertEquals(2, l.rows) // Dashpanels bulb module
         assertEquals(listOf(PinType.BOOL), l.inputs.map { it.type })
         assertTrue(l.outputs.isEmpty())
         assertFalse(l.interactive)

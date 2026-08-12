@@ -1,0 +1,20 @@
+{
+	"format_version": "1.9.0",
+	"credit": "Made with Blockbench",
+	"render_type": "cutout",
+	"textures": {
+		"0": "nodewire:block/panel/label",
+		"particle": "nodewire:block/panel/label"
+	},
+	"elements": [
+		{
+			"from": [0, -1, 0],
+			"to": [6, 0, 2],
+			"rotation": {"angle": 0, "axis": "y", "origin": [1, 0, 0]},
+			"faces": {
+				"up": {"uv": [0, 0, 6, 2], "texture": "#0"},
+				"down": {"uv": [0, 2, 6, 0], "texture": "#0"}
+			}
+		}
+	]
+}

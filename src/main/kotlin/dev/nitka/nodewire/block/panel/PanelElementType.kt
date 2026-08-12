@@ -44,10 +44,10 @@ object PanelElements {
         // Player inputs — primary OUT is the operated state; `set` lets the
         // graph drive the control remotely (state syncs back to the visual).
         PanelElementType(
-            "toggle", 2, 2,
+            "toggle", 2, 3, // Dashpanels switch footprint
             listOf(out(PinType.BOOL), ElementPin("set", PanelPinDir.INPUT, PinType.BOOL)),
         ),
-        PanelElementType("momentary", 2, 2, listOf(out(PinType.BOOL))),
+        PanelElementType("momentary", 3, 3, listOf(out(PinType.BOOL))),
         PanelElementType(
             "selector", 2, 2,
             listOf(out(PinType.INT), ElementPin("set", PanelPinDir.INPUT, PinType.INT)),
@@ -57,13 +57,13 @@ object PanelElements {
             listOf(out(PinType.FLOAT), ElementPin("set", PanelPinDir.INPUT, PinType.FLOAT)),
         ),
         PanelElementType(
-            "knob", 3, 3,
+            "knob", 2, 2,
             listOf(out(PinType.FLOAT), ElementPin("set", PanelPinDir.INPUT, PinType.FLOAT)),
         ),
         // Indicators — primary IN drives the display.
-        PanelElementType("lamp", 1, 1, listOf(inp(PinType.BOOL))),
+        PanelElementType("lamp", 1, 2, listOf(inp(PinType.BOOL))),
         PanelElementType("bar", 4, 1, listOf(inp(PinType.FLOAT))),
-        PanelElementType("numeric", 4, 2, listOf(inp(PinType.FLOAT))),
+        PanelElementType("numeric", 6, 4, listOf(inp(PinType.FLOAT))), // seven-segment module
         // Mini-screens: video in + a touch surface out (tiny touch-screens) in
         // a range of fixed footprints. OFF by default — the `enable` pin powers
         // them up; a dark screen shows no video and ignores taps.
@@ -73,7 +73,7 @@ object PanelElements {
         screen("screen_large", 8, 8),
         screen("screen_full", 16, 16),
         // Decorative.
-        PanelElementType("label", 2, 1, emptyList()),
+        PanelElementType("label", 6, 2, emptyList()),
     )
 
     private val byId = ALL.associateBy { it.id }
