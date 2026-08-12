@@ -17,36 +17,22 @@ object PanelElementConfig {
 
     /** Editable fields for [typeId] (empty = the element has no options). */
     fun fields(typeId: String): List<Field> = when (typeId) {
-        "selector" -> listOf(Field("positions", "Positions", FieldKind.INT, "2"))
-        "slider" -> listOf(
-            Field("min", "Min", FieldKind.DOUBLE, "0"),
-            Field("max", "Max", FieldKind.DOUBLE, "1"),
-            Field("step", "Step (0=smooth)", FieldKind.DOUBLE, "0"),
+        "push_button" -> listOf(
+            Field("buttons", "Buttons (1-8)", FieldKind.INT, "1"),
+            Field("gap", "Gap (0-2)", FieldKind.INT, "0"),
         )
         "knob" -> listOf(
             Field("min", "Min", FieldKind.DOUBLE, "0"),
             Field("max", "Max", FieldKind.DOUBLE, "1"),
-            Field("step", "Step", FieldKind.DOUBLE, "0"),
-            Field("sweep", "Sweep deg", FieldKind.DOUBLE, "270"),
         )
-        "lamp" -> listOf(
-            Field("on_color", "On colour", FieldKind.COLOR, "FFFF3333"),
-            Field("off_color", "Off colour", FieldKind.COLOR, "FF331111"),
-        )
-        "bar" -> listOf(
-            Field("min", "Min", FieldKind.DOUBLE, "0"),
-            Field("max", "Max", FieldKind.DOUBLE, "1"),
-            Field("color", "Colour", FieldKind.COLOR, "FF33CCCC"),
-        )
-        "numeric" -> listOf(
-            Field("min", "Min", FieldKind.DOUBLE, "0"),
-            Field("max", "Max", FieldKind.DOUBLE, "1"),
-            Field("decimals", "Decimals", FieldKind.INT, "1"),
+        "bulb" -> listOf(Field("on_color", "Colour", FieldKind.COLOR, "FFFF3333"))
+        "seven_segment" -> listOf(
+            Field("decimals", "Decimals", FieldKind.INT, "0"),
             Field("suffix", "Suffix", FieldKind.STRING, ""),
-            Field("label", "Label", FieldKind.STRING, ""),
+            Field("color", "Colour", FieldKind.COLOR, "FFFFFFFF"),
         )
         "label" -> listOf(Field("text", "Text", FieldKind.STRING, "Label"))
-        else -> emptyList() // toggle / momentary / screen: no options in v1
+        else -> emptyList() // switch/momentary/key_switch/emergency/lever/joystick/buzzer/screens
     }
 
     /** The current string value of [f] in [cfg], or its default when unset. */

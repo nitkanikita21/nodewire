@@ -1,1 +1,1 @@
-{ "parent": "minecraft:item/generated", "textures": { "layer0": "nodewire:item/panel_knob" } }
+{ "parent": "minecraft:item/generated", "textures": { "layer0": "nodewire:block/panel/knob" } }

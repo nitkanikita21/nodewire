@@ -83,7 +83,7 @@ class ControlPanelBlockRenderer(
         pushSurfaceBasis(poseStack, face, spin)
         PanelModel.PLATE.render(poseStack, buffers, net.minecraft.client.renderer.RenderType.cutout(), light)
         for (e in elements) {
-            if (e.typeId in BAKED_TYPES) drawBaked(poseStack, buffers, font, e, light)
+            if (e.typeId in BAKED_TYPES) drawBaked(poseStack, buffers, font, be, e, light)
         }
         poseStack.popPose()
         for (v in videos) drawVideo(m, buffers, face, spin, v)
@@ -124,46 +124,6 @@ class ControlPanelBlockRenderer(
         val on = e.value != 0.0
 
         when (e.typeId) {
-            "selector" -> {
-                box(consumer, m, face, spin, u0, v0, u1, v1, OUT_PLATE, H_BASE, COL_BODY)
-                val positions = d("positions", 2.0).toInt().coerceAtLeast(1)
-                val idx = e.value.toInt().coerceIn(0, positions - 1)
-                val frac = if (positions <= 1) 0.0 else idx.toDouble() / (positions - 1)
-                val ang = Math.toRadians(frac * SELECTOR_SWEEP_DEG - SELECTOR_SWEEP_DEG / 2)
-                // Rotary pointer bar + a small hub.
-                rotBox(consumer, m, face, spin, cu, cv, w * 0.09, h * 0.34, ang, H_BASE, H_PART - 0.008, COL_MARK)
-                box(consumer, m, face, spin, cu - w * 0.10, cv - h * 0.10, cu + w * 0.10, cv + h * 0.10, H_BASE, H_PART - 0.004, COL_BODY_HI)
-            }
-            "slider" -> {
-                box(consumer, m, face, spin, u0, v0, u1, v1, OUT_PLATE, H_TRACK, COL_BODY)
-                val horizontal = e.cols >= e.rows
-                // Recessed channel down the middle.
-                if (horizontal) rect(consumer, m, face, spin, u0 + w * 0.05, cv - h * 0.10, u1 - w * 0.05, cv + h * 0.10, COL_SLOT, H_TRACK + 0.002)
-                else rect(consumer, m, face, spin, cu - w * 0.10, v0 + h * 0.05, cu + w * 0.10, v1 - h * 0.05, COL_SLOT, H_TRACK + 0.002)
-                val frac = norm(e.value, d("min", 0.0), d("max", 1.0))
-                if (horizontal) {
-                    val tw = w * 0.10
-                    val tx = (u0 + frac * w).coerceIn(u0 + tw / 2, u1 - tw / 2)
-                    box(consumer, m, face, spin, tx - tw / 2, v0 + h * 0.10, tx + tw / 2, v1 - h * 0.10, H_TRACK, H_PART, COL_THUMB)
-                } else {
-                    val th = h * 0.10
-                    val ty = (v1 - frac * h).coerceIn(v0 + th / 2, v1 - th / 2)
-                    box(consumer, m, face, spin, u0 + w * 0.10, ty - th / 2, u1 - w * 0.10, ty + th / 2, H_TRACK, H_PART, COL_THUMB)
-                }
-            }
-            "bar" -> {
-                // LCD housing (like the numeric "88" display) with a glowing bar.
-                box(consumer, m, face, spin, u0, v0, u1, v1, OUT_PLATE, H_BASE, COL_BODY)
-                val wi = 0.10
-                rect(consumer, m, face, spin, u0 + w * wi, v0 + h * wi, u1 - w * wi, v1 - h * wi, COL_SCREEN, H_BASE + 0.002)
-                val frac = norm(e.value, d("min", 0.0), d("max", 1.0))
-                val fill = col("color", COL_FILL)
-                if (e.cols >= e.rows) {
-                    rect(consumer, m, face, spin, u0 + w * wi, v0 + h * wi, u0 + w * wi + frac * w * (1 - 2 * wi), v1 - h * wi, fill, H_BASE + 0.004)
-                } else {
-                    rect(consumer, m, face, spin, u0 + w * wi, v1 - h * wi - frac * h * (1 - 2 * wi), u1 - w * wi, v1 - h * wi, fill, H_BASE + 0.004)
-                }
-            }
             in SCREEN_IDS -> {
                 // Protruding bezel; the feed blits on its front face — only
                 // while powered (`enable` pin; e.value doubles as the flag).
@@ -215,7 +175,7 @@ class ControlPanelBlockRenderer(
         )
     }
 
-    private fun drawBaked(pose: PoseStack, buffers: MultiBufferSource, font: Font, e: PlacedElement, light: Int) {
+    private fun drawBaked(pose: PoseStack, buffers: MultiBufferSource, font: Font, be: ControlPanelBlockEntity, e: PlacedElement, light: Int) {
         val on = e.value != 0.0
         val cfg = e.config
         fun d(key: String, dflt: Double) = if (cfg.contains(key)) cfg.getDouble(key) else dflt
@@ -235,16 +195,102 @@ class ControlPanelBlockRenderer(
         pose.translate(e.cellX / 16f + eps, 0f, e.cellY / 16f)
         pose.rotateAround(com.mojang.math.Axis.YP.rotationDegrees(180f), e.cols / 32f, 0f, e.rows / 32f)
 
+        val animKey = "${e.hashCode()}:${e.pinId()}"
         when (e.typeId) {
-            "toggle" -> (if (on) PanelModel.SWITCH_ON else PanelModel.SWITCH_OFF).render(pose, buffers, solid, light)
+            "switch" -> (if (on) PanelModel.SWITCH_ON else PanelModel.SWITCH_OFF).render(pose, buffers, solid, light)
             "momentary" -> {
                 PanelModel.MOMENTARY_BASE.render(pose, buffers, solid, light)
+                val y = PanelAnim.approach(animKey, if (on) -0.5f / 16f + 0.001f else 0f, 0.5f)
                 pose.pushPose()
-                pose.translate(0.0, if (on) -0.5 / 16.0 + 0.001 else 0.0, 0.0)
+                pose.translate(0f, y, 0f)
                 PanelModel.MOMENTARY_BUTTON.render(pose, buffers, solid, light)
                 pose.popPose()
             }
-            "lamp" -> {
+            "push_button" -> {
+                val buttons = (if (cfg.contains("buttons")) cfg.getInt("buttons") else 1).coerceIn(1, 8)
+                val gap = (if (cfg.contains("gap")) cfg.getInt("gap") else 0).coerceIn(0, 2)
+                val selected = e.value.toInt() - 1 // -1 = none
+                for (i in 1..buttons) {
+                    pose.pushPose()
+                    pose.translate((buttons - i) * 2 / 16f + (buttons - i) * gap / 16f, 0f, 0f)
+                    PanelModel.PUSH_BUTTON_BASE.render(pose, buffers, cutout, light)
+                    val sel = (i - 1) == selected
+                    pose.translate(0f, if (sel) -0.25f / 16f else 0f, 0f)
+                    (if (sel) PanelModel.PUSH_BUTTON_LIT else PanelModel.PUSH_BUTTON).render(pose, buffers, cutout, light)
+                    pose.popPose()
+                }
+            }
+            "key_switch" -> {
+                PanelModel.KEY_SWITCH_BASE.render(pose, buffers, cutout, light)
+                val turn = PanelAnim.approach(animKey, if (on) -90f else 0f, 0.5f)
+                pose.pushPose()
+                pose.rotateAround(com.mojang.math.Axis.YP.rotationDegrees(turn), 1 / 16f, 0f, 1 / 16f)
+                PanelModel.KEY_SWITCH_HOLE.render(pose, buffers, cutout, light)
+                PanelModel.KEY_SWITCH_KEY.render(pose, buffers, cutout, light)
+                pose.popPose()
+            }
+            "emergency" -> {
+                val bits = e.value.toInt()
+                val open = bits and 2 != 0
+                val pressed = bits and 1 != 0
+                PanelModel.EMERGENCY_BASE.render(pose, buffers, cutout, light)
+                val openTime = PanelAnim.linear(animKey, if (open) 1f else 0f, 0.1f)
+                pose.pushPose()
+                pose.rotateAround(com.mojang.math.Axis.XP.rotationDegrees(easeOutBack(openTime) * 75f), 0f, 0f, 0.25f)
+                PanelModel.EMERGENCY_COVER.render(pose, buffers, translucent, light)
+                pose.popPose()
+                pose.pushPose()
+                if (pressed) pose.translate(0.0, -0.75 / 16.0, 0.0)
+                PanelModel.EMERGENCY_BUTTON.render(pose, buffers, cutout, light)
+                pose.popPose()
+            }
+            "lever" -> {
+                PanelModel.LEVER_BASE.render(pose, buffers, solid, light)
+                val target = (e.value.coerceIn(0.0, 15.0) / 15.0 * 0.25).toFloat()
+                val handleZ = PanelAnim.approach("$animKey:h", target, 0.5f)
+                val indicatorZ = PanelAnim.approach("$animKey:i", target, 0.15f)
+                pose.pushPose()
+                pose.translate(0f, 0f, handleZ)
+                PanelModel.LEVER_HANDLE.render(pose, buffers, solid, light)
+                pose.popPose()
+                pose.pushPose()
+                pose.translate(0f, 0f, indicatorZ)
+                PanelModel.LEVER_INDICATOR.render(pose, buffers, solid, light)
+                pose.popPose()
+            }
+            "knob" -> {
+                val angle = PanelAnim.approach(animKey, (e.value.coerceIn(0.0, 1.0) * 360.0).toFloat(), 0.75f)
+                pose.pushPose()
+                pose.rotateAround(com.mojang.math.Axis.YP.rotationDegrees(angle - 45f), 1 / 16f, 0f, 1 / 16f)
+                PanelModel.KNOB.render(pose, buffers, solid, light)
+                pose.popPose()
+            }
+            "joystick" -> {
+                val joy = be.joyState(e.pinId())
+                val rsx = PanelAnim.approach("$animKey:x", joy?.get(0) ?: 0f, 0.5f)
+                val rsy = PanelAnim.approach("$animKey:y", joy?.get(1) ?: 0f, 0.5f)
+                val angleX = rsx * 7.5f
+                val angleY = rsy * 7.5f
+                PanelModel.JOYSTICK_BASE.render(pose, buffers, solid, light)
+                pose.pushPose()
+                pose.translate(0.125, 0.03125, 0.125)
+                pose.mulPose(com.mojang.math.Axis.XP.rotationDegrees(angleY))
+                pose.mulPose(com.mojang.math.Axis.ZP.rotationDegrees(angleX))
+                PanelModel.JOYSTICK_BETWEEN.render(pose, buffers, solid, light)
+                pose.pushPose()
+                pose.translate(0.0, 0.03125, 0.0)
+                pose.mulPose(com.mojang.math.Axis.XP.rotationDegrees(angleY))
+                pose.mulPose(com.mojang.math.Axis.ZP.rotationDegrees(angleX))
+                PanelModel.JOYSTICK_STICK.render(pose, buffers, solid, light)
+                pose.pushPose()
+                pose.translate(0.0, 0.125, 0.0)
+                pose.mulPose(com.mojang.math.Axis.XP.rotationDegrees(22.5f))
+                PanelModel.JOYSTICK_TRIGGER.render(pose, buffers, solid, light)
+                pose.popPose()
+                pose.popPose()
+                pose.popPose()
+            }
+            "bulb" -> {
                 pose.pushPose()
                 pose.translate(0.0, 0.0, 0.5 / 16.0)
                 PanelModel.BULB_BASE.render(pose, buffers, solid, light)
@@ -253,13 +299,16 @@ class ControlPanelBlockRenderer(
                 bulb.render(pose, buffers, translucent, if (on) LightTexture.FULL_BRIGHT else light, tint)
                 pose.popPose()
             }
-            "knob" -> {
-                val ang = norm(e.value, d("min", 0.0), d("max", 1.0)) * d("sweep", 270.0)
+            "seven_segment" -> {
                 pose.pushPose()
-                pose.rotateAround(com.mojang.math.Axis.YP.rotationDegrees((ang - 45.0).toFloat()), 1 / 16f, 0f, 1 / 16f)
-                PanelModel.KNOB.render(pose, buffers, solid, light)
+                pose.translate(0f, -1 / 32f, 0f)
+                PanelModel.SEVEN_SEGMENT.render(pose, buffers, solid, light)
                 pose.popPose()
+                val decimals = d("decimals", 0.0).toInt().coerceIn(0, 6)
+                val num = formatNum(e.value, decimals) + cfg.getString("suffix")
+                moduleText(pose, buffers, font, num, col("color", 0xFFFFFFFF.toInt()), e.cols, e.rows, 1 / 32f, fullBright = true)
             }
+            "buzzer" -> PanelModel.BUZZER.render(pose, buffers, cutout, light)
             "label" -> {
                 pose.pushPose()
                 pose.translate(0f, 0.001f, 0f)
@@ -267,17 +316,48 @@ class ControlPanelBlockRenderer(
                 pose.popPose()
                 moduleText(pose, buffers, font, cfg.getString("text"), 0xFF2A2D31.toInt(), e.cols, e.rows, 0.003f)
             }
-            "numeric" -> {
-                pose.pushPose()
-                pose.translate(0f, -1 / 32f, 0f)
-                PanelModel.SEVEN_SEGMENT.render(pose, buffers, solid, light)
-                pose.popPose()
-                val decimals = d("decimals", 1.0).toInt().coerceIn(0, 6)
-                val num = formatNum(e.value, decimals) + cfg.getString("suffix")
-                moduleText(pose, buffers, font, num, COL_LCD, e.cols, e.rows, 1 / 32f, fullBright = true)
-            }
         }
         pose.popPose()
+    }
+
+    /** Dashpanels' emergency-cover ease (back-out). */
+    private fun easeOutBack(x: Float): Float {
+        val c1 = 1.70158f
+        val c3 = c1 + 1f
+        val t = x - 1f
+        return 1f + c3 * t * t * t + c1 * t * t
+    }
+
+    /**
+     * Client-side animation smoothing standing in for Dashpanels' BE-tick
+     * lerps: exponential approach with the SAME per-tick factor, made
+     * frame-rate independent via per-key timestamps.
+     */
+    private object PanelAnim {
+        private class Cell(var value: Float, var nanos: Long)
+
+        private val cells = HashMap<String, Cell>()
+
+        fun approach(key: String, target: Float, perTick: Float): Float {
+            val now = System.nanoTime()
+            val cell = cells.getOrPut(key) { Cell(target, now) }
+            val dtTicks = ((now - cell.nanos) / 1e9 * 20.0).coerceIn(0.0, 5.0)
+            cell.nanos = now
+            val f = 1.0 - Math.pow((1.0 - perTick).toDouble(), dtTicks)
+            cell.value += ((target - cell.value) * f).toFloat()
+            return cell.value
+        }
+
+        /** Linear ramp at [ratePerTick] toward [target] (the emergency cover). */
+        fun linear(key: String, target: Float, ratePerTick: Float): Float {
+            val now = System.nanoTime()
+            val cell = cells.getOrPut(key) { Cell(target, now) }
+            val dtTicks = ((now - cell.nanos) / 1e9 * 20.0).coerceIn(0.0, 5.0).toFloat()
+            cell.nanos = now
+            val step = ratePerTick * dtTicks
+            cell.value = if (target > cell.value) minOf(cell.value + step, target) else maxOf(cell.value - step, target)
+            return cell.value
+        }
     }
 
     /**
@@ -586,7 +666,10 @@ class ControlPanelBlockRenderer(
         private val SCREEN_IDS = PanelElements.ALL.map { it.id }.filter { PanelElements.isScreen(it) }.toSet()
 
         /** Types rendered through the Dashpanels baked pipeline. */
-        private val BAKED_TYPES = setOf("toggle", "momentary", "lamp", "knob", "label", "numeric")
+        private val BAKED_TYPES = setOf(
+            "switch", "momentary", "push_button", "key_switch", "emergency",
+            "lever", "knob", "joystick", "bulb", "seven_segment", "buzzer", "label",
+        )
 
         private const val ELEMENT_GAP = 0.06 // cell inset between an element body and its footprint
         private const val LINE_H = 8f // vanilla font line height, px

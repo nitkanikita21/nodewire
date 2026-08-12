@@ -23,18 +23,18 @@ class PanelAnalogTest {
 
     @Test fun `outputs and inputs derive from element pin specs`() {
         val els = listOf(
-            PlacedElement("toggle", 0, 0, 2, 2, CompoundTag(), 0.0),
-            PlacedElement("lamp", 4, 0, 1, 1, CompoundTag(), 0.0),
+            PlacedElement("switch", 0, 0, 2, 3, CompoundTag(), 0.0),
+            PlacedElement("bulb", 4, 0, 1, 2, CompoundTag(), 0.0),
         )
         // Primary pins keep the bare cell-anchor id; named pins are suffixed.
-        assertEquals(listOf("toggle@0,0"), PanelPins.outputs(els).map { it.id })
-        assertEquals(listOf("toggle@0,0:set", "lamp@4,0"), PanelPins.inputs(els).map { it.id })
+        assertEquals(listOf("switch@0,0"), PanelPins.outputs(els).map { it.id })
+        assertEquals(listOf("switch@0,0:set", "bulb@4,0"), PanelPins.inputs(els).map { it.id })
     }
 
     @Test fun `wire ids split back into base and pin name`() {
-        assertEquals("toggle@0,0", PanelPins.baseId("toggle@0,0:set"))
-        assertEquals("set", PanelPins.pinName("toggle@0,0:set"))
-        assertEquals("toggle@0,0", PanelPins.baseId("toggle@0,0"))
-        assertEquals("", PanelPins.pinName("toggle@0,0"))
+        assertEquals("switch@0,0", PanelPins.baseId("switch@0,0:set"))
+        assertEquals("set", PanelPins.pinName("switch@0,0:set"))
+        assertEquals("switch@0,0", PanelPins.baseId("switch@0,0"))
+        assertEquals("", PanelPins.pinName("switch@0,0"))
     }
 }

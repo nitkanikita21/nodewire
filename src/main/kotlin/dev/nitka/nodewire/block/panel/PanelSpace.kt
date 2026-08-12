@@ -37,13 +37,18 @@ object PanelSpace {
     /** How far an element type's tallest part rises off the wall (matches the
      *  renderer's relief so the selection box hugs the visible body). */
     fun relief(typeId: String): Double = when {
-        typeId in setOf("toggle", "momentary", "selector", "slider") -> 0.065
-        typeId == "knob" -> 0.070
-        typeId == "lamp" -> 0.050
-        typeId == "bar" || typeId == "numeric" -> 0.038
+        // Model max-Y (16ths, natural Dashpanels scale) / 16 + ~0.03 plate front.
+        typeId == "switch" -> 0.20
+        typeId == "momentary" || typeId == "push_button" -> 0.125
+        typeId == "key_switch" -> 0.25
+        typeId in setOf("emergency", "lever", "knob") -> 0.16
+        typeId == "joystick" -> 0.34
+        typeId == "bulb" -> 0.13
+        typeId == "seven_segment" -> 0.09
+        typeId == "buzzer" -> 0.10
         PanelElements.isScreen(typeId) -> 0.042
         typeId == "label" -> 0.024
-        else -> 0.040
+        else -> 0.060
     }
 
     /**

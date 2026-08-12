@@ -15,8 +15,11 @@ import dev.nitka.nodewire.link.LinkPin
  */
 object PanelPins {
     /** Wire id for [pin] of element [e]. */
-    fun pinId(e: PlacedElement, pin: ElementPin): String =
-        if (pin.name.isEmpty()) e.pinId() else "${e.pinId()}:${pin.name}"
+    fun pinId(e: PlacedElement, pin: ElementPin): String = pinId(e, pin.name)
+
+    /** Wire id for pin [name] of element [e] (primary when name is empty). */
+    fun pinId(e: PlacedElement, name: String): String =
+        if (name.isEmpty()) e.pinId() else "${e.pinId()}:$name"
 
     /** The element cell-anchor part of a wire id (`"toggle@0,0:set"` → `"toggle@0,0"`). */
     fun baseId(pinId: String): String = pinId.substringBefore(':')
@@ -32,8 +35,18 @@ object PanelPins {
     fun inputs(elements: List<PlacedElement>): List<LinkPin> = pins(elements, PanelPinDir.INPUT)
 
     private fun pins(elements: List<PlacedElement>, dir: PanelPinDir): List<LinkPin> =
-        elements.flatMap { e ->
-            val type = PanelElements.byId(e.typeId) ?: return@flatMap emptyList<LinkPin>()
-            type.pins.filter { it.dir == dir }.map { LinkPin(pinId(e, it), it.type) }
+        elements.flatMap { e -> pinsFor(e).filter { it.dir == dir }.map { LinkPin(pinId(e, it), it.type) } }
+
+    /** All pin specs for a placed element — catalog pins plus dynamic extras
+     *  (push_button grows one BOOL out per configured button). */
+    fun pinsFor(e: PlacedElement): List<ElementPin> {
+        val type = PanelElements.byId(e.typeId) ?: return emptyList()
+        if (e.typeId == "push_button") {
+            val buttons = (if (e.config.contains("buttons")) e.config.getInt("buttons") else 1).coerceIn(1, 8)
+            return type.pins + (1..buttons).map {
+                ElementPin("b$it", PanelPinDir.OUTPUT, dev.nitka.nodewire.graph.PinType.BOOL)
+            }
         }
+        return type.pins
+    }
 }

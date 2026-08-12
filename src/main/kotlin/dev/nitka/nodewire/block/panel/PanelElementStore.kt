@@ -59,6 +59,24 @@ class PanelElementStore {
         return true
     }
 
+    /**
+     * Replace config AND footprint of the element covering [cell] (a
+     * config-driven size, e.g. push_button's button count). The resize is
+     * validated against the grid and every OTHER element; on a conflict the new
+     * config still applies but the old footprint is kept. Returns true if an
+     * element was there.
+     */
+    fun setConfigAndSize(cell: PanelGrid.Cell, config: net.minecraft.nbt.CompoundTag, cols: Int, rows: Int): Boolean {
+        val idx = elements.indexOfFirst { cell in cellsOf(it) }
+        if (idx < 0) return false
+        val e = elements[idx]
+        val anchor = PanelGrid.Cell(e.cellX, e.cellY)
+        val others = elements.filterIndexed { i, _ -> i != idx }.flatMapTo(HashSet()) { cellsOf(it) }
+        val fits = PanelGrid.fits(anchor, cols, rows) && !PanelGrid.overlaps(others, anchor, cols, rows)
+        elements[idx] = if (fits) e.copy(config = config, cols = cols, rows = rows) else e.copy(config = config)
+        return true
+    }
+
     fun clear() = elements.clear()
 
     fun load(list: List<PlacedElement>) {

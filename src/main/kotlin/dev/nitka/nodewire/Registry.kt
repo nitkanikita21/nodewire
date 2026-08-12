@@ -47,6 +47,14 @@ object Registry {
         DeferredRegister.create(Registries.BLOCK_ENTITY_TYPE, Nodewire.ID)
     private val CREATIVE_TABS: DeferredRegister<CreativeModeTab> =
         DeferredRegister.create(Registries.CREATIVE_MODE_TAB, Nodewire.ID)
+    private val SOUNDS: DeferredRegister<net.minecraft.sounds.SoundEvent> =
+        DeferredRegister.create(Registries.SOUND_EVENT, Nodewire.ID)
+
+    /** Buzzer element one-shot (Dashpanels' buzz.ogg, MIT). */
+    val BUZZ: DeferredHolder<net.minecraft.sounds.SoundEvent, net.minecraft.sounds.SoundEvent> =
+        SOUNDS.register("buzz") { rl: net.minecraft.resources.ResourceLocation ->
+            net.minecraft.sounds.SoundEvent.createVariableRangeEvent(rl)
+        }
 
     val LOGIC_BLOCK: DeferredBlock<LogicBlock> = BLOCKS.register("logic_block") { _ ->
         LogicBlock(BlockBehaviour.Properties.ofFullCopy(Blocks.IRON_BLOCK))
@@ -263,6 +271,7 @@ object Registry {
         ITEMS.register(bus)
         BLOCK_ENTITIES.register(bus)
         CREATIVE_TABS.register(bus)
+        SOUNDS.register(bus)
         // Link Tool needs no per-block registration any more: Screen/Camera/
         // Logic implement PinPort directly; foreign blocks resolve through
         // the PinPorts adapters (aero / sensor / redstone fallback).

@@ -1,1 +1,1 @@
-{ "parent": "minecraft:item/generated", "textures": { "layer0": "nodewire:item/panel_momentary" } }
+{ "parent": "minecraft:item/generated", "textures": { "layer0": "nodewire:block/panel/momentary_switch" } }

@@ -11,14 +11,8 @@
   "block.nodewire.ar_hub_block": "AR Hub",
   "item.nodewire.channel_link_tool": "Channel Link Tool",
   "item.nodewire.panel_key": "Panel Key",
-  "item.nodewire.panel_toggle": "Panel Toggle",
-  "item.nodewire.panel_momentary": "Panel Button",
-  "item.nodewire.panel_selector": "Panel Selector",
-  "item.nodewire.panel_slider": "Panel Slider",
+  "item.nodewire.panel_momentary": "Panel Momentary Switch",
   "item.nodewire.panel_knob": "Panel Knob",
-  "item.nodewire.panel_lamp": "Panel Lamp",
-  "item.nodewire.panel_bar": "Panel Gauge",
-  "item.nodewire.panel_numeric": "Panel Display",
   "item.nodewire.panel_screen": "Panel Screen",
   "item.nodewire.panel_screen_small": "Panel Screen (Small)",
   "item.nodewire.panel_screen_wide": "Panel Screen (Wide)",
@@ -29,11 +23,18 @@
   "item.nodewire.antenna_basic": "Basic Antenna",
   "item.nodewire.antenna_long": "Long-Range Antenna",
   "item.nodewire.antenna_quantum": "Quantum Antenna",
-
   "itemGroup.nodewire": "Nodewire",
-
   "key.categories.nodewire": "Nodewire",
   "key.nodewire.open_demo": "Open UI demo (dev)",
   "key.nodewire.control_mouse": "Control Block: toggle mouse capture",
-  "key.nodewire.control_exit": "Control Block: exit session"
+  "key.nodewire.control_exit": "Control Block: exit session",
+  "item.nodewire.panel_switch": "Panel Switch",
+  "item.nodewire.panel_push_button": "Panel Push Buttons",
+  "item.nodewire.panel_key_switch": "Panel Key Switch",
+  "item.nodewire.panel_emergency": "Panel Emergency Button",
+  "item.nodewire.panel_lever": "Panel Control Lever",
+  "item.nodewire.panel_joystick": "Panel Joystick",
+  "item.nodewire.panel_bulb": "Panel Indicator Bulb",
+  "item.nodewire.panel_seven_segment": "Panel Seven-Segment Display",
+  "item.nodewire.panel_buzzer": "Panel Buzzer"
 }

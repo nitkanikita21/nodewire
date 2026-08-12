@@ -6,8 +6,7 @@ enum class PanelPinDir { OUTPUT, INPUT }
 
 /**
  * One pin an element type exposes. [name] `""` marks the element's PRIMARY pin
- * — its wire id stays the bare cell-anchor id (`"type@x,y"`, the pre-multi-pin
- * format, so existing saved links keep resolving); named pins get
+ * — its wire id stays the bare cell-anchor id (`"type@x,y"`); named pins get
  * `"type@x,y:name"` (see [PanelPins.pinId]).
  */
 data class ElementPin(
@@ -17,11 +16,11 @@ data class ElementPin(
 )
 
 /**
- * A Control Panel element type: fixed grid footprint + the full set of pins it
- * exposes. An element is self-contained pin-wise — any number of outputs and
- * inputs (a toggle publishes its state AND accepts a remote `set`; the
- * mini-screen accepts video AND publishes `touch`/`touch_down`). Screens come
- * in fixed size VARIANTS (`screen_small` … `screen_full`) instead of resizing.
+ * A Control Panel element type: grid footprint + pins. The element set is the
+ * **Dashpanels module catalog** (visuals ported 1:1, MIT — BoxxedDev), plus
+ * our mini-screens (video, no Dashpanels analogue). `push_button` reshapes its
+ * footprint from config (button count/gap) — see [PanelPins] for its dynamic
+ * per-button pins.
  */
 data class PanelElementType(
     val id: String,
@@ -37,43 +36,37 @@ data class PanelElementType(
 }
 
 object PanelElements {
-    private fun out(type: PinType) = ElementPin("", PanelPinDir.OUTPUT, type)
-    private fun inp(type: PinType) = ElementPin("", PanelPinDir.INPUT, type)
+    private fun out(name: String, type: PinType) = ElementPin(name, PanelPinDir.OUTPUT, type)
+    private fun inp(name: String, type: PinType) = ElementPin(name, PanelPinDir.INPUT, type)
 
     val ALL: List<PanelElementType> = listOf(
-        // Player inputs — primary OUT is the operated state; `set` lets the
-        // graph drive the control remotely (state syncs back to the visual).
+        // ── player inputs ─────────────────────────────────────────────────
+        PanelElementType("switch", 2, 3, listOf(out("", PinType.BOOL), inp("set", PinType.BOOL))),
+        PanelElementType("momentary", 3, 3, listOf(out("", PinType.BOOL))),
+        // Selected index out (0 = none, 1..n); per-button BOOL pins are dynamic
+        // (config `buttons`), appended in PanelPins.
+        PanelElementType("push_button", 2, 3, listOf(out("", PinType.INT))),
+        PanelElementType("key_switch", 2, 2, listOf(out("", PinType.BOOL))),
+        // Cover is pin-driven (open), the big button is the output.
+        PanelElementType("emergency", 4, 4, listOf(out("", PinType.BOOL), inp("open", PinType.BOOL))),
+        PanelElementType("lever", 3, 5, listOf(out("", PinType.INT), inp("set", PinType.INT))),
+        PanelElementType("knob", 2, 2, listOf(out("", PinType.FLOAT), inp("set", PinType.FLOAT))),
         PanelElementType(
-            "toggle", 2, 3, // Dashpanels switch footprint
-            listOf(out(PinType.BOOL), ElementPin("set", PanelPinDir.INPUT, PinType.BOOL)),
+            "joystick", 4, 4,
+            listOf(out("", PinType.VEC2), out("trigger", PinType.BOOL)),
         ),
-        PanelElementType("momentary", 3, 3, listOf(out(PinType.BOOL))),
-        PanelElementType(
-            "selector", 2, 2,
-            listOf(out(PinType.INT), ElementPin("set", PanelPinDir.INPUT, PinType.INT)),
-        ),
-        PanelElementType(
-            "slider", 4, 1,
-            listOf(out(PinType.FLOAT), ElementPin("set", PanelPinDir.INPUT, PinType.FLOAT)),
-        ),
-        PanelElementType(
-            "knob", 2, 2,
-            listOf(out(PinType.FLOAT), ElementPin("set", PanelPinDir.INPUT, PinType.FLOAT)),
-        ),
-        // Indicators — primary IN drives the display.
-        PanelElementType("lamp", 1, 2, listOf(inp(PinType.BOOL))),
-        PanelElementType("bar", 4, 1, listOf(inp(PinType.FLOAT))),
-        PanelElementType("numeric", 6, 4, listOf(inp(PinType.FLOAT))), // seven-segment module
-        // Mini-screens: video in + a touch surface out (tiny touch-screens) in
-        // a range of fixed footprints. OFF by default — the `enable` pin powers
-        // them up; a dark screen shows no video and ignores taps.
+        // ── indicators / outputs ──────────────────────────────────────────
+        PanelElementType("bulb", 1, 2, listOf(inp("", PinType.BOOL))),
+        PanelElementType("seven_segment", 6, 4, listOf(inp("", PinType.FLOAT))),
+        PanelElementType("buzzer", 4, 4, listOf(inp("", PinType.BOOL))),
+        // ── decorative ────────────────────────────────────────────────────
+        PanelElementType("label", 6, 2, emptyList()),
+        // ── mini-screens (ours — no Dashpanels analogue) ──────────────────
         screen("screen", 4, 4),
         screen("screen_small", 2, 2),
         screen("screen_wide", 8, 4),
         screen("screen_large", 8, 8),
         screen("screen_full", 16, 16),
-        // Decorative.
-        PanelElementType("label", 6, 2, emptyList()),
     )
 
     private val byId = ALL.associateBy { it.id }
@@ -82,13 +75,17 @@ object PanelElements {
     /** Every screen variant shares the screen pin set + behaviour. */
     fun isScreen(typeId: String): Boolean = typeId == "screen" || typeId.startsWith("screen_")
 
+    /** push_button footprint from its config: n buttons of 2 cells + gaps. */
+    fun pushButtonFootprint(buttons: Int, gap: Int): Pair<Int, Int> =
+        (buttons * 2 + gap * (buttons - 1)) to 3
+
     private fun screen(id: String, cols: Int, rows: Int) = PanelElementType(
         id, cols, rows,
         listOf(
-            inp(PinType.VIDEO),
-            ElementPin("enable", PanelPinDir.INPUT, PinType.BOOL),
-            ElementPin("touch", PanelPinDir.OUTPUT, PinType.VEC2),
-            ElementPin("touch_down", PanelPinDir.OUTPUT, PinType.BOOL),
+            inp("", PinType.VIDEO),
+            inp("enable", PinType.BOOL),
+            out("touch", PinType.VEC2),
+            out("touch_down", PinType.BOOL),
         ),
     )
 }

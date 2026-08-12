@@ -166,6 +166,7 @@ class ControlPanelBlock(props: Properties) : Block(props), EntityBlock {
         if (type != dev.nitka.nodewire.Registry.CONTROL_PANEL_BE.get()) return null
         val ticker = BlockEntityTicker<ControlPanelBlockEntity> { lvl, _, _, be ->
             dev.nitka.nodewire.link.PinLinkEngine.tick(lvl, be)
+            be.serverTick(lvl.gameTime)
         }
         return ticker as BlockEntityTicker<T>
     }

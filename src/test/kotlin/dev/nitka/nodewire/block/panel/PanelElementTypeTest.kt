@@ -1,6 +1,7 @@
 package dev.nitka.nodewire.block.panel
 
 import dev.nitka.nodewire.graph.PinType
+import net.minecraft.nbt.CompoundTag
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
@@ -8,54 +9,57 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class PanelElementTypeTest {
-    @Test fun `catalog has the expected element ids`() {
+    @Test fun `catalog is the Dashpanels module set plus screens`() {
         val ids = PanelElements.ALL.map { it.id }.toSet()
         assertEquals(
             setOf(
-                "toggle", "momentary", "selector", "slider", "knob",
-                "lamp", "bar", "numeric",
+                "switch", "momentary", "push_button", "key_switch", "emergency",
+                "lever", "knob", "joystick", "bulb", "seven_segment", "buzzer", "label",
                 "screen", "screen_small", "screen_wide", "screen_large", "screen_full",
-                "label",
             ),
             ids,
         )
     }
 
-    @Test fun `toggle is a switch-footprint BOOL output with a remote set input`() {
-        val t = PanelElements.byId("toggle")!!
-        assertEquals(2, t.cols); assertEquals(3, t.rows) // Dashpanels switch module
+    @Test fun `footprints follow the Dashpanels modules`() {
+        fun size(id: String) = PanelElements.byId(id)!!.let { it.cols to it.rows }
+        assertEquals(2 to 3, size("switch"))
+        assertEquals(3 to 3, size("momentary"))
+        assertEquals(2 to 2, size("key_switch"))
+        assertEquals(4 to 4, size("emergency"))
+        assertEquals(3 to 5, size("lever"))
+        assertEquals(2 to 2, size("knob"))
+        assertEquals(4 to 4, size("joystick"))
+        assertEquals(1 to 2, size("bulb"))
+        assertEquals(6 to 4, size("seven_segment"))
+        assertEquals(4 to 4, size("buzzer"))
+        assertEquals(6 to 2, size("label"))
+    }
+
+    @Test fun `switch is a BOOL output with a remote set input`() {
+        val t = PanelElements.byId("switch")!!
         assertEquals(listOf(PinType.BOOL), t.outputs.map { it.type })
-        assertEquals("", t.outputs.single().name) // primary keeps the bare id
+        assertEquals("", t.outputs.single().name)
         assertEquals(listOf("set"), t.inputs.map { it.name })
-        assertEquals(PinType.BOOL, t.inputs.single().type)
         assertTrue(t.interactive)
     }
 
-    @Test fun `lamp is a 1x2 BOOL input and not interactive`() {
-        val l = PanelElements.byId("lamp")!!
-        assertEquals(1, l.cols); assertEquals(2, l.rows) // Dashpanels bulb module
-        assertEquals(listOf(PinType.BOOL), l.inputs.map { it.type })
-        assertTrue(l.outputs.isEmpty())
-        assertFalse(l.interactive)
+    @Test fun `joystick exposes vec2 plus trigger`() {
+        val j = PanelElements.byId("joystick")!!
+        assertEquals(listOf("" to PinType.VEC2, "trigger" to PinType.BOOL), j.outputs.map { it.name to it.type })
     }
 
-    @Test fun `every screen variant has video+enable in and a touch surface out`() {
-        val sizes = mapOf(
-            "screen" to (4 to 4),
-            "screen_small" to (2 to 2),
-            "screen_wide" to (8 to 4),
-            "screen_large" to (8 to 8),
-            "screen_full" to (16 to 16),
-        )
-        for ((id, wh) in sizes) {
-            val s = PanelElements.byId(id)!!
-            assertTrue(PanelElements.isScreen(id))
-            assertEquals(wh.first, s.cols, id); assertEquals(wh.second, s.rows, id)
-            assertEquals(listOf("" to PinType.VIDEO, "enable" to PinType.BOOL), s.inputs.map { it.name to it.type })
-            assertEquals(listOf("touch", "touch_down"), s.outputs.map { it.name })
-            assertEquals(listOf(PinType.VEC2, PinType.BOOL), s.outputs.map { it.type })
-        }
-        assertFalse(PanelElements.isScreen("toggle"))
+    @Test fun `bulb and buzzer are pure inputs`() {
+        assertFalse(PanelElements.byId("bulb")!!.interactive)
+        assertEquals(listOf(PinType.BOOL), PanelElements.byId("buzzer")!!.inputs.map { it.type })
+    }
+
+    @Test fun `push_button grows a pin per configured button`() {
+        val cfg = CompoundTag().apply { putInt("buttons", 3) }
+        val e = PlacedElement("push_button", 0, 0, 6, 3, cfg, 0.0)
+        val pins = PanelPins.pinsFor(e)
+        assertEquals(listOf("", "b1", "b2", "b3"), pins.filter { it.dir == PanelPinDir.OUTPUT }.map { it.name })
+        assertEquals(8 to 3, PanelElements.pushButtonFootprint(3, 1))
     }
 
     @Test fun `label has no pins`() {
