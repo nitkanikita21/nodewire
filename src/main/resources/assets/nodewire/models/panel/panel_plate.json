@@ -1,6 +1,6 @@
 {
 	"textures": {
-		"1": "nodewire:block/panel/panel",
+		"1": "nodewire:block/panel/metal",
 		"2": "nodewire:block/panel/metal",
 		"particle": "nodewire:block/panel/metal"
 	},
