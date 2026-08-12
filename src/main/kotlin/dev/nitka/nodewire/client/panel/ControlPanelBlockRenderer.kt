@@ -314,7 +314,7 @@ class ControlPanelBlockRenderer(
                 pose.translate(0f, 0.001f, 0f)
                 PanelModel.LABEL.render(pose, buffers, cutout, light)
                 pose.popPose()
-                moduleText(pose, buffers, font, cfg.getString("text"), 0xFF2A2D31.toInt(), e.cols, e.rows, 0.003f)
+                moduleText(pose, buffers, font, cfg.getString("text"), 0xFF2A2D31.toInt(), e.cols, e.rows, 0.003f, capHCells = 1f)
             }
         }
         pose.popPose()
@@ -376,12 +376,14 @@ class ControlPanelBlockRenderer(
         rows: Int,
         yLift: Float,
         fullBright: Boolean = false,
+        capHCells: Float? = null,
     ) {
         if (text.isEmpty()) return
         val w = font.width(text).toFloat()
-        // Font units at scale 1/32: one grid cell = 2 units.
+        // Font units at scale 1/32: one grid cell = 2 units. [capHCells] caps
+        // the text height in cells (a short label shouldn't fill its footprint).
         val maxW = cols * 2f - 1f
-        val maxH = rows * 2f - 0.5f
+        val maxH = capHCells?.let { it * 2f } ?: (rows * 2f - 0.5f)
         val fit = minOf(1f, maxW / w, maxH / LINE_H)
         pose.pushPose()
         pose.translate(cols / 32f, yLift, rows / 32f) // footprint centre
