@@ -5,7 +5,7 @@ issueTrackerURL="https://github.com/nitkanikita21/nodewire/issues"
 
 [[mods]]
 modId="nodewire_scripting"
-version="0.3.0"
+version="0.8.1"
 displayName="Nodewire Scripting"
 authors="nitka"
 description='''Optional addon that carries the Kotlin compiler so Nodewire's Script Node can compile in-world scripts.'''
