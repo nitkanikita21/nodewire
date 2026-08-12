@@ -74,6 +74,23 @@ class PanelModel private constructor(private val location: ResourceLocation) {
         val KNOB = create("knob")
         val LABEL = create("label")
         val SEVEN_SEGMENT = create("seven_segment")
+        val LEVER_BASE = create("lever_base")
+        val LEVER_HANDLE = create("lever_handle")
+        val LEVER_INDICATOR = create("lever_indicator")
+        val JOYSTICK_BASE = create("joystick_base")
+        val JOYSTICK_BETWEEN = create("joystick_between")
+        val JOYSTICK_STICK = create("joystick_stick")
+        val JOYSTICK_TRIGGER = create("joystick_trigger")
+        val PUSH_BUTTON_BASE = create("push_button_base")
+        val PUSH_BUTTON = create("push_button")
+        val PUSH_BUTTON_LIT = create("push_button_lit")
+        val KEY_SWITCH_BASE = create("key_switch_base")
+        val KEY_SWITCH_HOLE = create("key_switch_hole")
+        val KEY_SWITCH_KEY = create("key_switch_key")
+        val EMERGENCY_BASE = create("emergency_base")
+        val EMERGENCY_COVER = create("emergency_cover")
+        val EMERGENCY_BUTTON = create("emergency_button")
+        val BUZZER = create("buzzer")
 
         /** MOD bus: register every model as a standalone additional model. */
         fun registerAdditional(event: ModelEvent.RegisterAdditional) {
