@@ -23,7 +23,7 @@
 ## Features
 
 - **Visual node editor** opened on a placed Logic Block. Pan, zoom, drag nodes, draw wires; inline pin-default editors; live values from the running block (singleplayer).
-- **Unified pin linking** — one Channel Link Tool wires ANY pin-exposing block to any other: logic channels, cameras, screens, containers (item/fluid/comparator sensors), Aeronautics blocks, CBC cannon mounts, plain redstone faces. Links live on the consumer, re-deliver every tick, survive Sable structure motion.
+- **Unified pin linking** — one Channel Link Tool wires ANY pin-exposing block to any other: logic channels, cameras, screens, containers (item/fluid/comparator sensors), Aeronautics blocks, CBC cannon mounts, Synaxis Cimulink devices (motors, actuators, propellers, control chair), plain redstone faces. Links live on the consumer, re-deliver every tick, survive Sable structure motion.
 - **Video system** — Camera blocks capture the world into VIDEO channels; Screen blocks display them, merge into multiblock panels (up to 8×8) and double as touch inputs. Scripts can transform video (overlays, HUDs, world→screen projection) between camera and screen.
 - **Radio & AR** — broadcast VIDEO/data wirelessly over tunable channels; antennas set range and directionality, and weak reception degrades the feed with signal noise. AR Glasses surface a live camera feed as a head-up overlay.
 - **Kotlin Script node** — write real Kotlin (`*.nw.kts`) compiled in-game by the optional `nodewire_scripting` addon: typed pins, persisted state, per-tick logic, JOML math (double precision end to end), video drawing with a flexbox UI DSL, sandboxed. Full guide: [`docs/scripting.md`](docs/scripting.md).
@@ -40,7 +40,7 @@
 - Build plugin: **`net.neoforged.moddev` 2.0.141** (ModDevGradle, non-legacy)
 - Java toolchain: **21**
 - Custom UI framework on top of **Compose runtime 1.7.0** (no Skiko, no AWT) + **Yoga** (AppliedEnergistics fork, rebuilt for Java 21)
-- Integrations: Sable 2.0.3 (via Sable Companion), Create 6.0.10, Create Aeronautics 1.3.0, Create Big Cannons 5.11, Tweaked Controllers 1.2.7, CC: Tweaked, JEI, EMI
+- Integrations: Sable 2.0.3 (via Sable Companion), Create 6.0.10, Create Aeronautics 1.3.0, Create Big Cannons 5.11, Synaxis 1.5.0, Tweaked Controllers 1.2.7, CC: Tweaked, JEI, EMI
 - Optional addon: **`nodewire_scripting`** — bundles the Kotlin compiler for in-game Script nodes (core works without it; script nodes then show a diagnostic)
 
 ## Build
@@ -91,6 +91,7 @@ src/main/kotlin/dev/nitka/nodewire/
 │   ├── sensor/                 # capability sensor readings
 │   ├── create/                 # redstone-link IO nodes
 │   ├── cctweaked/              # Lua peripheral
+│   ├── synaxis/                # Cimulink plant-port pins
 │   └── tweakedcontroller/      # ControllerInput node
 └── ui/                         # custom Compose runtime UI framework
     ├── core/                   # Applier, dispatcher, owner, YogaNode wiring

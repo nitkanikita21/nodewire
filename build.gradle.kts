@@ -272,6 +272,15 @@ dependencies {
     compileOnly("maven.modrinth:create-aeronautics:1.3.0+mc1.21.1")
     runtimeOnly("maven.modrinth:create-aeronautics:1.3.0+mc1.21.1")
 
+    // --- Synaxis 1.5.0 (via Modrinth maven) ---
+    // Cimulink plant ports: the SynaxisIntegration PinPorts adapter wraps any
+    // Synaxis-claimable BE (motors, actuators, propellers, jets, flaps, chair,
+    // tweakerminal + its Create/Simulated compat) via PlantPortProviders.
+    // compileOnly ONLY — the classes are ModList-gated at runtime and users
+    // install Synaxis themselves (All-Rights-Reserved; jar is never bundled,
+    // linking for interop mirrors the MIT CC-Synaxis-Connector's setup).
+    compileOnly("maven.modrinth:synaxis:1.5.0")
+
     // --- Create: Tweaked Controllers 1.2.7 (NeoForge 1.21.1) ---
     // Pulled from Modrinth, not Curse Maven: cursemaven.com now answers 402
     // Payment Required for this monetized listing (same story as Aeronautics

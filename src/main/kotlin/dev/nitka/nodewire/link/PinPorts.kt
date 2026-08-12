@@ -43,6 +43,12 @@ object PinPorts {
                 // CBC cannon mount: live yaw/pitch of the mounted cannon.
                 dev.nitka.nodewire.integration.cbc.CbcIntegration.mountPortFor(be)?.let(::add)
             }
+            if (be != null && ModList.get().isLoaded("synaxis")) {
+                // Synaxis Cimulink devices: plant-port schema as `syn:` pins.
+                // The gate keeps SynaxisIntegration (direct compileOnly refs)
+                // from ever loading without the mod.
+                dev.nitka.nodewire.integration.synaxis.SynaxisIntegration.portFor(be)?.let(::add)
+            }
             if (be != null) {
                 val readings = SensorReading.supportedBy(be)
                 if (readings.isNotEmpty()) add(SensorPort(readings, be))
