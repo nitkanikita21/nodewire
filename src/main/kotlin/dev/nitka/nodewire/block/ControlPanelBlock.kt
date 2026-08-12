@@ -128,7 +128,12 @@ class ControlPanelBlock(props: Properties) : Block(props), EntityBlock {
     ): ItemInteractionResult {
         val item = stack.item
         if (item is PanelElementItem || item is PanelKeyItem || item is ChannelLinkToolItem) {
-            return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
+            // SKIP (not PASS): PASS would fall through to useWithoutItem first,
+            // which operates the element under the cursor — so holding an
+            // element item would toggle switches instead of placing. SKIP hands
+            // the click straight to the item's own useOn (place / configure /
+            // bind), sneak or not.
+            return ItemInteractionResult.SKIP_DEFAULT_BLOCK_INTERACTION
         }
         if (player.isShiftKeyDown) {
             return ItemInteractionResult.PASS_TO_DEFAULT_BLOCK_INTERACTION
