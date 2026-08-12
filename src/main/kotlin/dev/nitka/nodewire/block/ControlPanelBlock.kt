@@ -58,9 +58,10 @@ class ControlPanelBlock(props: Properties) : Block(props), EntityBlock {
 
     override fun getStateForPlacement(context: BlockPlaceContext): BlockState {
         val face = context.clickedFace
-        // A sane default spin for flat (up/down) panels follows the player's
-        // facing; wall panels keep spin 0. The Panel Key re-rotates later.
-        val spin = if (face.axis.isVertical) context.horizontalDirection.get2DDataValue() and 3 else 0
+        // A sane default spin for flat (up/down) panels: the grid's top edge
+        // points AWAY from the placer, so the panel reads like a desk console
+        // facing them; wall panels keep spin 0. The Panel Key re-rotates later.
+        val spin = if (face.axis.isVertical) (context.horizontalDirection.get2DDataValue() + 2) and 3 else 0
         return defaultBlockState().setValue(FACE, face).setValue(SPIN, spin)
     }
 
