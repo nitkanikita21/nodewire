@@ -676,13 +676,13 @@ class ControlPanelBlockRenderer(
 
         // Heights = ABSOLUTE outsets off the mounting wall (block units).
         // Max ~0.075 ≈ 1.2px of relief — tactile but still inside the block.
-        private const val OUT_PLATE = 0.010
+        private const val OUT_PLATE = 0.001
         private const val H_TRACK = 0.022 // slider base
         private const val H_LABEL = 0.020 // label plate
         private const val H_BASE = 0.032 // element housings
         private const val H_PART = 0.062 // caps / levers / thumbs / domes
-        private const val OUT_GRID = 0.150 // above the tallest baked bodies
-        private const val OUT_GHOST = 0.155
+        private const val OUT_GRID = 0.006 // just above the plate surface
+        private const val OUT_GHOST = 0.010
         private const val GRID_HW = 0.0016
         private const val GHOST_HW = 0.004
 

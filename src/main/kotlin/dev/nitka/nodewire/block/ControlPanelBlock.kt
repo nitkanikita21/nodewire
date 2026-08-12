@@ -201,12 +201,12 @@ class ControlPanelBlock(props: Properties) : Block(props), EntityBlock {
 
         /**
          * Plate SHAPE thickness. Must hug the RENDERED plate front
-         * (`PanelSpace.FACE_GAP` + the plate outset ≈ 0.025): a thicker slab
+         * (`PanelSpace.FACE_GAP` + the plate outset ≈ 0.064): a thicker slab
          * floats an invisible pick-plane in front of the drawn surface (parallax
-         * mis-picks at an angle) and swallows the raised element boxes (≤0.08),
-         * so the raycast could never target an element individually.
+         * mis-picks at an angle) and swallows the raised element boxes, so the
+         * raycast could never target an element individually.
          */
-        private const val T = 0.03
+        private const val T = 0.066
 
         /**
          * Per-face thin slab on the **mounting** (−FACE) side of the cell, so the

@@ -13,8 +13,9 @@ import net.minecraft.world.phys.AABB
  * inverse of [PanelGrid.hitToGrid]); heights are outsets off the mounting wall.
  */
 object PanelSpace {
-    /** Display plane distance from the −FACE (mount) wall — nearly flush. */
-    const val FACE_GAP = 0.015
+    /** Display plane distance from the −FACE (mount) wall: one MC pixel, so
+     *  the 1px-thick plate model (y −1..0 in 16ths) rests flush on the wall. */
+    const val FACE_GAP = 0.0625
 
     /** Cell inset between an element body and its footprint (render + shapes). */
     const val ELEMENT_GAP = 0.06
@@ -37,17 +38,18 @@ object PanelSpace {
     /** How far an element type's tallest part rises off the wall (matches the
      *  renderer's relief so the selection box hugs the visible body). */
     fun relief(typeId: String): Double = when {
-        // Model max-Y (16ths, natural Dashpanels scale) / 16 + ~0.03 plate front.
-        typeId == "switch" -> 0.20
-        typeId == "momentary" || typeId == "push_button" -> 0.125
-        typeId == "key_switch" -> 0.25
-        typeId in setOf("emergency", "lever", "knob") -> 0.16
-        typeId == "joystick" -> 0.34
-        typeId == "bulb" -> 0.13
-        typeId == "seven_segment" -> 0.09
-        typeId == "buzzer" -> 0.10
+        // Model max-Y (16ths, natural Dashpanels scale) / 16 + a small margin;
+        // outsets are measured off the display plane ([FACE_GAP], plate front).
+        typeId == "switch" -> 0.18
+        typeId == "momentary" || typeId == "push_button" -> 0.10
+        typeId == "key_switch" -> 0.225
+        typeId in setOf("emergency", "lever", "knob") -> 0.13
+        typeId == "joystick" -> 0.32
+        typeId == "bulb" -> 0.11
+        typeId == "seven_segment" -> 0.07
+        typeId == "buzzer" -> 0.075
         PanelElements.isScreen(typeId) -> 0.042
-        typeId == "label" -> 0.024
+        typeId == "label" -> 0.012
         else -> 0.060
     }
 

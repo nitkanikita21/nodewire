@@ -243,9 +243,10 @@ class ControlPanelBlockEntity(pos: BlockPos, state: BlockState) :
                 else if (!pressed && !sneak) setElementValue(anchor, (bits or 1).toDouble())
             }
             "lever" -> {
-                // Positional: click along the 5-cell track sets 0..15 (handle
-                // slides DOWN with the signal, like Dashpanels).
-                val signal = kotlin.math.round(yCells / e.rows * 15.0).toInt().coerceIn(0, 15)
+                // Positional: click along the 5-cell track sets 0..15. The
+                // module frame's 180° flip puts high signal at the TOP, so the
+                // click fraction is inverted to land the handle where clicked.
+                val signal = kotlin.math.round((1.0 - yCells / e.rows) * 15.0).toInt().coerceIn(0, 15)
                 setElementValue(anchor, signal.toDouble())
                 sound(net.minecraft.sounds.SoundEvents.LEVER_CLICK, 0.1f, (signal + 15) / 15f)
             }
