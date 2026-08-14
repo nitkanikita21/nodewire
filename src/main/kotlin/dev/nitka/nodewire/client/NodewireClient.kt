@@ -254,9 +254,24 @@ object NodewireClient {
         val link = LinkHud.highlightedLink() ?: return
         val sink = LinkHud.targetPos ?: return
         event.isCanceled = true
-        net.neoforged.neoforge.network.PacketDistributor.sendToServer(
-            dev.nitka.nodewire.net.RemovePinLinkPacket(sink, link.source, link.sourcePin, link.targetPin),
-        )
+        val sideFeed = LinkHud.highlightedSideFeed()
+        if (sideFeed != null) {
+            // Sided-redstone feed: the binding lives on the SOURCE logic block,
+            // so removal is addressed there (same packet the source-side HUD uses).
+            net.neoforged.neoforge.network.PacketDistributor.sendToServer(
+                dev.nitka.nodewire.net.RemoveBindingPacket(
+                    sideFeed.sourcePos,
+                    sideFeed.binding.sourceChannelName,
+                    sideFeed.binding.target,
+                    dev.nitka.nodewire.net.RemoveBindingPacket.Kind.SIDE,
+                    sideFeed.binding.targetSide.name,
+                ),
+            )
+        } else {
+            net.neoforged.neoforge.network.PacketDistributor.sendToServer(
+                dev.nitka.nodewire.net.RemovePinLinkPacket(sink, link.source, link.sourcePin, link.targetPin),
+            )
+        }
         player.displayClientMessage(
             net.minecraft.network.chat.Component.literal("Unlinked ${link.targetPin}")
                 .withStyle(net.minecraft.ChatFormatting.AQUA),

@@ -51,6 +51,18 @@ object LinkHud {
         val active: Boolean,
         val canBind: Boolean,
         val link: PinLink?,
+        val side: SideFeed? = null,
+    )
+
+    /**
+     * An incoming sided-redstone feed (`redstone@<face>`) surfaced on the
+     * TARGET block. The [dev.nitka.nodewire.block.SideBinding] itself lives on
+     * the SOURCE logic block, so unbinding goes through [RemoveBindingPacket]
+     * (Kind.SIDE) addressed at [sourcePos] — not the sink-side unlink packet.
+     */
+    data class SideFeed(
+        val sourcePos: BlockPos,
+        val binding: dev.nitka.nodewire.block.SideBinding,
     )
 
     var targetPos: BlockPos? = null
@@ -110,7 +122,32 @@ object LinkHud {
         val sinkLinks: List<PinLink> =
             (level.getBlockEntity(pos) as? PinLinkSink)?.pinLinks()?.toList()
                 ?: hostlessLinksFor(level, pos)
-        fun linkFor(pinId: String): PinLink? = sinkLinks.firstOrNull { it.targetPin == pinId }
+
+        // Sided-redstone feeds INTO this block live as SideBindings on their
+        // SOURCE logic blocks (push path) — the sink has no record of them.
+        // Walk the client-tracked logic BEs so an aimed Create/Synaxis/vanilla
+        // block still shows who is driving each of its faces. Each feed gets a
+        // synthetic PinLink (readout + source highlight) and a SideFeed
+        // (routes MMB-unbind to the source block).
+        val sideFeeds: Map<String, Pair<PinLink, SideFeed>> = buildMap {
+            for (src in dev.nitka.nodewire.client.wire.ClientLogicBlockTracker.all()) {
+                for (sb in src.sideBindingsSnapshot()) {
+                    if (sb.target.payload.blockPos != pos) continue
+                    val pinId = "redstone@${sb.targetSide.name.lowercase()}"
+                    put(
+                        pinId,
+                        PinLink(
+                            dev.nitka.nodewire.endpoint.EndpointRef.from(level, src.blockPos),
+                            sb.sourceChannelName,
+                            pinId,
+                        ) to SideFeed(src.blockPos, sb),
+                    )
+                }
+            }
+        }
+        fun linkFor(pinId: String): PinLink? =
+            sinkLinks.firstOrNull { it.targetPin == pinId } ?: sideFeeds[pinId]?.first
+        fun sideFor(pinId: String): SideFeed? = sideFeeds[pinId]?.second
 
         val newRows = buildList {
             if (armed == null) {
@@ -119,7 +156,7 @@ object LinkHud {
                 // …plus any already-bound INPUT, shown so it can be unbound.
                 ins.forEach { p ->
                     val l = linkFor(p.id)
-                    if (l != null) add(Row(p, output = false, active = true, canBind = false, link = l))
+                    if (l != null) add(Row(p, output = false, active = true, canBind = false, link = l, side = sideFor(p.id)))
                 }
             } else {
                 // Targeting: INPUT pins. Compatible ones commit; bound ones are
@@ -129,8 +166,24 @@ object LinkHud {
                     val l = linkFor(p.id)
                     val selfPin = samePos && p.id == armed.pin
                     val compatible = !selfPin && PinValueConversion.canConvert(armed.type, p.type)
-                    add(Row(p, output = false, active = compatible || l != null, canBind = compatible, link = l))
+                    add(Row(p, output = false, active = compatible || l != null, canBind = compatible, link = l, side = sideFor(p.id)))
                 }
+            }
+            // The redstone fallback lists only the AIMED face's input — but a
+            // side binding can drive any face. Append the other bound faces as
+            // unbind-only rows so every incoming feed is visible from the
+            // target block, whichever face the crosshair is on.
+            val listed = mapTo(HashSet()) { it.pin.id }
+            for ((pinId, feed) in sideFeeds) {
+                if (pinId in listed) continue
+                val face = pinId.substringAfter('@')
+                add(
+                    Row(
+                        LinkPin(pinId, PinType.REDSTONE, "redstone $face"),
+                        output = false, active = true, canBind = false,
+                        link = feed.first, side = feed.second,
+                    ),
+                )
             }
         }
 
@@ -188,6 +241,11 @@ object LinkHud {
 
     /** The incoming link MMB unbinds (and whose source is highlighted), or null. */
     fun highlightedLink(): PinLink? = rows.getOrNull(highlight)?.link
+
+    /** Non-null when the highlighted row is a sided-redstone feed — its unbind
+     *  must go through RemoveBindingPacket at the SOURCE logic block, not the
+     *  sink-side unlink packet (there is no PinLink to remove there). */
+    fun highlightedSideFeed(): SideFeed? = rows.getOrNull(highlight)?.side
 
     /** Whether the window currently offers at least one selectable row (gates
      *  whether plain scroll cycles pins vs. falls through to the hotbar). */
