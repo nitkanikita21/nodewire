@@ -5,7 +5,6 @@ import com.verr1.synaxis.foundation.cimulink.core.signal.SignalType
 import com.verr1.synaxis.foundation.cimulink.core.signal.SignalValue
 import com.verr1.synaxis.foundation.cimulink.game.body.GameThreadPlantPort
 import com.verr1.synaxis.foundation.cimulink.game.body.PhysicsSafePlantPort
-import com.verr1.synaxis.foundation.cimulink.game.body.PlantEndpointProvider
 import com.verr1.synaxis.foundation.cimulink.game.body.PlantPort
 import com.verr1.synaxis.foundation.cimulink.game.body.PlantPortProviders
 import com.verr1.synaxis.foundation.cimulink.game.body.PlantRecord
@@ -53,9 +52,13 @@ object SynaxisIntegration {
 
     /**
      * Registered-endpoint path, resolved by POSITION via the plant directory.
-     * The BE's own `plantEndpointId` is `EndpointId.random()` per instance and
-     * never synced, so the client copy's id is useless — the directory record
-     * (id + schema snapshot) is the only identity both sides can agree on.
+     * Synaxis devices self-register their port each server tick
+     * (`refreshPlantRegistration` → `CimulinkLevelRuntime.registerPlantPort`)
+     * WITHOUT implementing any marker interface, and their `plantEndpointId`
+     * is `EndpointId.random()` per BE instance and never synced — so the
+     * directory record (id + schema snapshot), keyed by pos, is the only
+     * identity both sides can agree on. Checked for EVERY BE: liveRecords is
+     * just the handful of registered devices, the scan is cheap.
      *
      * Client side hops to the integrated server via [ServerLifecycleHooks]
      * (same singleplayer-only limitation as host-less link surfacing);
@@ -63,7 +66,6 @@ object SynaxisIntegration {
      * server through [dev.nitka.nodewire.link.PinLinkEngine].
      */
     private fun registeredPort(be: BlockEntity): PinPort? {
-        if (be !is PlantEndpointProvider) return null
         val lvl = be.level ?: return null
         val serverLevel = lvl as? ServerLevel
             ?: net.neoforged.neoforge.server.ServerLifecycleHooks.getCurrentServer()?.getLevel(lvl.dimension())
