@@ -127,6 +127,13 @@ object Registry {
         PanelKeyItem(Item.Properties().stacksTo(1))
     }
 
+    /** Create: Tracks+ vehicle-wide tuner (slider GUI, applies to every track
+     *  of the Sable sub-level). No-op without the `tracks` mod installed. */
+    val TRACK_TUNING_KEY: DeferredItem<dev.nitka.nodewire.item.TrackTuningKeyItem> =
+        ITEMS.register("track_tuning_key") { _ ->
+            dev.nitka.nodewire.item.TrackTuningKeyItem(Item.Properties().stacksTo(1))
+        }
+
     val RADIO_TRANSMITTER_BLOCK: DeferredBlock<RadioTransmitterBlock> = BLOCKS.register("radio_transmitter") { _ ->
         RadioTransmitterBlock(BlockBehaviour.Properties.ofFullCopy(Blocks.IRON_BLOCK))
     }
@@ -189,6 +196,7 @@ object Registry {
                     output.accept(CONTROL_PANEL_ITEM.get())
                     PANEL_ELEMENT_ITEMS.values.forEach { output.accept(it.get()) }
                     output.accept(PANEL_KEY.get())
+                    output.accept(TRACK_TUNING_KEY.get())
                     output.accept(RADIO_TRANSMITTER_BLOCK_ITEM.get())
                     output.accept(RADIO_RECEIVER_BLOCK_ITEM.get())
                     output.accept(AR_HUB_BLOCK_ITEM.get())

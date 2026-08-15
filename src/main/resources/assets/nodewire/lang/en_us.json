@@ -36,5 +36,6 @@
   "item.nodewire.panel_joystick": "Panel Joystick",
   "item.nodewire.panel_bulb": "Panel Indicator Bulb",
   "item.nodewire.panel_seven_segment": "Panel Seven-Segment Display",
-  "item.nodewire.panel_buzzer": "Panel Buzzer"
+  "item.nodewire.panel_buzzer": "Panel Buzzer",
+  "item.nodewire.track_tuning_key": "Track Tuning Key"
 }

@@ -38,6 +38,8 @@ object NodewireNetwork {
         registrar.playToServer(ConfigureElementPacket.TYPE, ConfigureElementPacket.STREAM_CODEC, ConfigureElementPacket::handle)
         // Pillar 2 Stage A: client asks the server to force-load + stream far-camera chunks.
         registrar.playToServer(CameraZonesPacket.TYPE, CameraZonesPacket.STREAM_CODEC, CameraZonesPacket::handle)
+        registrar.playToServer(ApplyTrackTuningPacket.TYPE, ApplyTrackTuningPacket.STREAM_CODEC, ApplyTrackTuningPacket::handle)
+        registrar.playToClient(OpenTrackTuningPacket.TYPE, OpenTrackTuningPacket.STREAM_CODEC, OpenTrackTuningPacket::handle)
         // Server → client packets
         registrar.playToClient(HighlightPacket.TYPE, HighlightPacket.STREAM_CODEC, HighlightPacket::handle)
         registrar.playToClient(StateDeltaPacket.TYPE, StateDeltaPacket.STREAM_CODEC, StateDeltaPacket::handle)
