@@ -44,9 +44,10 @@ data class OpenTrackTuningPacket(val pos: BlockPos, val values: CompoundTag) : C
 }
 
 /**
- * Client → server: apply the edited tuning [values] to EVERY track of the
- * vehicle containing [pos] (same Sable sub-level; both sides of the hull —
- * Tracks+' own share only walks one connected chain).
+ * Client → server: apply the edited tuning [values] to the track at [pos].
+ * Tracks+ itself mirrors every server-side `adjustTuning` onto the CONNECTED
+ * chain (`applyTuningToConnectedTrack`), so writing the one clicked track is
+ * exactly "share along this chain" — one hull side per click, by design.
  */
 data class ApplyTrackTuningPacket(val pos: BlockPos, val values: CompoundTag) : CustomPacketPayload {
 
@@ -73,21 +74,16 @@ data class ApplyTrackTuningPacket(val pos: BlockPos, val values: CompoundTag) : 
             val level = player.level() as? ServerLevel ?: return
             if (!TracksPlusTuning.loaded()) return
             if (player.distanceToSqr(Vec3.atCenterOf(packet.pos)) > MAX_REACH_SQ) return
-            val origin = level.getBlockEntity(packet.pos)
+            val origin = level.getBlockEntity(packet.pos) ?: return
             if (!TracksPlusTuning.isTrack(origin)) return
 
-            val targets = TracksPlusTuning.tracksOfVehicle(level, packet.pos)
             var applied = 0
-            for (be in targets) {
-                var any = false
-                for (s in TracksPlusTuning.SPECS) {
-                    if (!packet.values.contains(s.key)) continue
-                    if (TracksPlusTuning.apply(be, s.key, packet.values.getDouble(s.key))) any = true
-                }
-                if (any) applied++
+            for (s in TracksPlusTuning.SPECS) {
+                if (!packet.values.contains(s.key)) continue
+                if (TracksPlusTuning.apply(origin, s.key, packet.values.getDouble(s.key))) applied++
             }
             player.displayClientMessage(
-                Component.literal("Track tuning applied to $applied track(s)"),
+                Component.literal("Track tuning applied to the connected chain ($applied knobs)"),
                 true,
             )
         }

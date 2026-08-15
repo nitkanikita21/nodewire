@@ -42,8 +42,8 @@ import kotlin.math.roundToInt
  * The Track Tuning Key's editor: one slider per Tracks+ tuning knob
  * ([TracksPlusTuning.SPECS] carries the ranges/steps that mirror the mod's
  * own clamps). Values arrive pre-read from the SERVER (client BE copies
- * don't sync the multipliers); Apply ships them back and the server fans
- * them out to every track of the vehicle.
+ * don't sync the multipliers); Apply writes the clicked track and Tracks+
+ * itself mirrors each write along the CONNECTED chain.
  */
 class TrackTuningScreen(
     private val pos: BlockPos,
@@ -94,11 +94,11 @@ class TrackTuningScreen(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.Center,
                         ) {
-                            Text("Track Tuning — whole vehicle", style = NwTheme.typography.subtitle)
+                            Text("Track Tuning — connected chain", style = NwTheme.typography.subtitle)
                             Box(modifier = Modifier.weight(1f)) {}
                         }
                         Text(
-                            "Applies to every track on this vehicle (both sides).",
+                            "Applies to the whole connected track chain (this hull side).",
                             style = NwTheme.typography.caption.copy(color = NwTheme.colors.onSurfaceMuted),
                         )
 
@@ -110,7 +110,7 @@ class TrackTuningScreen(
                         ) {
                             Box(modifier = Modifier.weight(1f)) {}
                             Button(onClick = { onClose() }) { Text("Cancel") }
-                            Button(onClick = { apply() }) { Text("Apply to vehicle") }
+                            Button(onClick = { apply() }) { Text("Apply to chain") }
                         }
                     }
                 }

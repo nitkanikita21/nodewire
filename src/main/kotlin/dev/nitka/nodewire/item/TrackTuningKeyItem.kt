@@ -12,9 +12,9 @@ import net.neoforged.neoforge.network.PacketDistributor
 /**
  * Vehicle-wide track tuner for Create: Tracks+. RMB a track mount → the
  * server snapshots that track's tuning knobs and opens [TrackTuningScreen]
- * on the client; Apply pushes the edited values onto EVERY track of the
- * vehicle (same Sable sub-level, both hull sides) — unlike the Tracks+
- * Suspension Key, which only shares along one connected chain.
+ * on the client; Apply writes the edited values back and Tracks+ mirrors
+ * them along the CONNECTED chain (one hull side per click) — same scope as
+ * the mod's own Suspension Key, but with sliders instead of blind scrolls.
  */
 class TrackTuningKeyItem(props: Properties) : Item(props) {
 

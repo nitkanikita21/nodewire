@@ -1,12 +1,7 @@
 package dev.nitka.nodewire.integration.tracksplus
 
-import dev.ryanhcode.sable.companion.SableCompanion
-import net.minecraft.core.BlockPos
 import net.minecraft.nbt.CompoundTag
-import net.minecraft.server.level.ServerLevel
-import net.minecraft.world.level.ChunkPos
 import net.minecraft.world.level.block.entity.BlockEntity
-import net.minecraft.world.level.chunk.status.ChunkStatus
 import net.neoforged.fml.ModList
 import kotlin.math.roundToInt
 
@@ -83,37 +78,4 @@ object TracksPlusTuning {
         }.getOrDefault(false)
     }
 
-    /**
-     * Every track BE belonging to the same VEHICLE as [origin]: same Sable
-     * sub-level when there is one, otherwise loose world blocks within
-     * [WORLD_RADIUS]. Scans loaded chunks in a ±[CHUNK_RADIUS] square — a
-     * vehicle is contiguous, so that comfortably covers both sides of a hull
-     * (unlike Tracks+' own share, which stops at one connected chain).
-     */
-    fun tracksOfVehicle(level: ServerLevel, origin: BlockPos): List<BlockEntity> {
-        if (!loaded()) return emptyList()
-        val originSub = runCatching { SableCompanion.INSTANCE.getContaining(level, origin) }.getOrNull()
-        val out = ArrayList<BlockEntity>()
-        val c = ChunkPos(origin)
-        for (dx in -CHUNK_RADIUS..CHUNK_RADIUS) {
-            for (dz in -CHUNK_RADIUS..CHUNK_RADIUS) {
-                val chunk = level.getChunk(c.x + dx, c.z + dz, ChunkStatus.FULL, false) as? net.minecraft.world.level.chunk.LevelChunk
-                    ?: continue
-                for ((pos, be) in chunk.blockEntities) {
-                    if (!isTrack(be)) continue
-                    val sub = runCatching { SableCompanion.INSTANCE.getContaining(level, pos) }.getOrNull()
-                    val sameVehicle = if (originSub != null) {
-                        sub == originSub
-                    } else {
-                        sub == null && pos.distSqr(origin) <= WORLD_RADIUS * WORLD_RADIUS
-                    }
-                    if (sameVehicle) out.add(be)
-                }
-            }
-        }
-        return out
-    }
-
-    private const val CHUNK_RADIUS = 3
-    private const val WORLD_RADIUS = 48.0
 }
