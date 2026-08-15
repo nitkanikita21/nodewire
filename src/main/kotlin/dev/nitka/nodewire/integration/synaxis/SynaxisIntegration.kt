@@ -5,9 +5,13 @@ import com.verr1.synaxis.foundation.cimulink.core.signal.SignalType
 import com.verr1.synaxis.foundation.cimulink.core.signal.SignalValue
 import com.verr1.synaxis.foundation.cimulink.game.body.GameThreadPlantPort
 import com.verr1.synaxis.foundation.cimulink.game.body.PhysicsSafePlantPort
+import com.verr1.synaxis.foundation.cimulink.game.body.PlantEndpointProvider
 import com.verr1.synaxis.foundation.cimulink.game.body.PlantPort
 import com.verr1.synaxis.foundation.cimulink.game.body.PlantPortProviders
+import com.verr1.synaxis.foundation.cimulink.game.body.PlantRecord
 import com.verr1.synaxis.foundation.cimulink.game.endpoint.EndpointId
+import com.verr1.synaxis.foundation.cimulink.game.runtime.CimulinkWorldRuntimes
+import net.minecraft.server.level.ServerLevel
 import dev.nitka.nodewire.graph.PinType
 import dev.nitka.nodewire.graph.PinValue
 import dev.nitka.nodewire.link.LinkContext
@@ -37,10 +41,38 @@ object SynaxisIntegration {
 
     /** Wrap [be] if Synaxis claims it; null when it isn't a Synaxis device. */
     fun portFor(be: BlockEntity): PinPort? {
+        // Synaxis's OWN devices (Kinetic Resistor, motors, Control Chair…) are
+        // REGISTERED Cimulink endpoints, not provider-wrapped — tryCreate never
+        // matches them. Resolve those through the level runtime first.
+        registeredPort(be)?.let { return it }
         val plant = runCatching {
             PlantPortProviders.tryCreate(be, syntheticId(be), DEVICE_NAME).orElse(null)
         }.getOrNull() ?: return null
         return SynaxisPort(be, plant)
+    }
+
+    /**
+     * Registered-endpoint path, resolved by POSITION via the plant directory.
+     * The BE's own `plantEndpointId` is `EndpointId.random()` per instance and
+     * never synced, so the client copy's id is useless — the directory record
+     * (id + schema snapshot) is the only identity both sides can agree on.
+     *
+     * Client side hops to the integrated server via [ServerLifecycleHooks]
+     * (same singleplayer-only limitation as host-less link surfacing);
+     * enumeration only reads the record snapshot, reads/writes happen on the
+     * server through [dev.nitka.nodewire.link.PinLinkEngine].
+     */
+    private fun registeredPort(be: BlockEntity): PinPort? {
+        if (be !is PlantEndpointProvider) return null
+        val lvl = be.level ?: return null
+        val serverLevel = lvl as? ServerLevel
+            ?: net.neoforged.neoforge.server.ServerLifecycleHooks.getCurrentServer()?.getLevel(lvl.dimension())
+            ?: return null
+        val record = runCatching {
+            CimulinkWorldRuntimes.forLevel(serverLevel).runtime().plantDirectory().liveRecords()
+                .firstOrNull { it.loaded() && it.address().pos() == be.blockPos }
+        }.getOrNull() ?: return null
+        return RuntimePort(serverLevel, record)
     }
 
     /** Stable per-position endpoint id — Synaxis only uses it as identity. */
@@ -91,6 +123,58 @@ object SynaxisIntegration {
             SignalValue.Quaternion(it.x, it.y, it.z, it.w)
         }
         else -> null
+    }
+
+    /** Port over a REGISTERED Cimulink endpoint: schema from the directory
+     *  record, IO through gameServices (GAME_TICK domain), same as the CC
+     *  connector's registered path. */
+    private class RuntimePort(
+        private val serverLevel: ServerLevel,
+        private val record: PlantRecord,
+    ) : PinPort {
+
+        override fun pinOutputs(ctx: LinkContext): List<LinkPin> =
+            runCatching { record.schema().outputs() }.getOrDefault(emptyList()).mapNotNull { def ->
+                pinTypeOf(def.type())?.let { LinkPin(PREFIX + def.name(), it, def.name()) }
+            }
+
+        override fun pinInputs(ctx: LinkContext): List<LinkPin> =
+            runCatching { record.schema().inputs() }.getOrDefault(emptyList()).mapNotNull { def ->
+                pinTypeOf(def.type())?.let { LinkPin(PREFIX + def.name(), it, def.name()) }
+            }
+
+        override fun readPin(id: String): PinReading? {
+            val name = id.removePrefix(PREFIX).takeIf { id.startsWith(PREFIX) } ?: return null
+            val value = runCatching {
+                services().readPlantOutput(ExecutionDomain.GAME_TICK, record.endpointId(), name)
+            }.getOrNull() ?: return null
+            return toPinValue(value)?.let { PinReading(it) }
+        }
+
+        override fun writePin(id: String, value: PinValue) {
+            val name = id.removePrefix(PREFIX).takeIf { id.startsWith(PREFIX) } ?: return
+            val def = runCatching { record.schema().input(name) }.getOrNull() ?: return
+            val signal = toSignalValue(def.type(), value) ?: return
+            runCatching {
+                services().writePlantInput(
+                    ExecutionDomain.GAME_TICK, record.endpointId(), name, signal, serverLevel.gameTime,
+                )
+            }
+        }
+
+        override fun clearPin(id: String) {
+            val name = id.removePrefix(PREFIX).takeIf { id.startsWith(PREFIX) } ?: return
+            val def = runCatching { record.schema().input(name) }.getOrNull() ?: return
+            val fallback = def.defaultValue() ?: return
+            runCatching {
+                services().writePlantInput(
+                    ExecutionDomain.GAME_TICK, record.endpointId(), name, fallback, serverLevel.gameTime,
+                )
+            }
+        }
+
+        private fun services() =
+            CimulinkWorldRuntimes.forLevel(serverLevel).runtime().gameServices()
     }
 
     private class SynaxisPort(private val be: BlockEntity, private val plant: PlantPort) : PinPort {
