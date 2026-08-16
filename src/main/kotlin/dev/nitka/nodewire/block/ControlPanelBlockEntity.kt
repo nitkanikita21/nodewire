@@ -260,16 +260,10 @@ class ControlPanelBlockEntity(pos: BlockPos, state: BlockState) :
                 sound(net.minecraft.sounds.SoundEvents.STONE_BUTTON_CLICK_ON, 0.1f, 1f + frac.toFloat())
             }
             "joystick" -> {
-                if (sneak) {
-                    // Sneak-click = trigger tap (Dashpanels uses LMB while held).
-                    triggerUntil[e.pinId()] = gameTime + MOMENTARY_PRESS_TICKS
-                } else {
-                    val sx = ((xCells / e.cols) * 2.0 - 1.0).coerceIn(-1.0, 1.0)
-                    val sy = ((yCells / e.rows) * 2.0 - 1.0).coerceIn(-1.0, 1.0)
-                    joyStates[e.pinId()] = floatArrayOf(sx.toFloat(), sy.toFloat())
-                    joyExpiry[e.pinId()] = gameTime + JOYSTICK_HOLD_TICKS
-                }
-                pushSync()
+                // Handled by the client HOLD session (Dashpanels model): RMB
+                // starts it client-side, PanelJoystickPacket streams the state.
+                // The server-side operate only consumes the click so a bare
+                // RMB doesn't fall through to other interactions.
             }
             else -> {
                 // Mini touch-screens: record the tap as a 0..1 fraction within
@@ -281,6 +275,28 @@ class ControlPanelBlockEntity(pos: BlockPos, state: BlockState) :
             }
         }
         return true
+    }
+
+    /**
+     * Live joystick state from a client hold session ([PanelJoystickPacket]).
+     * Each update re-arms the expiry, so the stick springs back to centre in
+     * [serverTick] as soon as the stream stops (release, disconnect, lag-out).
+     * The trigger rides the same keep-alive through [triggerUntil].
+     */
+    fun setJoystick(pinId: String, x: Float, y: Float, trigger: Boolean, gameTime: Long) {
+        val e = store.all().firstOrNull { it.pinId() == pinId && it.typeId == "joystick" } ?: return
+        val pin = e.pinId()
+        if (x == 0f && y == 0f && !trigger) {
+            joyStates.remove(pin)
+            joyExpiry.remove(pin)
+            triggerUntil.remove(pin)
+        } else {
+            joyStates[pin] = floatArrayOf(x, y)
+            joyExpiry[pin] = gameTime + JOYSTICK_HOLD_TICKS
+            if (trigger) triggerUntil[pin] = gameTime + JOYSTICK_HOLD_TICKS
+            else triggerUntil.remove(pin)
+        }
+        pushSync()
     }
 
     /** Server tick (from the block ticker): timed releases — the momentary

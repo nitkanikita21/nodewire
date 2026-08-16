@@ -138,6 +138,11 @@ object NodewireClient {
         // Control Block piloting: suppress vanilla movement/interaction + HUD.
         FORGE_BUS.addListener(::onMovementInput)
         FORGE_BUS.addListener(::onInteractionKey)
+        // Panel joystick hold session: RMB starts it, HUD overlay while active.
+        FORGE_BUS.addListener(::onPanelJoystickRightClick)
+        FORGE_BUS.addListener<net.neoforged.neoforge.client.event.RenderGuiEvent.Post> {
+            dev.nitka.nodewire.client.panel.PanelJoystickSession.renderHud(it.guiGraphics)
+        }
         FORGE_BUS.addListener<net.neoforged.neoforge.client.event.RenderGuiEvent.Post>(
             dev.nitka.nodewire.client.control.ControlHud::onRenderGui,
         )
@@ -158,6 +163,8 @@ object NodewireClient {
         dev.nitka.nodewire.camerachunk.CameraChunkClient.tick()
         // Stream the pilot's input while a Control Block session is active.
         ControlSession.update()
+        // Panel joystick hold session: liveness + state streaming.
+        dev.nitka.nodewire.client.panel.PanelJoystickSession.clientTick(Minecraft.getInstance())
         // Drain the mouse-capture keybind; toggle only while piloting.
         var toggled = false
         while (CONTROL_MOUSE_KEY.consumeClick()) toggled = true
@@ -240,7 +247,51 @@ object NodewireClient {
      * arm/commit flow uses; the server validates reach. Cancels the event so
      * vanilla pick-block doesn't also fire.
      */
+    /**
+     * RMB on a panel JOYSTICK element starts the client HOLD session (the
+     * Dashpanels interaction model). The event is cancelled so the click never
+     * reaches the server as an operate — all state flows through
+     * [dev.nitka.nodewire.net.PanelJoystickPacket]. While a session is live,
+     * the use-key auto-repeat is swallowed too.
+     */
+    private fun onPanelJoystickRightClick(event: net.neoforged.neoforge.event.entity.player.PlayerInteractEvent.RightClickBlock) {
+        val level = event.level
+        if (!level.isClientSide) return
+        val session = dev.nitka.nodewire.client.panel.PanelJoystickSession
+        if (session.isActive()) {
+            event.isCanceled = true
+            return
+        }
+        if (event.entity.isShiftKeyDown) return
+        val state = level.getBlockState(event.pos)
+        if (state.block !is dev.nitka.nodewire.block.ControlPanelBlock) return
+        val item = event.itemStack.item
+        if (item is dev.nitka.nodewire.item.PanelElementItem ||
+            item is dev.nitka.nodewire.item.PanelKeyItem ||
+            item is dev.nitka.nodewire.item.ChannelLinkToolItem
+        ) {
+            return
+        }
+        val gh = dev.nitka.nodewire.block.ControlPanelBlock.gridHit(state, event.pos, event.hitVec.location)
+            ?: return
+        val be = level.getBlockEntity(event.pos) as? dev.nitka.nodewire.block.ControlPanelBlockEntity ?: return
+        val el = be.elementAt(gh.cell) ?: return
+        if (el.typeId != "joystick") return
+        session.start(event.pos, el.pinId())
+        event.isCanceled = true
+    }
+
     private fun onMouseButton(event: net.neoforged.neoforge.client.event.InputEvent.MouseButton.Pre) {
+        // Panel joystick hold session: LMB is the TRIGGER (press = down,
+        // release = up), swallowed so it never breaks the panel underneath.
+        if (dev.nitka.nodewire.client.panel.PanelJoystickSession.isActive()
+            && event.button == org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT
+        ) {
+            dev.nitka.nodewire.client.panel.PanelJoystickSession
+                .setTrigger(event.action != org.lwjgl.glfw.GLFW.GLFW_RELEASE)
+            event.isCanceled = true
+            return
+        }
         if (event.action != org.lwjgl.glfw.GLFW.GLFW_PRESS) return
         val mc = Minecraft.getInstance()
         if (mc.screen != null) return

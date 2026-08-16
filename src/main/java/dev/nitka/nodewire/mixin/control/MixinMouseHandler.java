@@ -29,6 +29,13 @@ public abstract class MixinMouseHandler {
         if (session.isActive() && session.getMouseCaptured()) {
             session.addLookDelta(this.accumulatedDX, this.accumulatedDY);
             ci.cancel();
+            return;
+        }
+        // Panel joystick HOLD session: same freeze, deltas become stick_x/y.
+        var joystick = dev.nitka.nodewire.client.panel.PanelJoystickSession.INSTANCE;
+        if (joystick.isActive()) {
+            joystick.addLookDelta(this.accumulatedDX, this.accumulatedDY);
+            ci.cancel();
         }
     }
 }

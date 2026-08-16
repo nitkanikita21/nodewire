@@ -30,6 +30,7 @@ object NodewireNetwork {
         registrar.playToServer(SetSideBindingNamePacket.TYPE, SetSideBindingNamePacket.STREAM_CODEC, SetSideBindingNamePacket::handle)
         registrar.playToServer(SetScriptSourcePacket.TYPE, SetScriptSourcePacket.STREAM_CODEC, SetScriptSourcePacket::handle)
         registrar.playToServer(SetLinkToolModePacket.TYPE, SetLinkToolModePacket.STREAM_CODEC, SetLinkToolModePacket::handle)
+        registrar.playToServer(PanelJoystickPacket.TYPE, PanelJoystickPacket.STREAM_CODEC, PanelJoystickPacket::handle)
         registrar.playToServer(ControlInputPacket.TYPE, ControlInputPacket.STREAM_CODEC, ControlInputPacket::handle)
         registrar.playToServer(SetControlConfigPacket.TYPE, SetControlConfigPacket.STREAM_CODEC, SetControlConfigPacket::handle)
         // Control Panel: place / remove elements in-world.

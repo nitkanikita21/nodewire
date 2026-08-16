@@ -197,7 +197,14 @@ class ControlPanelBlockRenderer(
 
         val animKey = "${e.hashCode()}:${e.pinId()}"
         when (e.typeId) {
-            "switch" -> (if (on) PanelModel.SWITCH_ON else PanelModel.SWITCH_OFF).render(pose, buffers, solid, light)
+            "switch" -> {
+                // Extra half-turn: the handle points AWAY from the operator in
+                // the shared module frame; flipping reads ON-up on our panels.
+                pose.pushPose()
+                pose.rotateAround(com.mojang.math.Axis.YP.rotationDegrees(180f), e.cols / 32f, 0f, e.rows / 32f)
+                (if (on) PanelModel.SWITCH_ON else PanelModel.SWITCH_OFF).render(pose, buffers, solid, light)
+                pose.popPose()
+            }
             "momentary" -> {
                 PanelModel.MOMENTARY_BASE.render(pose, buffers, solid, light)
                 val y = PanelAnim.approach(animKey, if (on) -0.5f / 16f + 0.001f else 0f, 0.5f)
