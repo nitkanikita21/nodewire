@@ -138,6 +138,12 @@ object NodewireClient {
         FORGE_BUS.addListener<RegisterClientCommandsEvent>(ClientScriptCommand::register)
         FORGE_BUS.addListener(::onLevelUnload)
         FORGE_BUS.addListener<RegisterClientCommandsEvent>(HighlightCommand::register)
+        // `/nodewire dhfeeds …` — only meaningful (and class-loadable) with DH.
+        FORGE_BUS.addListener<RegisterClientCommandsEvent> { event ->
+            if (net.neoforged.fml.ModList.get().isLoaded("distanthorizons")) {
+                dev.nitka.nodewire.client.video.DhFeedsCommand.register(event)
+            }
+        }
         FORGE_BUS.addListener(::onMouseScroll)
         FORGE_BUS.addListener(::onMouseButton)
         // Channel Link Tool inline pin window — hover state + HUD draw.
