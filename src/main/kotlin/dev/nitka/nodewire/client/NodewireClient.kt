@@ -116,6 +116,15 @@ object NodewireClient {
                 ) { dev.nitka.nodewire.client.screen.ScreenNoiseShader.instance = it }
             }.onFailure { LOG.warn("screen_noise shader failed to load: {}", it.message) }
         }
+        // Distant Horizons: cancel its render during camera captures (the
+        // Vista recipe — otherwise DH's temporal state makes feeds flicker).
+        // Deferred to client setup so DH has bootstrapped its event injector.
+        bus.addListener<net.neoforged.fml.event.lifecycle.FMLClientSetupEvent> {
+            if (net.neoforged.fml.ModList.get().isLoaded("distanthorizons")) {
+                runCatching { dev.nitka.nodewire.client.video.DistantHorizonsCompat.setup() }
+                    .onFailure { e -> LOG.warn("DistantHorizons camera compat failed to attach: {}", e.message) }
+            }
+        }
         FORGE_BUS.addListener(::onClientTick)
         FORGE_BUS.addListener<RenderLevelStageEvent>(WireWorldRenderer::render)
         // Control Panel: outline only the ELEMENT under the crosshair.

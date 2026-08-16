@@ -272,6 +272,13 @@ dependencies {
     compileOnly("maven.modrinth:create-aeronautics:1.3.0+mc1.21.1")
     runtimeOnly("maven.modrinth:create-aeronautics:1.3.0+mc1.21.1")
 
+    // --- Distant Horizons 3.2.0-b (via Modrinth maven) ---
+    // compileOnly for the DH API only: DistantHorizonsCompat cancels DH's
+    // render pass while a Nodewire camera captures (the Vista recipe — DH's
+    // temporal state otherwise flickers both the feed and the main view).
+    // ModList-gated at runtime; nothing bundled.
+    compileOnly("maven.modrinth:distanthorizons:3.2.0-b-1.21.1")
+
     // --- Synaxis 1.5.0 (via Modrinth maven) ---
     // Cimulink plant ports: the SynaxisIntegration PinPorts adapter wraps any
     // Synaxis-claimable BE (motors, actuators, propellers, jets, flaps, chair,
