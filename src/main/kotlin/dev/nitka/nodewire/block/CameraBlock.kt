@@ -78,6 +78,22 @@ class CameraBlock(props: Properties, val rotatable: Boolean = true) : Block(prop
         return net.minecraft.world.ItemInteractionResult.sidedSuccess(level.isClientSide)
     }
 
+    /** Hidden Fixed Camera is fully ghost: entities pass through. The OUTLINE
+     *  shape stays a full cube so the crosshair can still find it (wrench it
+     *  back, aim the Link Tool). */
+    @Suppress("OVERRIDE_DEPRECATION")
+    override fun getCollisionShape(
+        state: BlockState,
+        level: net.minecraft.world.level.BlockGetter,
+        pos: BlockPos,
+        context: net.minecraft.world.phys.shapes.CollisionContext,
+    ): net.minecraft.world.phys.shapes.VoxelShape =
+        if (state.getValue(HIDDEN)) {
+            net.minecraft.world.phys.shapes.Shapes.empty()
+        } else {
+            super.getCollisionShape(state, level, pos, context)
+        }
+
     private fun isWrench(stack: net.minecraft.world.item.ItemStack): Boolean {
         if (stack.isEmpty) return false
         if (stack.`is`(WRENCH_TAG)) return true
