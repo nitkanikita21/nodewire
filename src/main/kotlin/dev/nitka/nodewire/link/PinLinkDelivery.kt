@@ -35,6 +35,11 @@ object PinLinkDelivery {
      *  Cheap (no allocation on quiet links); grep `NW-LINK`. */
     private const val DIAG_PERIOD_TICKS = 100L
 
+    /** Pin-id prefix of the Synaxis adapter (kept as a literal — importing
+     *  SynaxisIntegration here would load its compileOnly Synaxis types on
+     *  servers without the mod). Pins under it get transient-miss grace. */
+    private const val SYNAXIS_PIN_PREFIX = "syn:"
+
     private const val MAX_LINK_DISTANCE_SQ =
         PinLinkEngine.MAX_LINK_DISTANCE * PinLinkEngine.MAX_LINK_DISTANCE
 
@@ -80,6 +85,11 @@ object PinLinkDelivery {
         val tgtFace = PinPorts.sideOfRedstoneInput(targetPin)
         val tgtPin = targetPort.pinInputs(ctxFor(level, target, tgtFace)).firstOrNull { it.id == targetPin }
         if (tgtPin == null) {
+            // `syn:` pins are backed by the Synaxis plant runtime, which
+            // registers devices on THEIR server tick — after a world/chunk
+            // load the record is briefly absent even though the device is
+            // fine. A transient miss must never destroy the link: go quiet.
+            if (targetPin.startsWith(SYNAXIS_PIN_PREFIX)) return Outcome.Quiet
             LOG.info("NW-LINK prune @{}: target pin '{}' gone", tgtShort, targetPin)
             return Outcome.Prune
         }
@@ -120,6 +130,10 @@ object PinLinkDelivery {
 
         val srcPin = port.pinOutputs(ctxFor(level, source)).firstOrNull { p -> p.id == sourcePin }
         if (srcPin == null || !PinValueConversion.canConvert(srcPin.type, tgtPin.type)) {
+            // Same transient-registration grace as the target side: a missing
+            // `syn:` source pin means the Synaxis runtime hasn't (re)registered
+            // the device yet, not that the link is dead.
+            if (srcPin == null && sourcePin.startsWith(SYNAXIS_PIN_PREFIX)) return Outcome.Quiet
             LOG.info(
                 "NW-LINK prune @{}: source pin '{}' {} (port={})",
                 tgtShort, sourcePin,
