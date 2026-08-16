@@ -272,6 +272,14 @@ dependencies {
     compileOnly("maven.modrinth:create-aeronautics:1.3.0+mc1.21.1")
     runtimeOnly("maven.modrinth:create-aeronautics:1.3.0+mc1.21.1")
 
+    // --- Iris 1.8.14 (via Modrinth maven) ---
+    // compileOnly for the feed-render harness's Iris compat: during a camera
+    // capture the shaderpack pipeline is swapped for a VanillaRenderingPipeline
+    // and CapturedRenderingState (temporal gbuffer matrices etc.) is saved and
+    // restored — otherwise the capture pass poisons the pack's TAA/motion
+    // reprojection and the main view smears. ModList-gated at runtime.
+    compileOnly("maven.modrinth:iris:1.8.14-beta.1+1.21.1-neoforge")
+
     // --- Distant Horizons 3.2.0-b (via Modrinth maven) ---
     // compileOnly for the DH API only: DistantHorizonsCompat cancels DH's
     // render pass while a Nodewire camera captures (the Vista recipe — DH's

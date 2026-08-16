@@ -73,6 +73,9 @@ object VideoCameraCapture {
         ml.isLoaded("sodium") || ml.isLoaded("embeddium")
     }
 
+    /** Iris present → the harness parks its pipeline around capture batches. */
+    private val IRIS: Boolean by lazy { net.neoforged.fml.ModList.get().isLoaded("iris") }
+
     /** Capture cadence, decoupled from the client frame rate (wall-clock gated). */
     private const val FPS_CAP = 24
     private const val FRAME_INTERVAL = 1.0 / FPS_CAP
@@ -200,41 +203,50 @@ object VideoCameraCapture {
         allChangedDuringCapture = false
         VideoManager.beginCapture()
         try {
-            for (feed in active) {
-                try {
-                    val target = feed.renderTarget() ?: continue
-                    val (wpos, yawPitch) = feed.worldPose(level, deltaTracker) ?: continue
-                    window.setWidth(target.width)
-                    window.setHeight(target.height)
+            val batch = {
+                for (feed in active) {
+                    try {
+                        val target = feed.renderTarget() ?: continue
+                        val (wpos, yawPitch) = feed.worldPose(level, deltaTracker) ?: continue
+                        window.setWidth(target.width)
+                        window.setHeight(target.height)
 
-                    // Marker eye height is 0 (MARKER dims are 0×0), so the
-                    // camera lands exactly on the feed's eye point.
-                    marker.setPos(wpos.x, wpos.y, wpos.z)
-                    marker.yRot = yawPitch[0]
-                    marker.xRot = yawPitch[1]
-                    marker.yRotO = yawPitch[0]
-                    marker.xRotO = yawPitch[1]
+                        // Marker eye height is 0 (MARKER dims are 0×0), so the
+                        // camera lands exactly on the feed's eye point.
+                        marker.setPos(wpos.x, wpos.y, wpos.z)
+                        marker.yRot = yawPitch[0]
+                        marker.xRot = yawPitch[1]
+                        marker.yRotO = yawPitch[0]
+                        marker.xRotO = yawPitch[1]
 
-                    target.clear(Minecraft.ON_OSX)
-                    target.bindWrite(true)
-                    mc.mainRenderTarget = target
-                    val feedVa = lr.viewArea
-                    if (playerGraph != null && feedVa != null) lr.sectionOcclusionGraph = feed.feedGraph(feedVa)
-                    captureFov = feed.fovDeg()
-                    dev.nitka.nodewire.client.camera.harness.FeedRenderDriver.render(
-                        mc, camera, marker, feed.fovDeg(), DeltaTracker.ONE,
-                    )
+                        target.clear(Minecraft.ON_OSX)
+                        target.bindWrite(true)
+                        mc.mainRenderTarget = target
+                        val feedVa = lr.viewArea
+                        if (playerGraph != null && feedVa != null) lr.sectionOcclusionGraph = feed.feedGraph(feedVa)
+                        captureFov = feed.fovDeg()
+                        dev.nitka.nodewire.client.camera.harness.FeedRenderDriver.render(
+                            mc, camera, marker, feed.fovDeg(), DeltaTracker.ONE,
+                        )
 
-                    feed.lastActiveTimeSec = now
-                    if (feed.renderFailures != 0) {
-                        LOG.info("[NW-CAMERA] feed {} recovered after {} failures", feed.handle, feed.renderFailures)
-                        feed.renderFailures = 0
-                    }
-                } catch (t: Throwable) {
-                    if (feed.renderFailures++ % 100 == 0) {
-                        LOG.warn("[NW-CAMERA] feed {} harness render failed (attempt {})", feed.handle, feed.renderFailures, t)
+                        feed.lastActiveTimeSec = now
+                        if (feed.renderFailures != 0) {
+                            LOG.info("[NW-CAMERA] feed {} recovered after {} failures", feed.handle, feed.renderFailures)
+                            feed.renderFailures = 0
+                        }
+                    } catch (t: Throwable) {
+                        if (feed.renderFailures++ % 100 == 0) {
+                            LOG.warn("[NW-CAMERA] feed {} harness render failed (attempt {})", feed.handle, feed.renderFailures, t)
+                        }
                     }
                 }
+            }
+            // Iris: park the shaderpack pipeline + guard its temporal state for
+            // the whole batch (the class only loads when Iris is present).
+            if (IRIS) {
+                dev.nitka.nodewire.client.camera.harness.IrisFeedCompat.aroundCaptureBatch(mc, batch)
+            } else {
+                batch()
             }
         } finally {
             // --- RESTORE ---
