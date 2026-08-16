@@ -277,6 +277,13 @@ object NodewireClient {
             ?: return
         val be = level.getBlockEntity(event.pos) as? dev.nitka.nodewire.block.ControlPanelBlockEntity ?: return
         val el = be.elementAt(gh.cell) ?: return
+        // RightClickBlock fires once per HAND — act on MAIN_HAND only, but
+        // still swallow the offhand pass so it can't re-toggle the session
+        // or use the held item against the panel.
+        if (event.hand != net.minecraft.world.InteractionHand.MAIN_HAND) {
+            if (el.typeId == "joystick" || el.typeId == "joystick_ctrl") event.isCanceled = true
+            return
+        }
         when (el.typeId) {
             "joystick" -> {
                 if (event.entity.isShiftKeyDown) return
