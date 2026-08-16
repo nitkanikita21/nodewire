@@ -14,7 +14,7 @@ class PanelElementTypeTest {
         assertEquals(
             setOf(
                 "switch", "momentary", "push_button", "key_switch", "emergency",
-                "lever", "knob", "joystick", "bulb", "seven_segment", "buzzer", "label",
+                "lever", "knob", "joystick", "joystick_ctrl", "bulb", "seven_segment", "buzzer", "label",
                 "screen", "screen_small", "screen_wide", "screen_large", "screen_full",
             ),
             ids,

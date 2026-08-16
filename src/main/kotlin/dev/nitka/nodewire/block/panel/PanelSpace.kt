@@ -44,7 +44,7 @@ object PanelSpace {
         typeId == "momentary" || typeId == "push_button" -> 0.10
         typeId == "key_switch" -> 0.225
         typeId in setOf("emergency", "lever", "knob") -> 0.13
-        typeId == "joystick" -> 0.32
+        typeId == "joystick" || typeId == "joystick_ctrl" -> 0.32
         typeId == "bulb" -> 0.11
         typeId == "seven_segment" -> 0.07
         typeId == "buzzer" -> 0.075

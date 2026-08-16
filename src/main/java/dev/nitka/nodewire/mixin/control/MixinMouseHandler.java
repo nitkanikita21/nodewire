@@ -31,9 +31,10 @@ public abstract class MixinMouseHandler {
             ci.cancel();
             return;
         }
-        // Panel joystick HOLD session: same freeze, deltas become stick_x/y.
+        // Panel joystick session: same freeze while its capture is ON
+        // (implicit for HOLD mode, V-toggled for the ctrl variant).
         var joystick = dev.nitka.nodewire.client.panel.PanelJoystickSession.INSTANCE;
-        if (joystick.isActive()) {
+        if (joystick.isActive() && joystick.getCaptured()) {
             joystick.addLookDelta(this.accumulatedDX, this.accumulatedDY);
             ci.cancel();
         }

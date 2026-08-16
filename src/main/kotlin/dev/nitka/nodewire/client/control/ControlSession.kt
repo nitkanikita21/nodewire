@@ -104,7 +104,11 @@ object ControlSession {
     private fun down(window: Long, key: Int): Boolean {
         if (key < 0) return false
         return if (key >= Binding.MOUSE_BUTTON_BASE) {
-            GLFW.glfwGetMouseButton(window, key - Binding.MOUSE_BUTTON_BASE) == GLFW.GLFW_PRESS
+            // Mouse buttons feed pins ONLY while the mouse is captured — with
+            // capture off, clicks are the player's (world interaction), not the
+            // vehicle's. Keyboard bindings keep working either way.
+            mouseCaptured &&
+                GLFW.glfwGetMouseButton(window, key - Binding.MOUSE_BUTTON_BASE) == GLFW.GLFW_PRESS
         } else {
             InputConstants.isKeyDown(window, key)
         }

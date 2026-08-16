@@ -259,7 +259,7 @@ class ControlPanelBlockEntity(pos: BlockPos, state: BlockState) :
                 setElementValue(anchor, frac)
                 sound(net.minecraft.sounds.SoundEvents.STONE_BUTTON_CLICK_ON, 0.1f, 1f + frac.toFloat())
             }
-            "joystick" -> {
+            "joystick", "joystick_ctrl" -> {
                 // Handled by the client HOLD session (Dashpanels model): RMB
                 // starts it client-side, PanelJoystickPacket streams the state.
                 // The server-side operate only consumes the click so a bare
@@ -284,7 +284,7 @@ class ControlPanelBlockEntity(pos: BlockPos, state: BlockState) :
      * The trigger rides the same keep-alive through [triggerUntil].
      */
     fun setJoystick(pinId: String, x: Float, y: Float, trigger: Boolean, gameTime: Long) {
-        val e = store.all().firstOrNull { it.pinId() == pinId && it.typeId == "joystick" } ?: return
+        val e = store.all().firstOrNull { it.pinId() == pinId && it.typeId.startsWith("joystick") } ?: return
         val pin = e.pinId()
         if (x == 0f && y == 0f && !trigger) {
             joyStates.remove(pin)
@@ -362,7 +362,7 @@ class ControlPanelBlockEntity(pos: BlockPos, state: BlockState) :
                     val max = if (cfg.contains("max")) cfg.getDouble("max") else 1.0
                     PinReading(PinValue.Float((min + e.value.coerceIn(0.0, 1.0) * (max - min)).toFloat()))
                 }
-                "joystick" -> {
+                "joystick", "joystick_ctrl" -> {
                     val joy = joyStates[e.pinId()]
                     PinReading(PinValue.Vec2((joy?.get(0) ?: 0f).toDouble(), (joy?.get(1) ?: 0f).toDouble()))
                 }

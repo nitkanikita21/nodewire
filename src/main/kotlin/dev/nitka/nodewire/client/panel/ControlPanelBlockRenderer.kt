@@ -272,7 +272,7 @@ class ControlPanelBlockRenderer(
                 PanelModel.KNOB.render(pose, buffers, solid, light)
                 pose.popPose()
             }
-            "joystick" -> {
+            "joystick", "joystick_ctrl" -> {
                 val joy = be.joyState(e.pinId())
                 val rsx = PanelAnim.approach("$animKey:x", joy?.get(0) ?: 0f, 0.5f)
                 val rsy = PanelAnim.approach("$animKey:y", joy?.get(1) ?: 0f, 0.5f)
@@ -677,7 +677,7 @@ class ControlPanelBlockRenderer(
         /** Types rendered through the Dashpanels baked pipeline. */
         private val BAKED_TYPES = setOf(
             "switch", "momentary", "push_button", "key_switch", "emergency",
-            "lever", "knob", "joystick", "bulb", "seven_segment", "buzzer", "label",
+            "lever", "knob", "joystick", "joystick_ctrl", "bulb", "seven_segment", "buzzer", "label",
         )
 
         private const val ELEMENT_GAP = 0.06 // cell inset between an element body and its footprint
