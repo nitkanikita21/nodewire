@@ -289,7 +289,14 @@ object VideoCameraCapture {
                     val feedVa = lr.viewArea
                     if (playerGraph != null && feedVa != null) lr.sectionOcclusionGraph = feed.feedGraph(feedVa)
                     captureFov = feed.fovDeg()
-                    mc.gameRenderer.renderLevel(DeltaTracker.ONE)
+                    when (dev.nitka.nodewire.client.camera.harness.CaptureEngine.mode) {
+                        dev.nitka.nodewire.client.camera.harness.CaptureEngine.Mode.HARNESS ->
+                            dev.nitka.nodewire.client.camera.harness.FeedRenderDriver.render(
+                                mc, markerEntity, feed.fovDeg(), DeltaTracker.ONE,
+                            )
+                        dev.nitka.nodewire.client.camera.harness.CaptureEngine.Mode.LEGACY ->
+                            mc.gameRenderer.renderLevel(DeltaTracker.ONE)
+                    }
 
                     feed.lastActiveTimeSec = now
                     if (feed.renderFailures != 0) {

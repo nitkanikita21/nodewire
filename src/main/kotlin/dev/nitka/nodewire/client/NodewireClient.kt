@@ -148,6 +148,10 @@ object NodewireClient {
                 dev.nitka.nodewire.client.video.DhFeedsCommand.register(event)
             }
         }
+        // `/nodewire capture <legacy|harness>` — feed render engine toggle.
+        FORGE_BUS.addListener<RegisterClientCommandsEvent>(
+            dev.nitka.nodewire.client.camera.harness.CaptureEngine::registerCommand,
+        )
         FORGE_BUS.addListener(::onMouseScroll)
         FORGE_BUS.addListener(::onMouseButton)
         // Channel Link Tool inline pin window — hover state + HUD draw.
