@@ -68,10 +68,12 @@ class CameraCableItem(props: Properties) : Item(props) {
         return InteractionResult.sidedSuccess(level.isClientSide)
     }
 
-    /** CLIENT: world hit → facing-relative eye, send + open the tuning UI. */
+    /** CLIENT: snapped face point → facing-relative eye, send + open the UI. */
     private fun commitEye(level: Level, camPos: BlockPos, context: UseOnContext) {
         val be = level.getBlockEntity(camPos) as? CameraBlockEntity ?: return
-        val eyeWorld = context.clickLocation.add(Vec3.atLowerCornerOf(context.clickedFace.normal).scale(0.05))
+        // Snap to the welding-style 3×3 face grid (corners / edge midpoints /
+        // centre) — the exact point the overlay highlights under the crosshair.
+        val eyeWorld = snappedEyeWorld(level, context.clickedPos, context.clickedFace, context.clickLocation)
         val local = worldToFacingLocal(level, camPos, eyeWorld) ?: return
         val max = CameraBlockEntity.MAX_EYE_OFFSET
         val r = local.x.coerceIn(-max, max)
@@ -132,6 +134,48 @@ class CameraCableItem(props: Properties) : Item(props) {
             val d = world.subtract(center)
             return Vec3(d.dot(right), d.dot(up), d.dot(fwd))
         }
+
+        // ── welding-style face snap (Synaxis' 3×3 grid: {0, ½, 1}) ────────
+
+        private val SNAPS = doubleArrayOf(0.0, 0.5, 1.0)
+        private const val SNAP_NUDGE = 0.03
+
+        /** The 9 snap points of [face] in block-local 0..1 coords (nudged just
+         *  off the face so markers/eyes never z-fight the surface). */
+        fun snapPointsLocal(face: net.minecraft.core.Direction): List<Vec3> {
+            val n = Vec3.atLowerCornerOf(face.normal)
+            val out = ArrayList<Vec3>(9)
+            for (a in SNAPS) for (b in SNAPS) {
+                val p = when (face.axis) {
+                    net.minecraft.core.Direction.Axis.Y ->
+                        Vec3(a, if (face.axisDirection == net.minecraft.core.Direction.AxisDirection.POSITIVE) 1.0 else 0.0, b)
+                    net.minecraft.core.Direction.Axis.X ->
+                        Vec3(if (face.axisDirection == net.minecraft.core.Direction.AxisDirection.POSITIVE) 1.0 else 0.0, a, b)
+                    else ->
+                        Vec3(a, b, if (face.axisDirection == net.minecraft.core.Direction.AxisDirection.POSITIVE) 1.0 else 0.0)
+                }
+                out.add(p.add(n.scale(SNAP_NUDGE)))
+            }
+            return out
+        }
+
+        /** Block-local 0..1 point → world, through the live Sable pose. */
+        fun localToWorld(level: Level, pos: BlockPos, local: Vec3): Vec3 {
+            val ref = EndpointRef.from(level, pos)
+            val center = ref.worldCenter(level) ?: Vec3.atCenterOf(pos)
+            val rel = local.subtract(0.5, 0.5, 0.5)
+            return center.add(ref.worldDirection(level, rel) ?: rel)
+        }
+
+        /** Nearest snap point of ([pos], [face]) to the world-space [hit]. */
+        fun nearestSnapWorld(level: Level, pos: BlockPos, face: net.minecraft.core.Direction, hit: Vec3): Vec3 =
+            snapPointsLocal(face)
+                .map { localToWorld(level, pos, it) }
+                .minByOrNull { it.distanceToSqr(hit) } ?: hit
+
+        /** The point the cable's second click binds: the highlighted snap. */
+        fun snappedEyeWorld(level: Level, pos: BlockPos, face: net.minecraft.core.Direction, hit: Vec3): Vec3 =
+            nearestSnapWorld(level, pos, face, hit)
 
         /** Facing-relative (right, up, forward) → block-local grid vector. */
         fun facingLocalToGrid(facing: net.minecraft.core.Direction, r: Double, u: Double, f: Double): Vec3 {

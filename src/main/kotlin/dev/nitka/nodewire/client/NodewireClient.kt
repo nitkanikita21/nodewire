@@ -127,6 +127,10 @@ object NodewireClient {
         }
         FORGE_BUS.addListener(::onClientTick)
         FORGE_BUS.addListener<RenderLevelStageEvent>(WireWorldRenderer::render)
+        // Camera Cable: welding-style snap grid on the aimed face while armed.
+        FORGE_BUS.addListener<RenderLevelStageEvent>(
+            dev.nitka.nodewire.client.camera.CameraCableOverlay::render,
+        )
         // Control Panel: outline only the ELEMENT under the crosshair.
         FORGE_BUS.addListener<net.neoforged.neoforge.client.event.RenderHighlightEvent.Block>(
             dev.nitka.nodewire.client.panel.PanelHighlightRenderer::onHighlight,
