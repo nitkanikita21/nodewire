@@ -169,13 +169,7 @@ object NodewireClient {
         // Block session or a persistent panel joystick session).
         var toggled = false
         while (CONTROL_MOUSE_KEY.consumeClick()) toggled = true
-        if (toggled) {
-            if (ControlSession.isActive()) {
-                ControlSession.toggleMouse()
-            } else {
-                dev.nitka.nodewire.client.panel.PanelJoystickSession.toggleCapture()
-            }
-        }
+        if (toggled && ControlSession.isActive()) ControlSession.toggleMouse()
         // Dedicated exit key (RMB can't exit — it's suppressed while piloting).
         var exitPressed = false
         while (CONTROL_EXIT_KEY.consumeClick()) exitPressed = true
@@ -186,9 +180,6 @@ object NodewireClient {
                     .withStyle(net.minecraft.ChatFormatting.AQUA),
                 true,
             )
-        }
-        if (exitPressed && dev.nitka.nodewire.client.panel.PanelJoystickSession.isActive()) {
-            dev.nitka.nodewire.client.panel.PanelJoystickSession.stop()
         }
         // Keep the HUD's key hints in sync with the (rebindable) keybinds —
         // English labels (KeyNames) regardless of the game language.
@@ -268,12 +259,11 @@ object NodewireClient {
         val level = event.level
         if (!level.isClientSide) return
         val session = dev.nitka.nodewire.client.panel.PanelJoystickSession
-        if (session.isActive() && session.captured) {
-            // Captured session owns the mouse: swallow use-key repeats/clicks.
+        if (session.isActive()) {
+            // The hold session owns the mouse: swallow use-key repeats.
             event.isCanceled = true
             return
         }
-        if (event.entity.isShiftKeyDown) return
         val state = level.getBlockState(event.pos)
         if (state.block !is dev.nitka.nodewire.block.ControlPanelBlock) return
         val item = event.itemStack.item
@@ -287,17 +277,35 @@ object NodewireClient {
             ?: return
         val be = level.getBlockEntity(event.pos) as? dev.nitka.nodewire.block.ControlPanelBlockEntity ?: return
         val el = be.elementAt(gh.cell) ?: return
-        if (el.typeId != "joystick" && el.typeId != "joystick_ctrl") return
-        // Re-clicking the ctrl joystick with capture off = exit (its toggle).
-        if (session.isActive()) {
-            if (session.isSession(event.pos, el.pinId())) {
-                session.stop()
+        when (el.typeId) {
+            "joystick" -> {
+                if (event.entity.isShiftKeyDown) return
+                session.start(event.pos, el.pinId())
                 event.isCanceled = true
             }
-            return
+            // Embedded Control Block: sneak+RMB = binding editor, RMB = the
+            // exact Control Block piloting toggle (same session, keybinds, HUD).
+            "joystick_ctrl" -> {
+                event.isCanceled = true
+                if (event.entity.isShiftKeyDown) {
+                    dev.nitka.nodewire.client.screen.ControlConfigScreen.open(
+                        event.pos,
+                        dev.nitka.nodewire.block.panel.PanelControlBindings.of(el.config),
+                        el.pinId(),
+                    )
+                } else {
+                    ControlSession.toggle(event.pos, el.pinId())
+                    val on = ControlSession.isActive()
+                    val exitKey = dev.nitka.nodewire.client.control.ControlHud.exitKeyName
+                    Minecraft.getInstance().player?.displayClientMessage(
+                        net.minecraft.network.chat.Component
+                            .literal(if (on) "Controlling — press $exitKey to exit" else "Exited control")
+                            .withStyle(net.minecraft.ChatFormatting.AQUA),
+                        true,
+                    )
+                }
+            }
         }
-        session.start(event.pos, el.pinId(), persistent = el.typeId == "joystick_ctrl")
-        event.isCanceled = true
     }
 
     private fun onMouseButton(event: net.neoforged.neoforge.client.event.InputEvent.MouseButton.Pre) {
@@ -306,7 +314,6 @@ object NodewireClient {
         // ONLY captured while the session's mouse capture is on — with capture
         // off (ctrl variant, V) the mouse behaves normally.
         if (dev.nitka.nodewire.client.panel.PanelJoystickSession.isActive()
-            && dev.nitka.nodewire.client.panel.PanelJoystickSession.captured
             && event.button == org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT
         ) {
             dev.nitka.nodewire.client.panel.PanelJoystickSession
@@ -378,8 +385,7 @@ object NodewireClient {
         // Clicks belong to the session ONLY while its mouse capture is on —
         // with capture off the pilot interacts with the world normally.
         val controlCaptured = ControlSession.isActive() && ControlSession.mouseCaptured
-        val joystickCaptured = dev.nitka.nodewire.client.panel.PanelJoystickSession.isActive() &&
-            dev.nitka.nodewire.client.panel.PanelJoystickSession.captured
+        val joystickCaptured = dev.nitka.nodewire.client.panel.PanelJoystickSession.isActive()
         if (!controlCaptured && !joystickCaptured) return
         event.isCanceled = true
         event.setSwingHand(false)

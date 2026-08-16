@@ -29,6 +29,11 @@ object ControlSession {
     var active: BlockPos? = null
         private set
 
+    /** Non-empty = piloting a `joystick_ctrl` PANEL element (its base pin id)
+     *  at [active] instead of a Control Block. */
+    var activeElement: String = ""
+        private set
+
     /** Mouse aiming on/off (toggled by the keybind); only meaningful in a session. */
     var mouseCaptured: Boolean = false
         private set
@@ -51,15 +56,24 @@ object ControlSession {
 
     fun isActive(): Boolean = active != null
 
-    /** Right-click a block: enter its session, or exit if already piloting it. */
-    fun toggle(pos: BlockPos) {
-        active = if (active == pos) null else pos
+    /** Right-click a block/element: enter its session, or exit if already
+     *  piloting that exact target. [element] = a panel `joystick_ctrl`'s base
+     *  pin id (empty for a Control Block). */
+    fun toggle(pos: BlockPos, element: String = "") {
+        if (active == pos && activeElement == element) {
+            active = null
+            activeElement = ""
+        } else {
+            active = pos
+            activeElement = element
+        }
         mouseCaptured = false
         scrollAccum = 0.0
     }
 
     fun exit() {
         active = null
+        activeElement = ""
         mouseCaptured = false
         scrollAccum = 0.0
     }
@@ -87,18 +101,29 @@ object ControlSession {
         if (mc.screen != null) return // don't capture while a GUI is open
         val player = mc.player ?: return exit()
         val level = mc.level ?: return exit()
-        val be = level.getBlockEntity(pos) as? ControlBlockEntity ?: return exit()
+        // Target = a Control Block BE, or a joystick_ctrl element on a panel
+        // (bindings then come from the element's synced config).
+        val bindings: List<Binding> = when (val be = level.getBlockEntity(pos)) {
+            is ControlBlockEntity -> if (activeElement.isEmpty()) be.bindings() else return exit()
+            is dev.nitka.nodewire.block.ControlPanelBlockEntity -> {
+                val el = be.elements().firstOrNull {
+                    it.pinId() == activeElement && it.typeId == "joystick_ctrl"
+                } ?: return exit()
+                dev.nitka.nodewire.block.panel.PanelControlBindings.of(el.config)
+            }
+            else -> return exit()
+        }
         if (player.distanceToSqr(Vec3.atCenterOf(pos)) > EXIT_DIST_SQ) return exit()
 
         val window = mc.window.window
-        val values = HashMap<String, PinValue>(be.bindings().size + 2)
-        for (b in be.bindings()) values[b.pin] = compute(b, window)
+        val values = HashMap<String, PinValue>(bindings.size + 2)
+        for (b in bindings) values[b.pin] = compute(b, window)
         values[ControlBlockEntity.ACTIVE_PIN] = PinValue.Bool(true)
         values[ControlBlockEntity.MOUSE_CAPTURED_PIN] = PinValue.Bool(mouseCaptured)
         scrollAccum = 0.0 // consumed this tick
         deltaX = 0.0
         deltaY = 0.0
-        PacketDistributor.sendToServer(ControlInputPacket(pos, values))
+        PacketDistributor.sendToServer(ControlInputPacket(pos, values, activeElement))
     }
 
     private fun down(window: Long, key: Int): Boolean {

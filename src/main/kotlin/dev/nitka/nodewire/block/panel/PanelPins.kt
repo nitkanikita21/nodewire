@@ -47,6 +47,16 @@ object PanelPins {
                 ElementPin("b$it", PanelPinDir.OUTPUT, dev.nitka.nodewire.graph.PinType.BOOL)
             }
         }
+        if (e.typeId == "joystick_ctrl") {
+            // Embedded Control Block: one output pin per configured Binding,
+            // plus the block's session-state pins — same surface as the BE.
+            return PanelControlBindings.of(e.config).map {
+                ElementPin(it.pin, PanelPinDir.OUTPUT, it.type)
+            } + listOf(
+                ElementPin("active", PanelPinDir.OUTPUT, dev.nitka.nodewire.graph.PinType.BOOL),
+                ElementPin("mouse_captured", PanelPinDir.OUTPUT, dev.nitka.nodewire.graph.PinType.BOOL),
+            )
+        }
         return type.pins
     }
 }

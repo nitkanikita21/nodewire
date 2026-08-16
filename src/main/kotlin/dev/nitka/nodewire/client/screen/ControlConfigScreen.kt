@@ -46,6 +46,8 @@ import org.lwjgl.glfw.GLFW
 class ControlConfigScreen(
     private val pos: BlockPos,
     initial: List<Binding>,
+    /** `""` = Control Block; else a panel `joystick_ctrl` element's base pin id. */
+    private val element: String = "",
 ) : NwComposeScreen(Component.literal("Control Block")) {
 
     private var bindings: List<Binding> by mutableStateOf(initial.map { it.copy() })
@@ -77,7 +79,7 @@ class ControlConfigScreen(
 
     override fun onClose() {
         PacketDistributor.sendToServer(
-            SetControlConfigPacket(pos, bindings.filter { it.pin.isNotBlank() }),
+            SetControlConfigPacket(pos, bindings.filter { it.pin.isNotBlank() }, element),
         )
         super.onClose()
     }
@@ -201,9 +203,9 @@ class ControlConfigScreen(
     }
 
     companion object {
-        /** Open the editor for the control block at [pos] (client). */
-        fun open(pos: BlockPos, bindings: List<Binding>) {
-            Minecraft.getInstance().setScreen(ControlConfigScreen(pos, bindings))
+        /** Open the editor for the control block/panel element at [pos] (client). */
+        fun open(pos: BlockPos, bindings: List<Binding>, element: String = "") {
+            Minecraft.getInstance().setScreen(ControlConfigScreen(pos, bindings, element))
         }
     }
 }

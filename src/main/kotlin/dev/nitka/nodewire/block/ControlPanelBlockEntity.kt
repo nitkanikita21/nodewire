@@ -67,6 +67,12 @@ class ControlPanelBlockEntity(pos: BlockPos, state: BlockState) :
     /** Joystick trigger taps: pin id → gameTime the trigger window closes. */
     private val triggerUntil: MutableMap<String, Long> = mutableMapOf()
 
+    /** Embedded Control Block (`joystick_ctrl`): element base pin → the latest
+     *  streamed binding values + arrival tick (transient, staleness-gated —
+     *  the exact ControlBlockEntity.liveValues model, per element). */
+    private val ctrlValues: MutableMap<String, MutableMap<String, PinValue>> = mutableMapOf()
+    private val ctrlInputTick: MutableMap<String, Long> = mutableMapOf()
+
     /** CLIENT (BER): current joystick deflection for an element, or null. */
     fun joyState(pinId: String): FloatArray? = joyStates[pinId]
 
@@ -299,6 +305,41 @@ class ControlPanelBlockEntity(pos: BlockPos, state: BlockState) :
         pushSync()
     }
 
+    /**
+     * One tick of streamed pilot input for the embedded Control Block element
+     * [basePinId] (from [dev.nitka.nodewire.net.ControlInputPacket]). Also
+     * mirrors the first VEC2 value into [joyStates] so the rendered stick
+     * follows the pilot's move vector.
+     */
+    fun applyControlInput(basePinId: String, values: Map<String, PinValue>) {
+        val e = store.all().firstOrNull { it.pinId() == basePinId && it.typeId == "joystick_ctrl" } ?: return
+        val base = e.pinId()
+        ctrlValues.getOrPut(base) { mutableMapOf() }.apply { clear(); putAll(values) }
+        val now = level?.gameTime ?: 0L
+        ctrlInputTick[base] = now
+        val vec = values.values.firstOrNull { it is PinValue.Vec2 } as? PinValue.Vec2
+        if (vec != null) {
+            joyStates[base] = floatArrayOf(
+                vec.x.toFloat().coerceIn(-1f, 1f),
+                vec.y.toFloat().coerceIn(-1f, 1f),
+            )
+            joyExpiry[base] = now + JOYSTICK_HOLD_TICKS
+            pushSync()
+        }
+    }
+
+    /** Commit the embedded Control Block element's binding layout (config
+     *  editor). Its pin set re-derives from the stored list. */
+    fun setControlBindings(basePinId: String, bindings: List<dev.nitka.nodewire.block.control.Binding>) {
+        val e = store.all().firstOrNull { it.pinId() == basePinId && it.typeId == "joystick_ctrl" } ?: return
+        val cell = PanelGrid.Cell(e.cellX, e.cellY)
+        val updated = dev.nitka.nodewire.block.panel.PanelControlBindings.write(e.config, bindings)
+        if (store.setConfig(cell, updated)) {
+            ctrlValues.remove(e.pinId())
+            pushSync()
+        }
+    }
+
     /** Server tick (from the block ticker): timed releases — the momentary
      *  button pops back up, the joystick springs to centre. */
     fun serverTick(gameTime: Long) {
@@ -351,6 +392,23 @@ class ControlPanelBlockEntity(pos: BlockPos, state: BlockState) :
         if (spec.dir != PanelPinDir.OUTPUT) return null
         val name = spec.name
         val now = level?.gameTime ?: 0L
+        // Embedded Control Block element: serve the streamed binding values
+        // with the SAME semantics as ControlBlockEntity.readPin (MOUSE_LOOK
+        // holds after the pilot leaves; everything else decays to defaults).
+        if (e.typeId == "joystick_ctrl") {
+            val base = e.pinId()
+            val live = ctrlValues[base]
+            val held = live?.get(name)
+            val binding = dev.nitka.nodewire.block.panel.PanelControlBindings.of(e.config)
+                .firstOrNull { it.pin == name }
+            val type = binding?.type
+                ?: if (name == "active" || name == "mouse_captured") dev.nitka.nodewire.graph.PinType.BOOL else return null
+            if (held != null && binding?.kind == dev.nitka.nodewire.block.control.BindKind.MOUSE_LOOK) {
+                return PinReading(held)
+            }
+            val fresh = live != null && now - (ctrlInputTick[base] ?: Long.MIN_VALUE) <= CTRL_STALE_TICKS
+            return PinReading(if (fresh) held ?: PinValue.default(type) else PinValue.default(type))
+        }
         return when {
             name == "" -> when (e.typeId) {
                 "switch", "key_switch", "momentary" -> PinReading(PinValue.Bool(e.value != 0.0))
@@ -550,5 +608,8 @@ class ControlPanelBlockEntity(pos: BlockPos, state: BlockState) :
 
         /** Ticks a joystick click-deflection holds before springing back. */
         private const val JOYSTICK_HOLD_TICKS = 10L
+
+        /** Embedded Control Block input older than this decays to defaults. */
+        private const val CTRL_STALE_TICKS = 5L
     }
 }

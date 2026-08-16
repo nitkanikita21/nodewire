@@ -9,18 +9,14 @@ import net.minecraft.world.phys.Vec3
 import net.neoforged.neoforge.network.PacketDistributor
 
 /**
- * Client-side joystick session for Control Panel joystick elements. Two modes:
+ * Client-side HOLD session for the `joystick` panel element — the Dashpanels
+ * interaction model: RMB starts it and must stay held; the camera freezes
+ * ([dev.nitka.nodewire.mixin.control.MixinMouseHandler]), mouse deltas
+ * accumulate into a −1..1 stick, LMB holds the trigger; releasing RMB springs
+ * everything back.
  *
- *  * **HOLD** (`joystick`) — the Dashpanels model: RMB starts it and must stay
- *    held; the camera freezes, mouse deltas accumulate into a −1..1 stick,
- *    LMB holds the trigger; releasing RMB springs everything back. Capture is
- *    implicit (holding = captured).
- *  * **PERSISTENT** (`joystick_ctrl`) — the Control-Block model: RMB toggles
- *    the session on; the Control Block keybinds drive it from there (V toggles
- *    mouse capture, G exits, re-clicking the element exits too). While capture
- *    is OFF the stick holds its value and the mouse/clicks behave normally —
- *    clicks are only swallowed (and the trigger only listens) while capture is
- *    ON.
+ * (The `joystick_ctrl` element does NOT use this — it's a full embedded
+ * Control Block driven by [dev.nitka.nodewire.client.control.ControlSession].)
  *
  * State streams to the server via [PanelJoystickPacket] (on change + a
  * keep-alive); the server-side expiry springs the stick back if the stream
@@ -30,31 +26,21 @@ object PanelJoystickSession {
 
     private var pos: BlockPos? = null
     private var pinId: String = ""
-    private var persistent = false
     private var valX = 0f
     private var valY = 0f
     private var triggered = false
     private var lastSent: Triple<Float, Float, Boolean>? = null
     private var sendCooldown = 0
 
-    /** Mouse capture: implicit true in HOLD mode; V-toggled in PERSISTENT. */
-    var captured: Boolean = false
-        private set
-
     /** Raw mouse degrees → full deflection over 180° of turn (Dashpanels' map). */
     private const val SENS = 0.15f / 180f
 
     fun isActive(): Boolean = pos != null
 
-    fun isSession(pos: BlockPos, pinId: String): Boolean =
-        this.pos == pos && this.pinId == pinId
-
     /** Begin a session for the joystick element [pinId] on the panel at [pos]. */
-    fun start(pos: BlockPos, pinId: String, persistent: Boolean) {
+    fun start(pos: BlockPos, pinId: String) {
         this.pos = pos
         this.pinId = pinId
-        this.persistent = persistent
-        captured = true // both modes begin aiming immediately
         valX = 0f
         valY = 0f
         triggered = false
@@ -62,44 +48,27 @@ object PanelJoystickSession {
         sendCooldown = 0
     }
 
-    /** V keybind (shared with the Control Block): toggle capture in PERSISTENT
-     *  mode. No-op for HOLD — there, releasing RMB is the only way out. */
-    fun toggleCapture() {
-        if (!isActive() || !persistent) return
-        captured = !captured
-        if (!captured) triggered = false
-    }
-
     /** Raw accumulated mouse delta from the MouseHandler mixin. */
     fun addLookDelta(dx: Double, dy: Double) {
-        if (!isActive() || !captured) return
+        if (!isActive()) return
         valX = Mth.clamp(valX + dx.toFloat() * SENS, -1f, 1f)
         valY = Mth.clamp(valY - dy.toFloat() * SENS, -1f, 1f)
     }
 
-    /** LMB press/release = trigger down/up — only while capture is ON. */
+    /** LMB press/release while the session is active = trigger down/up. */
     fun setTrigger(down: Boolean) {
-        if (isActive() && captured) triggered = down
+        if (isActive()) triggered = down
     }
 
     /** Once per client tick: liveness checks + change/keep-alive streaming. */
     fun clientTick(mc: Minecraft) {
         val p = pos ?: return
         val player = mc.player
-        if (player == null || player.distanceToSqr(Vec3.atCenterOf(p)) > 64.0) {
+        if (player == null || mc.screen != null || !mc.options.keyUse.isDown()
+            || player.distanceToSqr(Vec3.atCenterOf(p)) > 64.0
+        ) {
             stop()
             return
-        }
-        if (persistent) {
-            // GUI open = pause (keep the session; capture resumes on close).
-            if (mc.screen != null) {
-                triggered = false
-            }
-        } else {
-            if (mc.screen != null || !mc.options.keyUse.isDown()) {
-                stop()
-                return
-            }
         }
         sendCooldown--
         val cur = Triple(valX, valY, triggered)
@@ -115,8 +84,6 @@ object PanelJoystickSession {
         val p = pos ?: return
         PacketDistributor.sendToServer(PanelJoystickPacket(p, pinId, 0f, 0f, false))
         pos = null
-        persistent = false
-        captured = false
         valX = 0f
         valY = 0f
         triggered = false
@@ -131,7 +98,7 @@ object PanelJoystickSession {
         val cy = graphics.guiHeight() / 2
         val left = cx - 11
         val top = cy - 10
-        val frame = if (captured) 0x66FFFFFF else 0x33FFFFFF
+        val frame = 0x66FFFFFF
         // crosshair frame
         graphics.fill(left, top, left + 21, top + 1, frame)
         graphics.fill(left, top + 20, left + 21, top + 21, frame)
@@ -152,11 +119,6 @@ object PanelJoystickSession {
         graphics.drawCenteredString(font, "X: %.2f".format(valX), 0, 0, 0xAAFFCCCC.toInt())
         graphics.pose().translate(0.0, 12.0, 0.0)
         graphics.drawCenteredString(font, "Y: %.2f".format(valY), 0, 0, 0xAACCFFCC.toInt())
-        if (persistent) {
-            graphics.pose().translate(0.0, 12.0, 0.0)
-            val hint = if (captured) "V: mouse OFF · G: exit" else "V: mouse ON · G: exit"
-            graphics.drawCenteredString(font, hint, 0, 0, 0x88FFFFFF.toInt())
-        }
         graphics.pose().popPose()
     }
 

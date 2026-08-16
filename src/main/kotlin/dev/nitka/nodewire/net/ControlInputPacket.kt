@@ -24,6 +24,9 @@ import net.neoforged.neoforge.network.handling.IPayloadContext
 data class ControlInputPacket(
     val pos: BlockPos,
     val values: Map<String, PinValue>,
+    /** `""` = the Control Block at [pos]; otherwise the base pin id of a
+     *  `joystick_ctrl` element on the Control PANEL at [pos]. */
+    val element: String = "",
 ) : CustomPacketPayload {
 
     override fun type(): CustomPacketPayload.Type<ControlInputPacket> = TYPE
@@ -41,6 +44,7 @@ data class ControlInputPacket(
                 BlockPos.CODEC.fieldOf("pos").forGetter(ControlInputPacket::pos),
                 Codec.unboundedMap(Codec.STRING, PinValue.CODEC).fieldOf("values")
                     .forGetter(ControlInputPacket::values),
+                Codec.STRING.optionalFieldOf("element", "").forGetter(ControlInputPacket::element),
             ).apply(i, ::ControlInputPacket)
         }
 
@@ -51,7 +55,12 @@ data class ControlInputPacket(
             val player = ctx.player()
             val level = player.level()
             if (player.distanceToSqr(Vec3.atCenterOf(packet.pos)) > MAX_REACH_SQ) return
-            (level.getBlockEntity(packet.pos) as? ControlBlockEntity)?.applyInput(packet.values)
+            if (packet.element.isEmpty()) {
+                (level.getBlockEntity(packet.pos) as? ControlBlockEntity)?.applyInput(packet.values)
+            } else {
+                (level.getBlockEntity(packet.pos) as? dev.nitka.nodewire.block.ControlPanelBlockEntity)
+                    ?.applyControlInput(packet.element, packet.values)
+            }
         }
     }
 }

@@ -55,13 +55,11 @@ object PanelElements {
             "joystick", 4, 4,
             listOf(out("", PinType.VEC2), out("trigger", PinType.BOOL)),
         ),
-        // Control-Block-style joystick: RMB toggles a PERSISTENT session
-        // (no holding), V toggles mouse capture, G / re-click exits. Same
-        // pin surface as the hold joystick.
-        PanelElementType(
-            "joystick_ctrl", 4, 4,
-            listOf(out("", PinType.VEC2), out("trigger", PinType.BOOL)),
-        ),
+        // Embedded Control Block: pins are DYNAMIC — derived from the
+        // element's configured Binding list (see PanelControlBindings /
+        // PanelPins.pinsFor), exactly like a Control Block BE's pin set.
+        // RMB toggles a piloting session, sneak+RMB opens the binding editor.
+        PanelElementType("joystick_ctrl", 4, 4, emptyList()),
         // ── indicators / outputs ──────────────────────────────────────────
         PanelElementType("bulb", 1, 2, listOf(inp("", PinType.BOOL))),
         PanelElementType("seven_segment", 6, 4, listOf(inp("", PinType.FLOAT))),
