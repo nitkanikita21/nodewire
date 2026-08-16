@@ -92,6 +92,22 @@ object Registry {
     val STATIC_CAMERA_BLOCK_ITEM: DeferredItem<BlockItem> =
         ITEMS.registerSimpleBlockItem(STATIC_CAMERA_BLOCK)
 
+    /** Remote Camera — Fixed Camera whose EYE is displaced with the Camera
+     *  Cable (hide the block in the hull, view from the muzzle). */
+    val REMOTE_CAMERA_BLOCK: DeferredBlock<CameraBlock> = BLOCKS.register("remote_camera_block") { _ ->
+        CameraBlock(BlockBehaviour.Properties.ofFullCopy(Blocks.IRON_BLOCK).noOcclusion(), rotatable = false, remote = true)
+    }
+
+    val REMOTE_CAMERA_BLOCK_ITEM: DeferredItem<BlockItem> =
+        ITEMS.registerSimpleBlockItem(REMOTE_CAMERA_BLOCK)
+
+    /** Camera Cable — binds a Remote Camera's eye point (click camera → click
+     *  the viewpoint), sneak-click the camera opens the tuning screen. */
+    val CAMERA_CABLE: DeferredItem<dev.nitka.nodewire.item.CameraCableItem> =
+        ITEMS.register("camera_cable") { _ ->
+            dev.nitka.nodewire.item.CameraCableItem(Item.Properties().stacksTo(1))
+        }
+
     val TELEMETRY_BLOCK: DeferredBlock<TelemetryBlock> = BLOCKS.register("telemetry_block") { _ ->
         TelemetryBlock(BlockBehaviour.Properties.ofFullCopy(Blocks.IRON_BLOCK))
     }
@@ -191,6 +207,8 @@ object Registry {
                     output.accept(SCREEN_BLOCK_ITEM.get())
                     output.accept(CAMERA_BLOCK_ITEM.get())
                     output.accept(STATIC_CAMERA_BLOCK_ITEM.get())
+                    output.accept(REMOTE_CAMERA_BLOCK_ITEM.get())
+                    output.accept(CAMERA_CABLE.get())
                     output.accept(TELEMETRY_BLOCK_ITEM.get())
                     output.accept(CONTROL_BLOCK_ITEM.get())
                     output.accept(CONTROL_PANEL_ITEM.get())
@@ -228,7 +246,7 @@ object Registry {
     val CAMERA_BLOCK_BE: DeferredHolder<BlockEntityType<*>, BlockEntityType<CameraBlockEntity>> =
         BLOCK_ENTITIES.register("camera_block") { _ ->
             BlockEntityType.Builder
-                .of(::CameraBlockEntity, CAMERA_BLOCK.get(), STATIC_CAMERA_BLOCK.get())
+                .of(::CameraBlockEntity, CAMERA_BLOCK.get(), STATIC_CAMERA_BLOCK.get(), REMOTE_CAMERA_BLOCK.get())
                 .build(null)
         }
 

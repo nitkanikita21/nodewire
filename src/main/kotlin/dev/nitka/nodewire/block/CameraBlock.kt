@@ -27,7 +27,13 @@ import net.minecraft.world.level.block.state.properties.DirectionProperty
  * false → the Fixed Camera: aims along its facing only (no rotation pins, one
  * static model). Both share [CameraBlockEntity] and its BE type.
  */
-class CameraBlock(props: Properties, val rotatable: Boolean = true) : Block(props), EntityBlock {
+class CameraBlock(
+    props: Properties,
+    val rotatable: Boolean = true,
+    /** Remote Camera: the eye can be displaced/aimed with the Camera Cable —
+     *  the block hides in the hull, the viewpoint sits elsewhere (a muzzle). */
+    val remote: Boolean = false,
+) : Block(props), EntityBlock {
 
     init {
         registerDefaultState(

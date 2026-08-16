@@ -103,6 +103,50 @@ class CameraBlockEntity(pos: BlockPos, state: BlockState) :
     /** Whether this client BE has registered its feed (idempotency guard). */
     private var clientRegistered = false
 
+    // ── remote eye (Remote Camera + Camera Cable) ─────────────────────────
+    // Facing-relative displacement of the VIEWPOINT off the block centre
+    // (right/up/forward in the block's frame — rotates with a Sable hull) +
+    // an aim offset on top of the block facing. Set via the Camera Cable /
+    // tuning screen; only meaningful on the remote CameraBlock variant.
+    private var eyeSet = false
+    private var eyeRight = 0.0
+    private var eyeUp = 0.0
+    private var eyeForward = 0.0
+    private var eyeYaw = 0f
+    private var eyePitch = 0f
+
+    /** `[right, up, forward]` displacement, or null when the eye is unset. */
+    fun remoteEye(): DoubleArray? = if (eyeSet) doubleArrayOf(eyeRight, eyeUp, eyeForward) else null
+
+    fun remoteEyeYaw(): Float = eyeYaw
+
+    fun remoteEyePitch(): Float = eyePitch
+
+    fun setRemoteEye(right: Double, up: Double, forward: Double, yaw: Float, pitch: Float) {
+        eyeSet = true
+        eyeRight = right.coerceIn(-MAX_EYE_OFFSET, MAX_EYE_OFFSET)
+        eyeUp = up.coerceIn(-MAX_EYE_OFFSET, MAX_EYE_OFFSET)
+        eyeForward = forward.coerceIn(-MAX_EYE_OFFSET, MAX_EYE_OFFSET)
+        eyeYaw = yaw.coerceIn(-180f, 180f)
+        eyePitch = pitch.coerceIn(-90f, 90f)
+        syncEye()
+    }
+
+    fun clearRemoteEye() {
+        eyeSet = false
+        eyeRight = 0.0; eyeUp = 0.0; eyeForward = 0.0
+        eyeYaw = 0f; eyePitch = 0f
+        syncEye()
+    }
+
+    private fun syncEye() {
+        setChanged()
+        val lvl = level
+        if (lvl != null && !lvl.isClientSide) {
+            lvl.sendBlockUpdated(blockPos, blockState, blockState, Block.UPDATE_CLIENTS)
+        }
+    }
+
     /** The stable handle this camera produces into. */
     fun videoHandle(): UUID = handle
 
@@ -181,6 +225,15 @@ class CameraBlockEntity(pos: BlockPos, state: BlockState) :
                 .encodeStart(net.minecraft.nbt.NbtOps.INSTANCE, pinLinks.toList())
                 .result().ifPresent { tag.put(TAG_PIN_LINKS, it) }
         }
+        if (eyeSet) {
+            tag.put(
+                TAG_EYE,
+                CompoundTag().apply {
+                    putDouble("r", eyeRight); putDouble("u", eyeUp); putDouble("f", eyeForward)
+                    putFloat("yaw", eyeYaw); putFloat("pitch", eyePitch)
+                },
+            )
+        }
     }
 
     override fun loadAdditional(tag: CompoundTag, registries: HolderLookup.Provider) {
@@ -191,6 +244,12 @@ class CameraBlockEntity(pos: BlockPos, state: BlockState) :
         readParam(tag, PITCH_CHANNEL, numeric = true)
         readParam(tag, ROLL_CHANNEL, numeric = true)
         if (tag.contains(ENABLE_CHANNEL)) channelInputs[ENABLE_CHANNEL] = PinValue.Bool(tag.getBoolean(ENABLE_CHANNEL))
+        eyeSet = tag.contains(TAG_EYE)
+        if (eyeSet) {
+            val e = tag.getCompound(TAG_EYE)
+            eyeRight = e.getDouble("r"); eyeUp = e.getDouble("u"); eyeForward = e.getDouble("f")
+            eyeYaw = e.getFloat("yaw"); eyePitch = e.getFloat("pitch")
+        }
         pinLinks.clear()
         if (tag.contains(TAG_PIN_LINKS)) {
             dev.nitka.nodewire.link.PinLink.CODEC.listOf()
@@ -268,5 +327,10 @@ class CameraBlockEntity(pos: BlockPos, state: BlockState) :
         const val ROLL_CHANNEL = "roll"
 
         private const val TAG_PIN_LINKS = "pin_links"
+        private const val TAG_EYE = "remote_eye"
+
+        /** Max eye displacement per axis (blocks) — keeps the viewpoint inside
+         *  camera-chunk streaming reach. */
+        const val MAX_EYE_OFFSET = 16.0
     }
 }

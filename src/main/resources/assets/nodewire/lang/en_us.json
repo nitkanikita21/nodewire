@@ -38,5 +38,7 @@
   "item.nodewire.panel_seven_segment": "Panel Seven-Segment Display",
   "item.nodewire.panel_buzzer": "Panel Buzzer",
   "item.nodewire.track_tuning_key": "Track Tuning Key",
-  "item.nodewire.panel_joystick_ctrl": "Panel Control Joystick"
+  "item.nodewire.panel_joystick_ctrl": "Panel Control Joystick",
+  "block.nodewire.remote_camera_block": "Remote Camera",
+  "item.nodewire.camera_cable": "Camera Cable"
 }

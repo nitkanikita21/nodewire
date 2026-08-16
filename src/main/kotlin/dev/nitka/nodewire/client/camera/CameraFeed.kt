@@ -111,18 +111,40 @@ class CameraFeed(private val be: CameraBlockEntity) {
      * channel yaw/pitch offsets.
      */
     fun worldPose(level: Level, deltaTracker: DeltaTracker): Pair<Vec3, FloatArray>? {
-        // Local forward = the BE facing, rotated by the channel yaw/pitch offsets.
-        val localForward = localLook(be.yawDeg().toDouble(), be.pitchDeg().toDouble())
+        // Local forward = the BE facing, rotated by the remote-eye aim (Camera
+        // Cable tuning; zero when unset) plus the channel yaw/pitch offsets.
+        val localForward = localLook(
+            be.remoteEyeYaw() + be.yawDeg().toDouble(),
+            be.remoteEyePitch() + be.pitchDeg().toDouble(),
+        )
+        // Remote eye: facing-relative (right, up, forward) displacement of the
+        // viewpoint, expressed in the block's grid frame so the sub-level pose
+        // rotates it with the hull.
+        val eye = be.remoteEye()
+        val facing = be.blockState.getValue(dev.nitka.nodewire.block.CameraBlock.FACING)
+        val offsetLocal =
+            if (eye != null) {
+                dev.nitka.nodewire.item.CameraCableItem.facingLocalToGrid(facing, eye[0], eye[1], eye[2])
+            } else {
+                Vec3.ZERO
+            }
 
         val payload = SableSubLevelBackend.claims(level, pos)
         if (payload != null) {
             val center = SableSubLevelBackend.worldCenter(level, payload) ?: return null
             val worldDir = SableSubLevelBackend.worldDirection(level, payload, localForward) ?: return null
-            return center to lookToYawPitch(worldDir)
+            val eyeWorld =
+                if (eye != null) {
+                    val off = SableSubLevelBackend.worldDirection(level, payload, offsetLocal) ?: offsetLocal
+                    center.add(off)
+                } else {
+                    center
+                }
+            return eyeWorld to lookToYawPitch(worldDir)
         }
 
-        // Plain world: block centre + facing rotated by the offsets.
-        val center = Vec3(pos.x + 0.5, pos.y + 0.5, pos.z + 0.5)
+        // Plain world: block centre (+ eye displacement) + rotated forward.
+        val center = Vec3(pos.x + 0.5, pos.y + 0.5, pos.z + 0.5).add(offsetLocal)
         return center to lookToYawPitch(localForward)
     }
 
