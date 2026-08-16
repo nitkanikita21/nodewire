@@ -36,6 +36,15 @@ public abstract class MixinDhClientApi {
             require = 0
     )
     private void nodewire$skipDhDuringCapture(CallbackInfo ci) {
-        if (DhFeedGate.skipDhRender()) ci.cancel();
+        if (DhFeedGate.skipDhRender()) {
+            if (!nodewire$loggedEngaged) {
+                nodewire$loggedEngaged = true;
+                com.mojang.logging.LogUtils.getLogger().info("[NW-CAMERA] DH renders silenced during captures (mixin engaged)");
+            }
+            ci.cancel();
+        }
     }
+
+    @org.spongepowered.asm.mixin.Unique
+    private static boolean nodewire$loggedEngaged;
 }

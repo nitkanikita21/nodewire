@@ -84,6 +84,15 @@ class CameraFeed(private val be: CameraBlockEntity) {
         (VideoManager.getOrCreate(handle) as? GlVideoSurface)?.target()
 
     /**
+     * True when something actually DISPLAYS this feed. The producer BE holds
+     * one VideoManager ref while loaded; every consumer (Screen, panel
+     * element, AR glasses) holds another — so a bare camera with no screen
+     * sits at 1 and must not capture at all: zero render cost, zero
+     * pipeline-state churn from a block that nobody watches.
+     */
+    fun hasConsumers(): Boolean = VideoManager.refCount(handle) >= 2
+
+    /**
      * Whether this camera's consumer (the Screen it feeds) is within the
      * player's view frustum — used by the capture loop to skip rendering feeds
      * nobody can see this frame.

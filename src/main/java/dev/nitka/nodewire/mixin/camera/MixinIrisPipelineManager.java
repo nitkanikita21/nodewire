@@ -37,6 +37,9 @@ public abstract class MixinIrisPipelineManager {
     @Unique
     private static WorldRenderingPipeline nodewire$feedPipeline;
 
+    @Unique
+    private static boolean nodewire$loggedEngaged;
+
     @Inject(method = "preparePipeline", at = @At("HEAD"), cancellable = true, require = 0)
     private void nodewire$parkPipelineDuringCapture(
             @Coerce Object dimension,
@@ -44,6 +47,10 @@ public abstract class MixinIrisPipelineManager {
     ) {
         if (!VideoManager.isCapturing()) return;
         if (nodewire$feedPipeline == null) nodewire$feedPipeline = new VanillaRenderingPipeline();
+        if (!nodewire$loggedEngaged) {
+            nodewire$loggedEngaged = true;
+            com.mojang.logging.LogUtils.getLogger().info("[NW-CAMERA] Iris pipeline parked for captures (mixin engaged)");
+        }
         cir.setReturnValue(nodewire$feedPipeline);
     }
 }

@@ -309,6 +309,9 @@ object VideoCameraCapture {
         var budget = Mth.ceil(FPS_CAP * (all.size + 1).toDouble() / mc.fps.toDouble())
         val captureSq = captureDistanceSq(mc)
         val active = all.asSequence()
+            // No consumer = no capture: a camera nobody watches costs nothing
+            // and can't churn any render-pipeline state.
+            .filter { it.hasConsumers() }
             .filter { now >= it.lastActiveTimeSec + FRAME_INTERVAL }
             // Distance gate (Sable-aware): skip cameras beyond the player's render
             // distance — their chunks aren't loaded/compiled to render anyway.
