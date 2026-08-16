@@ -66,12 +66,14 @@ object DistantHorizonsCompat {
 
     fun setup() {
         mode = loadMode()
+        DhFeedGate.renderLodsInFeeds = mode != Mode.OFF
         DhApiEventRegister.on(DhApiBeforeRenderEvent::class.java, FeedLodHandler())
     }
 
     /** `/nodewire dhfeeds <mode>` — switch + persist. Takes effect next frame. */
     fun setMode(m: Mode) {
         mode = m
+        DhFeedGate.renderLodsInFeeds = m != Mode.OFF
         applied = false
         attemptsLeft = 200
         saveMode(m)
