@@ -39,16 +39,21 @@ object FeedRenderDriver {
 
     /**
      * Render the world from [marker]'s POV (already positioned/rotated by the
-     * caller) into whatever render target is currently bound. The caller owns
-     * target binding, window-size aspect and all state save/restore — this is
-     * ONLY the render entry (envelope stays shared with the legacy path until
-     * Phase 2 moves it here).
+     * caller) into whatever render target is currently bound. [camera] is the
+     * caller's own instance (Phase 2: a per-batch dummy camera — the game's
+     * main camera is never touched in harness mode). The caller owns target
+     * binding, window-size aspect and section-state save/restore.
      */
-    fun render(mc: Minecraft, marker: Entity, fovDeg: Double, deltaTracker: DeltaTracker) {
+    fun render(
+        mc: Minecraft,
+        camera: net.minecraft.client.Camera,
+        marker: Entity,
+        fovDeg: Double,
+        deltaTracker: DeltaTracker,
+    ) {
         val level = mc.level ?: return
         val gr = mc.gameRenderer
         val lr = mc.levelRenderer
-        val camera = gr.mainCamera
 
         FeedRenderStack.begin()
         try {

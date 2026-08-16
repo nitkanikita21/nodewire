@@ -144,6 +144,131 @@ object VideoCameraCapture {
         return hits
     }
 
+    /**
+     * Phase 2 harness batch (spec: feed-render-harness). Differences from the
+     * legacy envelope below:
+     *
+     *  * a per-batch DUMMY [net.minecraft.client.Camera] — the main camera,
+     *    camera type, eye heights and player position are never touched;
+     *  * no GameRenderer flag juggling (hand/panoramic/block-outline) — the
+     *    driver enters LevelRenderer directly, those flags are never read;
+     *  * `mc.cameraEntity` stays the player, so the player renders in feeds;
+     *    the camera's own entity is the invisible marker (never rendered).
+     *
+     * Shared with legacy: window-size aspect per feed, render-target swap,
+     * fabulous/transparency target nulling, the IN-PLACE section snapshot with
+     * the allChanged firewall, and the no-Sodium per-feed occlusion graph.
+     */
+    private fun harnessCapture(
+        mc: Minecraft,
+        level: net.minecraft.client.multiplayer.ClientLevel,
+        active: List<CameraFeed>,
+        deltaTracker: DeltaTracker,
+        now: Double,
+    ) {
+        val lr = mc.levelRenderer
+        val window = mc.window
+
+        // --- SAVE ---
+        val oldWidth = window.width
+        val oldHeight = window.height
+        val oldMain: RenderTarget = mc.mainRenderTarget
+        val oldTransparency = lr.transparencyChain
+        val oldTranslucent = lr.translucentTarget
+        val oldItemEntity = lr.itemEntityTarget
+        val oldWeather = lr.weatherTarget
+        val playerGraph = if (!SODIUM) lr.sectionOcclusionGraph else null
+        val oldVisible = ArrayList(lr.visibleSections)
+        val oldSecX = lr.lastCameraSectionX
+        val oldSecY = lr.lastCameraSectionY
+        val oldSecZ = lr.lastCameraSectionZ
+        val oldPrevCamX = lr.prevCamX
+        val oldPrevCamY = lr.prevCamY
+        val oldPrevCamZ = lr.prevCamZ
+        val oldPrevRotX = lr.prevCamRotX
+        val oldPrevRotY = lr.prevCamRotY
+
+        val marker = Marker(EntityType.MARKER, level)
+        val camera = net.minecraft.client.Camera()
+
+        lr.transparencyChain = null
+        lr.translucentTarget = null
+        lr.itemEntityTarget = null
+        lr.weatherTarget = null
+        mc.renderBuffers().bufferSource().endBatch()
+
+        allChangedDuringCapture = false
+        VideoManager.beginCapture()
+        try {
+            for (feed in active) {
+                try {
+                    val target = feed.renderTarget() ?: continue
+                    val (wpos, yawPitch) = feed.worldPose(level, deltaTracker) ?: continue
+                    window.setWidth(target.width)
+                    window.setHeight(target.height)
+
+                    // Marker eye height is 0 (MARKER dims are 0×0), so the
+                    // camera lands exactly on the feed's eye point.
+                    marker.setPos(wpos.x, wpos.y, wpos.z)
+                    marker.yRot = yawPitch[0]
+                    marker.xRot = yawPitch[1]
+                    marker.yRotO = yawPitch[0]
+                    marker.xRotO = yawPitch[1]
+
+                    target.clear(Minecraft.ON_OSX)
+                    target.bindWrite(true)
+                    mc.mainRenderTarget = target
+                    val feedVa = lr.viewArea
+                    if (playerGraph != null && feedVa != null) lr.sectionOcclusionGraph = feed.feedGraph(feedVa)
+                    captureFov = feed.fovDeg()
+                    dev.nitka.nodewire.client.camera.harness.FeedRenderDriver.render(
+                        mc, camera, marker, feed.fovDeg(), DeltaTracker.ONE,
+                    )
+
+                    feed.lastActiveTimeSec = now
+                    if (feed.renderFailures != 0) {
+                        LOG.info("[NW-CAMERA] feed {} recovered after {} failures", feed.handle, feed.renderFailures)
+                        feed.renderFailures = 0
+                    }
+                } catch (t: Throwable) {
+                    if (feed.renderFailures++ % 100 == 0) {
+                        LOG.warn("[NW-CAMERA] feed {} harness render failed (attempt {})", feed.handle, feed.renderFailures, t)
+                    }
+                }
+            }
+        } finally {
+            // --- RESTORE ---
+            captureFov = null
+            marker.discard()
+            window.setWidth(oldWidth)
+            window.setHeight(oldHeight)
+            if (allChangedDuringCapture) {
+                lr.visibleSections.clear()
+            } else {
+                lr.visibleSections.clear()
+                lr.visibleSections.addAll(oldVisible)
+                lr.lastCameraSectionX = oldSecX
+                lr.lastCameraSectionY = oldSecY
+                lr.lastCameraSectionZ = oldSecZ
+                lr.prevCamX = oldPrevCamX
+                lr.prevCamY = oldPrevCamY
+                lr.prevCamZ = oldPrevCamZ
+                lr.prevCamRotX = oldPrevRotX
+                lr.prevCamRotY = oldPrevRotY
+            }
+            if (playerGraph != null) lr.sectionOcclusionGraph = playerGraph
+            // No projection re-arm needed: our seam sits AFTER the main level
+            // + hand render, and the HUD sets its own ortho projection.
+            mc.mainRenderTarget = oldMain
+            oldMain.bindWrite(true)
+            lr.transparencyChain = oldTransparency
+            lr.translucentTarget = oldTranslucent
+            lr.itemEntityTarget = oldItemEntity
+            lr.weatherTarget = oldWeather
+            VideoManager.endCapture()
+        }
+    }
+
     @JvmStatic
     fun captureFeeds(deltaTracker: DeltaTracker) {
         // --- GUARDS ---
@@ -187,6 +312,16 @@ object VideoCameraCapture {
             .toList()
         if (active.isEmpty()) return
         lastFrameRenderedSec = now
+
+        // Phase 2 harness path: its own (smaller) envelope + a dummy camera —
+        // the game's main camera, camera type, eye heights, render flags and
+        // GameRenderer are never touched.
+        if (dev.nitka.nodewire.client.camera.harness.CaptureEngine.mode ==
+            dev.nitka.nodewire.client.camera.harness.CaptureEngine.Mode.HARNESS
+        ) {
+            harnessCapture(mc, level, active, deltaTracker, now)
+            return
+        }
 
         // --- SAVE (once) ---
         val oldCamEntity = mc.cameraEntity
@@ -289,14 +424,7 @@ object VideoCameraCapture {
                     val feedVa = lr.viewArea
                     if (playerGraph != null && feedVa != null) lr.sectionOcclusionGraph = feed.feedGraph(feedVa)
                     captureFov = feed.fovDeg()
-                    when (dev.nitka.nodewire.client.camera.harness.CaptureEngine.mode) {
-                        dev.nitka.nodewire.client.camera.harness.CaptureEngine.Mode.HARNESS ->
-                            dev.nitka.nodewire.client.camera.harness.FeedRenderDriver.render(
-                                mc, markerEntity, feed.fovDeg(), DeltaTracker.ONE,
-                            )
-                        dev.nitka.nodewire.client.camera.harness.CaptureEngine.Mode.LEGACY ->
-                            mc.gameRenderer.renderLevel(DeltaTracker.ONE)
-                    }
+                    mc.gameRenderer.renderLevel(DeltaTracker.ONE)
 
                     feed.lastActiveTimeSec = now
                     if (feed.renderFailures != 0) {
