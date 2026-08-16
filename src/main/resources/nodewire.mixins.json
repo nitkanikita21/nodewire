@@ -17,7 +17,9 @@
     "camera.MixinClientChunkCacheStorage",
     "camera.MixinLevelRenderer",
     "control.MixinMouseHandler",
-    "camera.MixinDhClientApi"
+    "camera.MixinDhClientApi",
+    "camera.MixinIrisPipelineManager",
+    "camera.MixinIrisDhCompat"
   ],
   "server": [],
   "injectors": {
