@@ -1,0 +1,12 @@
+{
+  "parent": "minecraft:block/cube",
+  "textures": {
+    "particle": "nodewire:block/camera_block_side",
+    "north": "nodewire:block/camera_block_front",
+    "south": "nodewire:block/camera_block_side",
+    "east": "nodewire:block/camera_block_side",
+    "west": "nodewire:block/camera_block_side",
+    "up": "nodewire:block/camera_block_side",
+    "down": "nodewire:block/camera_block_side"
+  }
+}

@@ -1,3 +1,3 @@
 {
-  "parent": "nodewire:block/camera_full"
+  "parent": "nodewire:block/remote_camera"
 }

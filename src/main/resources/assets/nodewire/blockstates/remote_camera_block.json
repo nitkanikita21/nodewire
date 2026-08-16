@@ -1,19 +1,19 @@
 {
-  "comment": "Fixed Camera - one static model (whole gimbal at rest); hidden=true (wrench toggle) swaps to an empty model.",
+  "comment": "Remote Camera - full cube (lens face = FACING); hidden=true (wrench) swaps to an empty model.",
   "variants": {
     "facing=north,hidden=false": {
-      "model": "nodewire:block/camera_full"
+      "model": "nodewire:block/remote_camera"
     },
     "facing=south,hidden=false": {
-      "model": "nodewire:block/camera_full",
+      "model": "nodewire:block/remote_camera",
       "y": 180
     },
     "facing=west,hidden=false": {
-      "model": "nodewire:block/camera_full",
+      "model": "nodewire:block/remote_camera",
       "y": 270
     },
     "facing=east,hidden=false": {
-      "model": "nodewire:block/camera_full",
+      "model": "nodewire:block/remote_camera",
       "y": 90
     },
     "facing=north,hidden=true": {

@@ -107,7 +107,9 @@ object VideoCameraCapture {
      *  nested capture pass. When any of these is loaded we refuse to capture
      *  rather than corrupt their state.
      *
-     *  * Distant Horizons is handled via [DhCaptureGuard] (Vista's API-toggle).
+     *  * Distant Horizons: [dev.nitka.nodewire.client.video.DistantHorizonsCompat]
+     *    (event-cancel / drop-off pin — never per-frame config flips: Iris'
+     *    DH compat reloads the whole shader pipeline on every state change).
      *  * Veil is in the skip list. The naive field-flip (`renderingPerspective=true`)
      *    activates Veil's `PerspectiveChunkCollector` which overflows Sodium's
      *    `ChunkRenderList` (`ArrayIndexOutOfBoundsException: Render list is full`,
@@ -115,7 +117,7 @@ object VideoCameraCapture {
      *    (`@TargetHandler` to mix into Veil's blit handler ONLY) — a separate
      *    dep + jarJar shipping step. Future work; tracked as TODO.
      *
-     *  Empty now: DH = [DhCaptureGuard], Veil = [dev.nitka.nodewire.mixin.camera.MixinVeilBlitHandler]
+     *  Empty now: DH = DistantHorizonsCompat, Veil = [dev.nitka.nodewire.mixin.camera.MixinVeilBlitHandler]
      *  (MixinSquared @TargetHandler — surgical OR of `isRenderingPerspective`
      *  ONLY inside Veil's blit handler, doesn't activate the perspective chunk
      *  collector that overflows Sodium's render list). */
@@ -252,9 +254,13 @@ object VideoCameraCapture {
         allChangedDuringCapture = false
         VideoManager.beginCapture()
         try {
-            // DH-aware: temporarily disable Distant Horizons LOD rendering for the
-            // whole capture pass (Vista technique). No-op if DH is absent.
-            dev.nitka.nodewire.integration.distanthorizons.DhCaptureGuard.aroundCapture {
+            // Distant Horizons is handled by DistantHorizonsCompat: a
+            // DhApiBeforeRenderEvent listener (cancel in OFF mode) + the
+            // quality-drop-off pin. NO per-capture config flips here — Iris'
+            // DH compat (DHCompat.checkFrame) treats every renderingEnabled
+            // change as "reload the whole shader pipeline", which the old
+            // DhCaptureGuard triggered EVERY FRAME (freeze + corrupted view).
+            run {
             for (feed in active) {
                 try {
                     val target = feed.renderTarget() ?: continue
