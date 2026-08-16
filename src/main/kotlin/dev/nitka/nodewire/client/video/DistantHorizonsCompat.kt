@@ -27,7 +27,13 @@ import java.nio.file.Files
  *    override at that level. NOTE: like Vista, the override is a GLOBAL
  *    runtime override (DH builds ONE LOD mesh — per-pass quality does not
  *    exist), so it trades the player's own LOD quality for feed cost too;
- *  * FULL (default) — the drop-off pin only, LODs at the user's own quality.
+ *  * FULL — the drop-off pin only, LODs at the user's own quality.
+ *
+ * DEFAULT IS OFF: our capture is a NESTED vanilla renderLevel, and letting DH
+ * render inside it imbalances DH's LOD-section bookkeeping (world smears,
+ * shimmer, FPS drops — Vista gets away with LODs in feeds only because it
+ * ships its own level renderer). The LOD modes stay available as
+ * experimental via `/nodewire dhfeeds`.
  *
  * All values go through the DH config API's override layer ([setValue] /
  * [clearValue]) — the user's saved DH config is never touched, and switching
@@ -51,7 +57,7 @@ object DistantHorizonsCompat {
         FULL(null),
     }
 
-    var mode: Mode = Mode.FULL
+    var mode: Mode = Mode.OFF
         private set
 
     /** True once the config overrides matching [mode] are in place. */
@@ -100,10 +106,10 @@ object DistantHorizonsCompat {
 
     private fun loadMode(): Mode = runCatching {
         val f = propsFile()
-        if (!Files.exists(f)) return Mode.FULL
-        val line = Files.readAllLines(f).firstOrNull { it.startsWith("dh_feeds=") } ?: return Mode.FULL
+        if (!Files.exists(f)) return Mode.OFF
+        val line = Files.readAllLines(f).firstOrNull { it.startsWith("dh_feeds=") } ?: return Mode.OFF
         Mode.valueOf(line.substringAfter('=').trim().uppercase())
-    }.getOrDefault(Mode.FULL)
+    }.getOrDefault(Mode.OFF)
 
     private fun saveMode(m: Mode) {
         runCatching {
