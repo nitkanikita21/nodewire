@@ -1,9 +1,32 @@
 {
-  "comment": "Fixed Camera — one static model (the whole gimbal frozen at rest); no BER moving parts.",
+  "comment": "Fixed Camera - one static model (whole gimbal at rest); hidden=true (wrench toggle) swaps to an empty model.",
   "variants": {
-    "facing=north": { "model": "nodewire:block/camera_full" },
-    "facing=south": { "model": "nodewire:block/camera_full", "y": 180 },
-    "facing=west": { "model": "nodewire:block/camera_full", "y": 270 },
-    "facing=east": { "model": "nodewire:block/camera_full", "y": 90 }
+    "facing=north,hidden=false": {
+      "model": "nodewire:block/camera_full"
+    },
+    "facing=south,hidden=false": {
+      "model": "nodewire:block/camera_full",
+      "y": 180
+    },
+    "facing=west,hidden=false": {
+      "model": "nodewire:block/camera_full",
+      "y": 270
+    },
+    "facing=east,hidden=false": {
+      "model": "nodewire:block/camera_full",
+      "y": 90
+    },
+    "facing=north,hidden=true": {
+      "model": "nodewire:block/empty"
+    },
+    "facing=south,hidden=true": {
+      "model": "nodewire:block/empty"
+    },
+    "facing=west,hidden=true": {
+      "model": "nodewire:block/empty"
+    },
+    "facing=east,hidden=true": {
+      "model": "nodewire:block/empty"
+    }
   }
 }
