@@ -80,24 +80,12 @@ object VideoBlit {
                 b.addVertex(x1, y0, 0f).setUv(1f, 1f).setColor(1f, 1f, 1f, signal)
             }
         } else {
-            val crt = ScreenCrtShader.instance
-            if (crt != null) {
-                crt.safeGetUniform("Time").set(timeSeconds())
-                RenderSystem.setShader { crt }
-                Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR).also { b ->
-                    b.addVertex(x0, y0, 0f).setUv(0f, 1f).setColor(1f, 1f, 1f, 1f)
-                    b.addVertex(x0, y1, 0f).setUv(0f, 0f).setColor(1f, 1f, 1f, 1f)
-                    b.addVertex(x1, y1, 0f).setUv(1f, 0f).setColor(1f, 1f, 1f, 1f)
-                    b.addVertex(x1, y0, 0f).setUv(1f, 1f).setColor(1f, 1f, 1f, 1f)
-                }
-            } else {
-                RenderSystem.setShader { GameRenderer.getPositionTexShader() }
-                Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX).also { b ->
-                    b.addVertex(x0, y0, 0f).setUv(0f, 1f)
-                    b.addVertex(x0, y1, 0f).setUv(0f, 0f)
-                    b.addVertex(x1, y1, 0f).setUv(1f, 0f)
-                    b.addVertex(x1, y0, 0f).setUv(1f, 1f)
-                }
+            RenderSystem.setShader { GameRenderer.getPositionTexShader() }
+            Tesselator.getInstance().begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX).also { b ->
+                b.addVertex(x0, y0, 0f).setUv(0f, 1f)
+                b.addVertex(x0, y1, 0f).setUv(0f, 0f)
+                b.addVertex(x1, y1, 0f).setUv(1f, 0f)
+                b.addVertex(x1, y0, 0f).setUv(1f, 1f)
             }
         }
         BufferUploader.drawWithShader(buf.buildOrThrow())
@@ -108,18 +96,13 @@ object VideoBlit {
     // colour alpha, and the noise type refreshes its Time uniform per flush. Both
     // use POSITION_TEX_COLOR so the BER's vertex stream is identical either way.
 
-    fun plainTypeFor(texId: Int): RenderType {
-        val crt = ScreenCrtShader.instance
-        return if (crt != null) {
-            build(
-                "nodewire_screen_crt",
-                RenderStateShard.ShaderStateShard { ScreenCrtShader.instance!! },
-                texId,
-            ) { ScreenCrtShader.instance?.safeGetUniform("Time")?.set(timeSeconds()) }
-        } else {
-            build("nodewire_screen", RenderStateShard.ShaderStateShard { GameRenderer.getPositionTexColorShader() }, texId, null)
-        }
-    }
+    // NOTE: the CRT look is NOT applied here. Drawing the world-space screen
+    // quad with a custom core shader breaks under Iris (the pack's deferred
+    // pipeline doesn't know our shader's gbuffer outputs -> blank screen).
+    // Instead CrtPostPass bakes the CRT into the feed TEXTURE right after
+    // capture, and this stays a pack-friendly vanilla-shader blit.
+    fun plainTypeFor(texId: Int): RenderType =
+        build("nodewire_screen", RenderStateShard.ShaderStateShard { GameRenderer.getPositionTexColorShader() }, texId, null)
 
     fun noiseTypeFor(texId: Int): RenderType =
         build(

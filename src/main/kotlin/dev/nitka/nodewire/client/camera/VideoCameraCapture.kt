@@ -261,6 +261,13 @@ object VideoCameraCapture {
                             mc, camera, marker, feed.fovDeg(), DeltaTracker.ONE,
                         )
 
+                        // Bake the CRT look into the freshly-captured texture
+                        // (Vista architecture: post-process the feed texture,
+                        // keep the screen quad on a pack-friendly shader).
+                        runCatching {
+                            dev.nitka.nodewire.client.camera.harness.CrtPostPass.apply(target)
+                        }
+
                         if (dev.nitka.nodewire.client.camera.harness.CaptureDebug.isArmed()) {
                             dev.nitka.nodewire.client.camera.harness.CaptureDebug.dumpFeed(feed.handle, target)
                         }
