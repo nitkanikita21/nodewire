@@ -181,6 +181,14 @@ object VideoCameraCapture {
                 }
             }
         } finally {
+            // Hand the frame back: the copy and the CRT pass each bind the
+            // feed's framebuffer, and this seam runs BEFORE the main level
+            // render, so leaving it bound points the whole frame at a 256px
+            // feed texture — and lets the main render scribble over the feed
+            // we just captured. The old envelope restored this; the slim
+            // rewrite dropped it, which is why dumps looked perfect while
+            // screens stayed blank.
+            runCatching { mc.mainRenderTarget.bindWrite(true) }
             marker.discard()
             CaptureDebug.disarm()
             VideoManager.setExternalCapture(false)
