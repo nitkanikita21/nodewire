@@ -378,6 +378,21 @@ object VideoCameraCapture {
 
     @JvmStatic
     fun captureFeeds(deltaTracker: DeltaTracker) {
+        // Sodium reuses each region's cached draw-command batch unless its own
+        // check (section bitmap + camera's REGION-RELATIVE section, clamped to
+        // [-1,8]) notices a change — and for distant regions a feed camera is
+        // indistinguishable from the player there, so the main frame can draw
+        // commands a feed wrote. This seam runs at the head of every frame,
+        // before the main level render, so clearing the batches here forces
+        // the main pass to rebuild them from its own camera. Costs one refill
+        // pass, exactly what Sodium does whenever the player moves.
+        if (SODIUM &&
+            dev.nitka.nodewire.client.camera.harness.CaptureEngine.isolateBatches &&
+            !CameraFeedRegistry.isEmpty()
+        ) {
+            dev.nitka.nodewire.client.camera.harness.SodiumMainPass.clearRegionBatches()
+        }
+
         // Blink sampler (armed by `/nodewire capture blink`): this seam runs
         // once per rendered frame, right after the main level render, so it is
         // the natural place to read Sodium's visible-section count.
