@@ -4,6 +4,7 @@ import com.mojang.logging.LogUtils
 import dev.nitka.nodewire.client.camera.harness.CaptureDebug
 import dev.nitka.nodewire.client.camera.harness.CaptureEngine
 import dev.nitka.nodewire.client.camera.harness.CrtPostPass
+import dev.nitka.nodewire.client.camera.harness.NvidiumCompat
 import dev.nitka.nodewire.client.camera.harness.VistaFeedBridge
 import dev.nitka.nodewire.client.video.VideoManager
 import net.minecraft.client.DeltaTracker
@@ -76,7 +77,14 @@ object VideoCameraCapture {
 
     @JvmStatic
     fun captureFeeds(deltaTracker: DeltaTracker) {
-        if (CameraFeedRegistry.isEmpty()) return
+        if (CameraFeedRegistry.isEmpty()) {
+            // No feeds left: give Nvidium its frame-to-frame culling back.
+            NvidiumCompat.restore()
+            return
+        }
+        // Nvidium reuses the previous frame's visibility, which a second
+        // viewpoint invalidates — the chunk flicker. Pause it while feeds live.
+        NvidiumCompat.suppress()
         if (VideoManager.isCapturing()) return
         if (!CaptureEngine.enabled) return
 
