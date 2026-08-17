@@ -170,7 +170,9 @@ class CameraBlockEntity(pos: BlockPos, state: BlockState) :
     /** Field of view in degrees. Default 90, clamped 30..110. */
     fun fovDeg(): Double {
         val raw = numericParam(FOV_CHANNEL)?.toDouble() ?: 90.0
-        return Mth.clamp(raw, 30.0, 110.0)
+        // Down to 5 degrees: that is roughly an 18x telephoto against the 90
+        // default, which is what makes a camera usable as a gun sight.
+        return Mth.clamp(raw, 5.0, 110.0)
     }
 
     /** Whether the camera is actively capturing. Default true. */

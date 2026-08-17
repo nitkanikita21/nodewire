@@ -166,12 +166,12 @@ object VideoCameraCapture {
                     marker.xRotO = yawPitch[1]
 
                     // Surface the FOV actually used: the pin is clamped to
-                    // 30..110 degrees, so a value outside that range looks like
+                    // 5..110 degrees, so a value outside that range looks like
                     // "the setting does nothing".
                     val fov = feed.fovDeg()
                     if (fov != lastLoggedFov) {
                         lastLoggedFov = fov
-                        LOG.info("[NW-CAMERA] feed {} FOV = {} deg (allowed 30..110)", feed.handle, fov)
+                        LOG.info("[NW-CAMERA] feed {} FOV = {} deg (allowed 5..110)", feed.handle, fov)
                     }
 
                     val texId = VistaFeedBridge.render(
