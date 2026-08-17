@@ -68,6 +68,11 @@ object CaptureEngine {
     @Volatile
     var noFeedOpaque: Boolean = false
 
+    /** Feeds draw from their OWN command batches (default; `isolate` toggles). */
+    @JvmStatic
+    @Volatile
+    var isolateBatches: Boolean = true
+
     fun setMode(m: Mode) {
         mode = m
         saveMode(m)
@@ -128,6 +133,15 @@ object CaptureEngine {
                 noFeedDraw = !noFeedDraw
                 ctx.source.sendSystemMessage(
                     Component.literal("Feed terrain DRAW: " + if (noFeedDraw) "SKIPPED" else "normal"),
+                )
+                1
+            },
+        )
+        root.then(
+            Commands.literal("isolate").executes { ctx ->
+                isolateBatches = !isolateBatches
+                ctx.source.sendSystemMessage(
+                    Component.literal("Feed draw-batch isolation: " + if (isolateBatches) "ON" else "OFF"),
                 )
                 1
             },

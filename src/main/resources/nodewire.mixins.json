@@ -24,6 +24,7 @@
     "camera.MixinSodiumRenderSectionManager",
     "camera.MixinSodiumWorldRenderer",
     "camera.MixinSableSubLevelDispatcher",
+    "camera.MixinSodiumRenderRegion",
     "camera.MixinFlywheelRenderDispatcher"
   ],
   "server": [],
