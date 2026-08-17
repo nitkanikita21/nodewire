@@ -31,15 +31,11 @@ void main() {
 
     vec2 texSize = vec2(textureSize(Sampler0, 0));
 
-    // Deconvergence: R/B sampled slightly off-centre, growing to the edges.
-    // Kept well under a texel — a feed is only 256px and is displayed large,
-    // so a full-texel split turns every high-contrast edge (treeline against
-    // sky) into saturated red and magenta fringes rather than a soft glow.
-    vec2 ab = c * (0.3 / texSize);
-    float rC = texture(Sampler0, uv + ab).r;
-    float gC = texture(Sampler0, uv).g;
-    float bC = texture(Sampler0, uv - ab).b;
-    vec3 col = vec3(rC, gC, bC);
+    // No deconvergence: splitting the channels is what a real tube does, but
+    // a feed is only 256px and is displayed large, so even a sub-texel split
+    // turned every high-contrast edge — a treeline against the sky — into
+    // saturated red and magenta fringes instead of a soft glow.
+    vec3 col = texture(Sampler0, uv).rgb;
 
     // Scanlines: one dark line per texel row.
     float line = sin(uv.y * texSize.y * 3.14159265);

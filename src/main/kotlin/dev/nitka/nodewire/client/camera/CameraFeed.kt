@@ -138,18 +138,6 @@ class CameraFeed(private val be: CameraBlockEntity) {
                 Vec3.ZERO
             }
 
-        // Without an explicit remote eye the viewpoint would sit at the block
-        // CENTRE — inside the camera's own block, which renders as dark wedges
-        // across the frame (its inner faces, plus whatever the block is
-        // mounted flush against). Nudge the lens just past the block face
-        // along the view axis; the Camera Cable's sliders still override this
-        // completely when the player positions the eye themselves.
-        val lensNudge = if (eye == null) {
-            localForward.normalize().scale(EYE_FORWARD_NUDGE)
-        } else {
-            Vec3.ZERO
-        }
-
         val payload = SableSubLevelBackend.claims(level, pos)
         if (payload != null) {
             val center = SableSubLevelBackend.worldCenter(level, payload) ?: return null
@@ -159,14 +147,13 @@ class CameraFeed(private val be: CameraBlockEntity) {
                     val off = SableSubLevelBackend.worldDirection(level, payload, offsetLocal) ?: offsetLocal
                     center.add(off)
                 } else {
-                    val off = SableSubLevelBackend.worldDirection(level, payload, lensNudge) ?: lensNudge
-                    center.add(off)
+                    center
                 }
             return eyeWorld to lookToYawPitch(worldDir)
         }
 
         // Plain world: block centre (+ eye displacement) + rotated forward.
-        val center = Vec3(pos.x + 0.5, pos.y + 0.5, pos.z + 0.5).add(offsetLocal).add(lensNudge)
+        val center = Vec3(pos.x + 0.5, pos.y + 0.5, pos.z + 0.5).add(offsetLocal)
         return center to lookToYawPitch(localForward)
     }
 
