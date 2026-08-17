@@ -46,6 +46,12 @@ public abstract class MixinSodiumRenderSectionManager {
             require = 0
     )
     private void nodewire$freezeDuringCapture(CallbackInfo ci) {
-        if (VideoManager.isCapturing()) ci.cancel();
+        // Veil path: hands off. Veil's perspective mixins own Sodium during a
+        // perspective render (dedicated collector, render-list backup/restore)
+        // and they EXPECT the normal setupTerrain flow — freezing
+        // cleanupAndFlip here left Veil's nulled lastSectionCollector in place,
+        // finalizeRenderLists produced empty lists, and feeds rendered sky+
+        // entities but no terrain.
+        if (VideoManager.isCapturing() && !VideoManager.isVeilCapture()) ci.cancel();
     }
 }
