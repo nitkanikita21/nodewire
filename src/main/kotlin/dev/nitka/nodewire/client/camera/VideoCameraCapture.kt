@@ -208,6 +208,13 @@ object VideoCameraCapture {
             dev.nitka.nodewire.client.camera.harness.RenderSystemGuard.capture()
         }.getOrNull()
 
+        // Sodium last-camera fields — restored after the batch so the next
+        // main frame doesn't see a fake feed→player camera teleport (that
+        // teleport re-sorted translucent sections every frame: water blink).
+        val sodiumCamState = if (SODIUM) {
+            dev.nitka.nodewire.client.camera.harness.SodiumPostCaptureKick.save()
+        } else null
+
         val marker = Marker(EntityType.MARKER, level)
         val camera = net.minecraft.client.Camera()
 
@@ -329,10 +336,12 @@ object VideoCameraCapture {
             lr.itemEntityTarget = oldItemEntity
             lr.weatherTarget = oldWeather
             runCatching { rsGuard?.apply() }
-            // Guarantee the next main frame re-culls for the player camera even
-            // if Sodium's own camera-change detection misses (rare one-frame
-            // chunk blink otherwise).
-            if (SODIUM) dev.nitka.nodewire.client.camera.harness.SodiumPostCaptureKick.kick()
+            // Restore Sodium's last-camera fields (kills the fake camera
+            // teleport that churned translucency sorting) and force the next
+            // main frame to re-cull visibility for the player regardless.
+            if (SODIUM) {
+                dev.nitka.nodewire.client.camera.harness.SodiumPostCaptureKick.restoreAndKick(sodiumCamState)
+            }
             dev.nitka.nodewire.client.camera.harness.CaptureDebug.disarm()
             VideoManager.endCapture()
         }
