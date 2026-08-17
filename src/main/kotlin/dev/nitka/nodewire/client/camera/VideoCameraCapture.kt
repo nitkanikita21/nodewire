@@ -350,12 +350,19 @@ object VideoCameraCapture {
             // as if no capture had run; markGraphDirty is the cheap fallback
             // if the recompute can't resolve.
             if (SODIUM && dev.nitka.nodewire.client.camera.harness.CaptureEngine.kickEnabled) {
-                dev.nitka.nodewire.client.camera.harness.SodiumPostCaptureKick.kick()
+                // ORDER MATTERS. update() assigns needsGraphUpdate from its own
+                // result (normally false), so marking the graph dirty BEFORE
+                // the recompute cancelled the mark: the next main frame then
+                // skipped its cull and drew our recompute's lists, which were
+                // built from the PREVIOUS frame's camera. While turning, the
+                // sections at the frustum edge popped in and out — the chunks
+                // blinking behind a turning vehicle. Dirty the graph LAST.
                 dev.nitka.nodewire.client.camera.harness.SodiumMainPass.recompute()
                 // Cached per-region draw batches bake in the camera used to
                 // build them; Sodium's own invalidation check can't tell a
                 // feed camera from the player for distant regions.
                 dev.nitka.nodewire.client.camera.harness.SodiumMainPass.clearRegionBatches()
+                dev.nitka.nodewire.client.camera.harness.SodiumPostCaptureKick.kick()
             }
         }
     }
