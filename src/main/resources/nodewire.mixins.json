@@ -19,7 +19,8 @@
     "control.MixinMouseHandler",
     "camera.MixinDhClientApi",
     "camera.MixinIrisPipelineManager",
-    "camera.MixinIrisDhCompat"
+    "camera.MixinIrisDhCompat",
+    "camera.MixinIrisSystemTime"
   ],
   "server": [],
   "injectors": {
