@@ -344,10 +344,14 @@ object VideoCameraCapture {
             }
             dev.nitka.nodewire.client.camera.harness.CaptureDebug.disarm()
             VideoManager.endCapture()
-            // AFTER endCapture: the full-freeze mixin cancels markGraphDirty
-            // while capturing, so kicking inside the batch was a silent no-op.
+            // AFTER endCapture: the freeze mixin cancels these very methods
+            // while capturing. Re-cull for the PLAYER so Sodium's shared
+            // per-region lists + per-section BFS marks end the frame exactly
+            // as if no capture had run; markGraphDirty is the cheap fallback
+            // if the recompute can't resolve.
             if (SODIUM && dev.nitka.nodewire.client.camera.harness.CaptureEngine.kickEnabled) {
                 dev.nitka.nodewire.client.camera.harness.SodiumPostCaptureKick.kick()
+                dev.nitka.nodewire.client.camera.harness.SodiumMainPass.recompute()
             }
         }
     }
