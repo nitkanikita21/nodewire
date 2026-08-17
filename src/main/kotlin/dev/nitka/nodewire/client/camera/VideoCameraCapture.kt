@@ -201,6 +201,13 @@ object VideoCameraCapture {
         val oldPrevRotX = lr.prevCamRotX
         val oldPrevRotY = lr.prevCamRotY
 
+        // Vista-style RenderSystem globals snapshot (fog, projection, shader,
+        // texture matrix…) — anything drawn after our seam this frame must not
+        // see the LAST feed's state.
+        val rsGuard = runCatching {
+            dev.nitka.nodewire.client.camera.harness.RenderSystemGuard.capture()
+        }.getOrNull()
+
         val marker = Marker(EntityType.MARKER, level)
         val camera = net.minecraft.client.Camera()
 
@@ -229,6 +236,15 @@ object VideoCameraCapture {
                         marker.yRotO = yawPitch[0]
                         marker.xRotO = yawPitch[1]
 
+                        // RenderTarget.clear honours the GL write masks, and at
+                        // our seam (after the main frame's final composite,
+                        // especially with Iris) depth writes are often left
+                        // DISABLED — the depth clear then silently no-ops and
+                        // stale near-depth (the player's old silhouette) keeps
+                        // rejecting sky/terrain behind it: the persistent
+                        // "player trail" in feeds. Force the masks on first.
+                        com.mojang.blaze3d.systems.RenderSystem.colorMask(true, true, true, true)
+                        com.mojang.blaze3d.systems.RenderSystem.depthMask(true)
                         target.clear(Minecraft.ON_OSX)
                         target.bindWrite(true)
                         mc.mainRenderTarget = target
@@ -295,6 +311,7 @@ object VideoCameraCapture {
             lr.translucentTarget = oldTranslucent
             lr.itemEntityTarget = oldItemEntity
             lr.weatherTarget = oldWeather
+            runCatching { rsGuard?.apply() }
             VideoManager.endCapture()
         }
     }
