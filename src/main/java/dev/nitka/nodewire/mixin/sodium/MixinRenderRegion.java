@@ -61,6 +61,9 @@ public abstract class MixinRenderRegion {
     @Unique
     private static boolean nodewire$logged;
 
+    @Unique
+    private static boolean nodewire$loggedHook;
+
 
     @Inject(method = "getRenderList", at = @At("HEAD"), cancellable = true, require = 0)
     private void nodewire$isolateCaptureList(CallbackInfoReturnable<ChunkRenderList> cir) {
@@ -73,6 +76,10 @@ public abstract class MixinRenderRegion {
 
     @Inject(method = "getCachedBatch", at = @At("HEAD"), cancellable = true, require = 0)
     private void nodewire$isolateCaptureBatch(TerrainRenderPass pass, CallbackInfoReturnable<MultiDrawBatch> cir) {
+        if (!nodewire$loggedHook) {
+            nodewire$loggedHook = true;
+            com.mojang.logging.LogUtils.getLogger().info("[NW-CAMERA] Sodium region hook live");
+        }
         if (!SecondaryView.active()) return;
         if (!nodewire$logged) {
             nodewire$logged = true;

@@ -3,7 +3,6 @@ package dev.nitka.nodewire.mixin.sodium;
 import org.objectweb.asm.tree.ClassNode;
 import org.spongepowered.asm.mixin.extensibility.IMixinConfigPlugin;
 import org.spongepowered.asm.mixin.extensibility.IMixinInfo;
-import org.spongepowered.asm.service.MixinService;
 
 import java.util.List;
 import java.util.Set;
@@ -21,13 +20,16 @@ public class SodiumMixinPlugin implements IMixinConfigPlugin {
 
     @Override
     public void onLoad(String mixinPackage) {
+        // Ask the loading mod list rather than probing bytecode: this runs
+        // before most classes are transformable, and a probe that throws is
+        // indistinguishable from an absent mod.
         try {
-            MixinService.getService().getBytecodeProvider()
-                    .getClassNode("net.caffeinemc.mods.sodium.client.render.chunk.region.RenderRegion");
-            sodiumPresent = true;
+            sodiumPresent = net.neoforged.fml.loading.LoadingModList.get().getModFileById("sodium") != null;
         } catch (Throwable t) {
             sodiumPresent = false;
         }
+        com.mojang.logging.LogUtils.getLogger()
+                .info("[NW-CAMERA] Sodium mixin plugin: sodium {}", sodiumPresent ? "found" : "absent");
     }
 
     @Override
