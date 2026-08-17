@@ -80,8 +80,8 @@ object SodiumPostCaptureKick {
         }
     }
 
-    /** Restore the snapshot and force a visibility re-cull for the next frame. */
-    fun restoreAndKick(saved: Array<Any?>?) {
+    /** Restore the snapshot; optionally force a visibility re-cull next frame. */
+    fun restoreAndKick(saved: Array<Any?>?, kick: Boolean) {
         resolveOnce()
         runCatching {
             val swr = instanceNullable?.invoke(null) ?: return
@@ -90,8 +90,10 @@ object SodiumPostCaptureKick {
                     runCatching { f.set(swr, saved[i]) }
                 }
             }
-            val rsm = rsmField?.get(swr) ?: return
-            markGraphDirty?.invoke(rsm)
+            if (kick) {
+                val rsm = rsmField?.get(swr) ?: return
+                markGraphDirty?.invoke(rsm)
+            }
         }
     }
 }

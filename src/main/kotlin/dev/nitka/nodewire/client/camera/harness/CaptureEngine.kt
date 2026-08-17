@@ -25,6 +25,15 @@ object CaptureEngine {
     var mode: Mode = loadMode()
         private set
 
+    /** Runtime bisection toggles (`/nodewire capture kick|nofog`), not persisted. */
+    @JvmStatic
+    @Volatile
+    var kickEnabled: Boolean = true
+
+    @JvmStatic
+    @Volatile
+    var noFogEnabled: Boolean = true
+
     fun setMode(m: Mode) {
         mode = m
         saveMode(m)
@@ -53,6 +62,21 @@ object CaptureEngine {
                         "Capture debug armed: next capture logs GL state + saves feed PNGs to screenshots/nodewire-debug/",
                     ),
                 )
+                1
+            },
+        )
+        // Bisection toggles for the residual no-shaders chunk blink.
+        root.then(
+            Commands.literal("kick").executes { ctx ->
+                kickEnabled = !kickEnabled
+                ctx.source.sendSystemMessage(Component.literal("Post-capture graph kick: " + if (kickEnabled) "ON" else "OFF"))
+                1
+            },
+        )
+        root.then(
+            Commands.literal("nofog").executes { ctx ->
+                noFogEnabled = !noFogEnabled
+                ctx.source.sendSystemMessage(Component.literal("Feed setupNoFog: " + if (noFogEnabled) "ON" else "OFF"))
                 1
             },
         )

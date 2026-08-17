@@ -81,7 +81,9 @@ object FeedRenderDriver {
             // from the feed camera survived (feed showed the player + one tree
             // in a void — CaptureDebug dump 2026-08-17). Vista's envelope has
             // exactly this line for exactly this reason.
-            net.minecraft.client.renderer.FogRenderer.setupNoFog()
+            if (CaptureEngine.noFogEnabled) {
+                net.minecraft.client.renderer.FogRenderer.setupNoFog()
+            }
 
             lr.renderLevel(deltaTracker, false, camera, gr, gr.lightTexture(), view, proj)
         } finally {
