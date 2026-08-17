@@ -76,6 +76,11 @@ object VideoCameraCapture {
     /** Iris present → the harness parks its pipeline around capture batches. */
     private val IRIS: Boolean by lazy { net.neoforged.fml.ModList.get().isLoaded("iris") }
 
+    /** Should this batch render through Vista's level renderer? */
+    private fun useVistaBridge(): Boolean =
+        dev.nitka.nodewire.client.camera.harness.CaptureEngine.useVista &&
+            dev.nitka.nodewire.client.camera.harness.VistaFeedBridge.available()
+
     /** Veil present → feeds render through [VeilLevelPerspectiveRenderer] (the
      *  pack-native perspective API with its own Sodium/Iris/Sable compat)
      *  instead of our hand-rolled envelope. */
@@ -181,6 +186,7 @@ object VideoCameraCapture {
     ) {
         val lr = mc.levelRenderer
         val window = mc.window
+        val viaVistaPath = useVistaBridge()
 
         // --- SAVE ---
         val oldWidth = window.width
@@ -211,7 +217,7 @@ object VideoCameraCapture {
         // Sodium last-camera fields — restored after the batch so the next
         // main frame doesn't see a fake feed→player camera teleport (that
         // teleport re-sorted translucent sections every frame: water blink).
-        val sodiumCamState = if (SODIUM) {
+        val sodiumCamState = if (SODIUM && !viaVistaPath) {
             dev.nitka.nodewire.client.camera.harness.SodiumPostCaptureKick.save()
         } else null
 
@@ -220,13 +226,13 @@ object VideoCameraCapture {
         // shared index buffer past its high-water mark mid-frame — and growth
         // rewrites it through an UNSYNCHRONIZED mapping while the GPU may still
         // be reading it. Pre-grow once so captures never trigger it.
-        if (SODIUM) dev.nitka.nodewire.client.camera.harness.SodiumIndexBuffer.pregrow()
+        if (SODIUM && !useVistaBridge()) dev.nitka.nodewire.client.camera.harness.SodiumIndexBuffer.pregrow()
 
         // Sodium bakes a camera-dependent face mask into its cached per-region
         // draw commands; a feed pass would leave batches missing exactly the
         // faces that point at the player. Culling off => feeds write a
         // superset, safe for whoever reuses the batch.
-        val prevFaceCulling = if (SODIUM && dev.nitka.nodewire.client.camera.harness.CaptureEngine.isolateBatches) {
+        val prevFaceCulling = if (SODIUM && !viaVistaPath && dev.nitka.nodewire.client.camera.harness.CaptureEngine.isolateBatches) {
             dev.nitka.nodewire.client.camera.harness.SodiumFaceCulling.disableForCapture()
         } else null
 
@@ -240,6 +246,17 @@ object VideoCameraCapture {
         mc.renderBuffers().bufferSource().endBatch()
 
         allChangedDuringCapture = false
+        // Vista path: let Vista's own level renderer draw each feed into one of
+        // its textures, then copy that into our surface. Its envelope already
+        // coexists with this pack's renderers, so nothing of ours touches
+        // Sodium/Iris/Veil state at all.
+        val viaVista = viaVistaPath
+        if (viaVista) {
+            dev.nitka.nodewire.client.camera.harness.VistaFeedBridge.prune(
+                active.mapTo(HashSet()) { it.handle },
+            )
+        }
+
         VideoManager.beginCapture()
         try {
             val batch = {
@@ -247,6 +264,24 @@ object VideoCameraCapture {
                     try {
                         val target = feed.renderTarget() ?: continue
                         val (wpos, yawPitch) = feed.worldPose(level, deltaTracker) ?: continue
+
+                        if (viaVista) {
+                            VideoManager.setExternalCapture(true)
+                            val texId = try { dev.nitka.nodewire.client.camera.harness.VistaFeedBridge.render(
+                                feed.handle, target.width, target.height, marker,
+                                wpos, yawPitch[0], yawPitch[1], feed.fovDeg().toFloat(),
+                            ) } finally { VideoManager.setExternalCapture(false) }
+                            if (texId > 0) {
+                                dev.nitka.nodewire.client.camera.harness.CrtPostPass.copyInto(texId, target)
+                                runCatching {
+                                    dev.nitka.nodewire.client.camera.harness.CrtPostPass.apply(target)
+                                }
+                                feed.lastActiveTimeSec = now
+                                feed.renderFailures = 0
+                                continue
+                            }
+                        }
+
                         window.setWidth(target.width)
                         window.setHeight(target.height)
 
@@ -365,7 +400,7 @@ object VideoCameraCapture {
             // per-region lists + per-section BFS marks end the frame exactly
             // as if no capture had run; markGraphDirty is the cheap fallback
             // if the recompute can't resolve.
-            if (SODIUM && dev.nitka.nodewire.client.camera.harness.CaptureEngine.kickEnabled) {
+            if (SODIUM && !viaVistaPath && dev.nitka.nodewire.client.camera.harness.CaptureEngine.kickEnabled) {
                 // ORDER MATTERS. update() assigns needsGraphUpdate from its own
                 // result (normally false), so marking the graph dirty BEFORE
                 // the recompute cancelled the mark: the next main frame then
@@ -394,6 +429,7 @@ object VideoCameraCapture {
         // the main pass to rebuild them from its own camera. Costs one refill
         // pass, exactly what Sodium does whenever the player moves.
         if (SODIUM &&
+            !useVistaBridge() &&
             dev.nitka.nodewire.client.camera.harness.CaptureEngine.isolateBatches &&
             !CameraFeedRegistry.isEmpty()
         ) {

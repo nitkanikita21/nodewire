@@ -70,6 +70,38 @@ object CrtPostPass {
         }
     }
 
+    /**
+     * Copy [srcTexId] into [target] (both FBO-backed, so orientation matches).
+     * Used by the Vista bridge to bring a feed rendered by Vista into our own
+     * video surface, after which every consumer works unchanged.
+     */
+    fun copyInto(srcTexId: Int, target: RenderTarget) {
+        if (srcTexId <= 0) return
+        val oldProj = Matrix4f(RenderSystem.getProjectionMatrix())
+        val oldSorting = RenderSystem.getVertexSorting()
+        val mv = RenderSystem.getModelViewStack()
+        mv.pushMatrix()
+        mv.identity()
+        RenderSystem.applyModelViewMatrix()
+        RenderSystem.setProjectionMatrix(Matrix4f(), VertexSorting.ORTHOGRAPHIC_Z)
+        RenderSystem.disableBlend()
+        RenderSystem.disableDepthTest()
+        RenderSystem.depthMask(false)
+        RenderSystem.colorMask(true, true, true, true)
+        RenderSystem.disableCull()
+        try {
+            target.bindWrite(true)
+            drawFullscreen(srcTexId, GameRenderer.getPositionTexShader()!!, withColor = false)
+        } finally {
+            RenderSystem.depthMask(true)
+            RenderSystem.enableDepthTest()
+            RenderSystem.enableCull()
+            mv.popMatrix()
+            RenderSystem.applyModelViewMatrix()
+            RenderSystem.setProjectionMatrix(oldProj, oldSorting)
+        }
+    }
+
     /** NDC fullscreen quad; FBO→FBO keeps orientation, so UVs map directly. */
     private fun drawFullscreen(texId: Int, shader: ShaderInstance, withColor: Boolean) {
         RenderSystem.setShaderTexture(0, texId)

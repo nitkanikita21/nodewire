@@ -38,6 +38,7 @@ public abstract class MixinIrisSystemTime {
 
     @Inject(method = "beginFrame*", at = @At("HEAD"), cancellable = true, require = 0)
     private void nodewire$freezeClocksDuringCapture(CallbackInfo ci) {
-        if (VideoManager.isCapturing()) ci.cancel();
+        // External renderer (Vista) keeps dedicated feed clocks of its own.
+        if (VideoManager.isCapturing() && !VideoManager.isExternalCapture()) ci.cancel();
     }
 }

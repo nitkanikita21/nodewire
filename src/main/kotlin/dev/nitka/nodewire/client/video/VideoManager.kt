@@ -63,21 +63,22 @@ object VideoManager {
     @Volatile
     private var capturing: Boolean = false
 
-    /** True while the capture batch runs through Veil's LevelPerspectiveRenderer.
-     *  Mixins that hand-hold other mods (Iris pipeline parking) must step aside
-     *  there — Veil's own perspective compat handles those mods natively. */
+    /** True while an EXTERNAL renderer (currently Vista) is drawing the feed.
+     *  Every guard of ours must step aside then: that renderer ships its own
+     *  compatibility layer for Sodium/Iris/DH, and stacking ours on top of it
+     *  breaks its envelope. */
     @Volatile
-    private var veilCapture: Boolean = false
+    private var externalCapture: Boolean = false
 
     @JvmStatic
     fun isCapturing(): Boolean = capturing
 
     @JvmStatic
-    fun isVeilCapture(): Boolean = veilCapture
+    fun isExternalCapture(): Boolean = externalCapture
 
     @JvmStatic
-    fun setVeilCapture(value: Boolean) {
-        veilCapture = value
+    fun setExternalCapture(value: Boolean) {
+        externalCapture = value
     }
 
     @JvmStatic

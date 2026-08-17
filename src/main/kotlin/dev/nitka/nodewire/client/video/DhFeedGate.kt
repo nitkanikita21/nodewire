@@ -26,5 +26,5 @@ object DhFeedGate {
 
     /** The mixin's single question: should this DH render call be skipped? */
     @JvmStatic
-    fun skipDhRender(): Boolean = VideoManager.isCapturing() && !renderLodsInFeeds
+    fun skipDhRender(): Boolean = VideoManager.isCapturing() && !VideoManager.isExternalCapture() && !renderLodsInFeeds
 }

@@ -73,6 +73,12 @@ object CaptureEngine {
     @Volatile
     var isolateBatches: Boolean = true
 
+    /** Render feeds through Vista's level renderer when Vista is installed
+     *  (default). `/nodewire capture vista` falls back to our own path. */
+    @JvmStatic
+    @Volatile
+    var useVista: Boolean = true
+
     fun setMode(m: Mode) {
         mode = m
         saveMode(m)
@@ -133,6 +139,19 @@ object CaptureEngine {
                 noFeedDraw = !noFeedDraw
                 ctx.source.sendSystemMessage(
                     Component.literal("Feed terrain DRAW: " + if (noFeedDraw) "SKIPPED" else "normal"),
+                )
+                1
+            },
+        )
+        root.then(
+            Commands.literal("vista").executes { ctx ->
+                useVista = !useVista
+                val avail = VistaFeedBridge.available()
+                ctx.source.sendSystemMessage(
+                    Component.literal(
+                        "Vista feed renderer: " + (if (useVista) "ON" else "OFF") +
+                            (if (avail) "" else " (Vista API unavailable — own path in use)"),
+                    ),
                 )
                 1
             },

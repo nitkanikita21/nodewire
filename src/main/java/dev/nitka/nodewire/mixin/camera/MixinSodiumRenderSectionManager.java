@@ -75,7 +75,7 @@ public abstract class MixinSodiumRenderSectionManager {
         //    GPU had not consumed yet, so a freshly built section renders
         //    stale/empty until it is uploaded again — the single 16³ section
         //    blinking at the frontier (verified against Sodium 0.8.12 source).
-        if (VideoManager.isCapturing() && !VideoManager.isVeilCapture()) {
+        if (VideoManager.isCapturing() && !VideoManager.isExternalCapture()) {
             if (!nodewire$loggedGpuFreeze) {
                 nodewire$loggedGpuFreeze = true;
                 com.mojang.logging.LogUtils.getLogger().info("[NW-CAMERA] Sodium GPU freeze engaged (mixin live)");
@@ -102,7 +102,7 @@ public abstract class MixinSodiumRenderSectionManager {
         // freecull` cancels this group instead, and feeds then draw the
         // player's visible set with Sodium untouched.
         if (VideoManager.isCapturing()
-                && !VideoManager.isVeilCapture()
+                && !VideoManager.isExternalCapture()
                 && dev.nitka.nodewire.client.camera.harness.CaptureEngine.getFullFreeze()) {
             if (!nodewire$loggedCullFreeze) {
                 nodewire$loggedCullFreeze = true;

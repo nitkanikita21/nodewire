@@ -46,6 +46,10 @@ public abstract class MixinIrisPipelineManager {
             CallbackInfoReturnable<WorldRenderingPipeline> cir
     ) {
         if (!VideoManager.isCapturing()) return;
+        // Vista drives this feed: it parks Iris itself (its renderer is
+        // decorated with a without-shaderpacks wrapper). Stacking our swap on
+        // top of theirs would fight it.
+        if (VideoManager.isExternalCapture()) return;
         // NOTE: parking applies to the Veil path too. Letting Veil's
         // per-perspective pack pipeline render the feeds was tried (2026-08-17)
         // and rejected: two full IrisRenderingPipeline instances alternating
