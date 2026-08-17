@@ -53,6 +53,11 @@ object CaptureEngine {
     @Volatile
     var noFeedDraw: Boolean = false
 
+    /** Bisection: feeds don't draw Sable sub-levels (`nosable`). */
+    @JvmStatic
+    @Volatile
+    var noSableDraw: Boolean = false
+
     fun setMode(m: Mode) {
         mode = m
         saveMode(m)
@@ -113,6 +118,15 @@ object CaptureEngine {
                 noFeedDraw = !noFeedDraw
                 ctx.source.sendSystemMessage(
                     Component.literal("Feed terrain DRAW: " + if (noFeedDraw) "SKIPPED" else "normal"),
+                )
+                1
+            },
+        )
+        root.then(
+            Commands.literal("nosable").executes { ctx ->
+                noSableDraw = !noSableDraw
+                ctx.source.sendSystemMessage(
+                    Component.literal("Feed Sable sub-level DRAW: " + if (noSableDraw) "SKIPPED" else "normal"),
                 )
                 1
             },

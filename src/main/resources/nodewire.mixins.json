@@ -23,6 +23,7 @@
     "camera.MixinIrisSystemTime",
     "camera.MixinSodiumRenderSectionManager",
     "camera.MixinSodiumWorldRenderer",
+    "camera.MixinSableSubLevelDispatcher",
     "camera.MixinFlywheelRenderDispatcher"
   ],
   "server": [],
