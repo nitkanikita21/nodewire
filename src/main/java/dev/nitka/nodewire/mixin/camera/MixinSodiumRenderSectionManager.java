@@ -8,21 +8,24 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * Freezes Sodium's chunk-visibility machinery during camera capture passes.
+ * The freeze half of Sodium feed compat v2 (see {@code SodiumFeedCompat} for
+ * the full design). During a capture pass:
  *
- * <p>Sodium keeps ONE global {@code RenderSectionManager}. Letting a capture
- * pass run {@code update}/{@code prepareFrame} re-culls everything for the
- * FEED camera — the next main frame then starts from the feed's state (chunk
- * flicker) — and a snapshot-restore of the manager's fields proved WORSE:
- * during chunk uploads the restored lists point at re-uploaded/freed GPU
- * regions and the world explodes into garbage triangles (observed on world
- * join).
- *
- * <p>So: while a capture is running, the update entries are simply cancelled.
- * The feed renders with the PLAYER's current visible set — nothing is
- * re-culled, nothing is restored, no state ever dangles. Trade-off: a feed
- * looking far away from the player may miss chunks the player's cull skipped;
- * for the common case (vehicle cameras near the player) the sets coincide.
+ * <ul>
+ *   <li><b>Frozen</b> — everything that moves chunk data on the GPU or flips
+ *       per-frame buffers: {@code updateChunks}/{@code uploadChunks} (region
+ *       re-uploads would dangle the restored render lists → garbage
+ *       triangles), {@code cleanupAndFlip} (extra collector flip per feed →
+ *       alternate-frame chunk flicker), {@code processGFNIMovement}
+ *       (translucency re-sorts for a camera that "teleports" every frame),
+ *       {@code tickVisibleRenders} (sprite animation double-tick).</li>
+ *   <li><b>Live</b> — the cull path: {@code update}, {@code prepareFrame},
+ *       {@code finalizeRenderLists}, {@code markGraphDirty}. The feed re-culls
+ *       for its OWN camera, so it sees geometry the player's frustum dropped
+ *       (no black trails). {@code SodiumFeedCompat} snapshots and restores the
+ *       visibility fields around the whole batch — safe exactly because the
+ *       GPU side is frozen here.</li>
+ * </ul>
  */
 @Pseudo
 @Mixin(targets = "net.caffeinemc.mods.sodium.client.render.chunk.RenderSectionManager", remap = false)
@@ -30,13 +33,9 @@ public abstract class MixinSodiumRenderSectionManager {
 
     @Inject(
             method = {
-                    "update",
-                    "prepareFrame",
                     "updateChunks",
                     "uploadChunks",
-                    "finalizeRenderLists",
                     "cleanupAndFlip",
-                    "markGraphDirty",
                     "processGFNIMovement",
                     "tickVisibleRenders",
             },
@@ -45,12 +44,6 @@ public abstract class MixinSodiumRenderSectionManager {
             require = 0
     )
     private void nodewire$freezeDuringCapture(CallbackInfo ci) {
-        // Full freeze: every state-mutating entry is cancelled while a capture
-        // runs. finalizeRenderLists would regenerate the lists against the FEED
-        // viewport and cleanupAndFlip would double-flip the list buffers — both
-        // showed up as main-view chunk flicker even after update/prepareFrame
-        // were frozen. renderLayer/isSectionVisible (pure reads) stay live, so
-        // the feed still draws the player's current visible set.
         if (VideoManager.isCapturing()) ci.cancel();
     }
 }

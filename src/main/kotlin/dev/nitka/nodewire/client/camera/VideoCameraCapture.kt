@@ -246,13 +246,17 @@ object VideoCameraCapture {
                     }
                 }
             }
-            // Iris parking wraps the batch; Sodium is frozen at the source by
-            // MixinSodiumRenderSectionManager (update/prepareFrame cancelled
-            // while capturing — nothing to save, nothing to dangle).
+            // Sodium v2: the GPU-mutating entries are frozen at the source by
+            // MixinSodiumRenderSectionManager, the cull path stays live so the
+            // feed re-culls for its own camera, and SodiumFeedCompat restores
+            // the visibility fields afterwards. Iris parking wraps outermost.
+            val sodiumWrapped: () -> Unit = if (SODIUM) {
+                { dev.nitka.nodewire.client.camera.harness.SodiumFeedCompat.aroundCaptureBatch(batch) }
+            } else batch
             if (IRIS) {
-                dev.nitka.nodewire.client.camera.harness.IrisFeedCompat.aroundCaptureBatch(mc, batch)
+                dev.nitka.nodewire.client.camera.harness.IrisFeedCompat.aroundCaptureBatch(mc, sodiumWrapped)
             } else {
-                batch()
+                sodiumWrapped()
             }
         } finally {
             // --- RESTORE ---
