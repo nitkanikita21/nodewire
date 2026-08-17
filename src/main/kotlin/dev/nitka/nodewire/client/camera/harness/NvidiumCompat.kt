@@ -30,10 +30,22 @@ object NvidiumCompat {
 
     private var resolved = false
     private var config: Any? = null
-    private var field: Field? = null
 
-    /** The user's own setting, restored when no feed needs us any more. */
-    private var originalValue: Boolean? = null
+    /**
+     * Options that assume a single viewpoint per frame:
+     *  * `enable_temporal_coherence` — reuses the previous frame's region
+     *    visibility, so a feed pass poisons the player's next frame (the
+     *    chunk flicker).
+     *  * `async_bfs` — computes visibility asynchronously, a frame or more
+     *    behind, which a camera rendering intermittently from somewhere else
+     *    cannot wait for; the feed then draws an incomplete world.
+     */
+    private val OPTION_NAMES = listOf("enable_temporal_coherence", "async_bfs")
+
+    private var fields: List<Field> = emptyList()
+
+    /** The user's own settings, restored when no feed needs us any more. */
+    private var originalValues: BooleanArray? = null
     private var suppressed = false
 
     @Synchronized
@@ -44,39 +56,45 @@ object NvidiumCompat {
             val nvidium = Class.forName("me.cortex.nvidium.Nvidium")
             val cfg = nvidium.getField("config").get(null) ?: return
             config = cfg
-            field = cfg.javaClass.getField("enable_temporal_coherence")
-            LOG.info("[NW-CAMERA] Nvidium detected — temporal coherence will be paused while camera feeds are live")
+            fields = OPTION_NAMES.mapNotNull { name ->
+                runCatching { cfg.javaClass.getField(name) }.getOrNull()
+            }
+            LOG.info(
+                "[NW-CAMERA] Nvidium detected — {} single-viewpoint option(s) will be paused while camera feeds are live",
+                fields.size,
+            )
         } catch (t: Throwable) {
             config = null
-            field = null
+            fields = emptyList()
         }
     }
 
     /** Called while feeds exist. */
     fun suppress() {
         resolveOnce()
-        val f = field ?: return
         val cfg = config ?: return
-        if (suppressed) return
+        if (suppressed || fields.isEmpty()) return
         runCatching {
-            val current = f.getBoolean(cfg)
-            if (!current) return // already off — nothing to do or restore
-            originalValue = current
-            f.setBoolean(cfg, false)
+            val saved = BooleanArray(fields.size)
+            for ((i, f) in fields.withIndex()) {
+                saved[i] = f.getBoolean(cfg)
+                f.setBoolean(cfg, false)
+            }
+            originalValues = saved
             suppressed = true
-            LOG.info("[NW-CAMERA] Nvidium temporal coherence paused (camera feed active)")
+            LOG.info("[NW-CAMERA] Nvidium single-viewpoint options paused (camera feed active)")
         }
     }
 
     /** Called once no feed is live any more. */
     fun restore() {
         if (!suppressed) return
-        val f = field ?: return
         val cfg = config ?: return
+        val saved = originalValues ?: return
         runCatching {
-            f.setBoolean(cfg, originalValue ?: true)
+            for ((i, f) in fields.withIndex()) f.setBoolean(cfg, saved[i])
             suppressed = false
-            LOG.info("[NW-CAMERA] Nvidium temporal coherence restored")
+            LOG.info("[NW-CAMERA] Nvidium options restored")
         }
     }
 }
