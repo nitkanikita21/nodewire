@@ -21,20 +21,23 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * disagreed mid-thrash — healed only by a shader reload because that resets
  * Flywheel's backend.
  *
- * <p>{@code onStartLevelRender} (origin update + async frame plan +
- * {@code FrameUniforms.update}) and {@code afterEntities}/{@code
- * beforeCrumbling} (instance draws) are simply cancelled while a capture is
- * running: the origin never moves, the frame uniforms keep the MAIN camera's
- * values, and nothing Flywheel-rendered draws into feeds. Trade-off:
- * Flywheel-backed visuals (Create contraptions) are absent from camera
- * feeds for now.
+ * <p>{@code onStartLevelRender} is cancelled while a capture runs — that is
+ * the ONLY path that moves the origin ({@code updateRenderOrigin} lives in
+ * the frame plan it executes), so the origin stays parked at the player and
+ * the async visual-update plan never runs against a feed camera.
+ * {@code afterEntities} is deliberately ALLOWED through: Flywheel's
+ * {@code EngineImpl.render(context)} re-uploads the frame uniforms from the
+ * pass's own RenderContext (feed matrices + the parked origin) before
+ * drawing, so contraptions render correctly INTO feeds, and the next main
+ * frame's draw re-uploads main-camera uniforms the same way.
+ * {@code beforeCrumbling} stays cancelled (no crumbling overlays in feeds).
  */
 @Pseudo
 @Mixin(targets = "dev.engine_room.flywheel.impl.visualization.VisualizationManagerImpl$RenderDispatcherImpl", remap = false)
 public abstract class MixinFlywheelRenderDispatcher {
 
     @Inject(
-            method = {"onStartLevelRender", "afterEntities", "beforeCrumbling"},
+            method = {"onStartLevelRender", "beforeCrumbling"},
             at = @At("HEAD"),
             cancellable = true,
             require = 0

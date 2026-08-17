@@ -115,6 +115,15 @@ object NodewireClient {
                     ),
                 ) { dev.nitka.nodewire.client.screen.ScreenNoiseShader.instance = it }
             }.onFailure { LOG.warn("screen_noise shader failed to load: {}", it.message) }
+            runCatching {
+                event.registerShader(
+                    net.minecraft.client.renderer.ShaderInstance(
+                        event.resourceProvider,
+                        "nodewire:screen_crt",
+                        com.mojang.blaze3d.vertex.DefaultVertexFormat.POSITION_TEX_COLOR,
+                    ),
+                ) { dev.nitka.nodewire.client.screen.ScreenCrtShader.instance = it }
+            }.onFailure { LOG.warn("screen_crt shader failed to load: {}", it.message) }
         }
         // Distant Horizons: cancel its render during camera captures (the
         // Vista recipe — otherwise DH's temporal state makes feeds flicker).

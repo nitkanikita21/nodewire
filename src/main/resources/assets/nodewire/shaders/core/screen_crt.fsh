@@ -1,0 +1,65 @@
+#version 150
+
+// Nodewire CRT screen look (clean-room, classic techniques): barrel
+// curvature, per-texel scanlines, phosphor triads, edge deconvergence,
+// vignette, mild color grade and a subtle mains-hum flicker. Applied to
+// every video feed drawn on a Screen block; the separate screen_noise
+// shader still takes over when the signal degrades.
+
+uniform sampler2D Sampler0;
+uniform vec4 ColorModulator;
+uniform float Time;
+
+in vec2 texCoord0;
+in vec4 vertexColor;
+
+out vec4 fragColor;
+
+void main() {
+    vec2 uv = texCoord0;
+
+    // Barrel curvature: push UVs outward quadratically from the centre.
+    vec2 c = uv * 2.0 - 1.0;
+    float r2 = dot(c, c);
+    c *= 1.0 + 0.05 * r2;
+    uv = c * 0.5 + 0.5;
+    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+        // Tube bezel outside the curved picture.
+        fragColor = vec4(0.02, 0.02, 0.025, vertexColor.a) * ColorModulator;
+        return;
+    }
+
+    vec2 texSize = vec2(textureSize(Sampler0, 0));
+
+    // Deconvergence: R/B sampled slightly off-centre, growing to the edges.
+    vec2 ab = c * (1.2 / texSize);
+    float rC = texture(Sampler0, uv + ab).r;
+    float gC = texture(Sampler0, uv).g;
+    float bC = texture(Sampler0, uv - ab).b;
+    vec3 col = vec3(rC, gC, bC);
+
+    // Scanlines: one dark line per texel row.
+    float line = sin(uv.y * texSize.y * 3.14159265);
+    col *= 0.86 + 0.14 * line * line;
+
+    // Phosphor triads: R/G/B-tinted vertical stripes, three per texel.
+    float px = floor(uv.x * texSize.x * 3.0);
+    int ph = int(mod(px, 3.0));
+    vec3 mask = ph == 0 ? vec3(1.06, 0.96, 0.96)
+              : ph == 1 ? vec3(0.96, 1.06, 0.96)
+                        : vec3(0.96, 0.96, 1.06);
+    col *= mask;
+
+    // Mild grade: a touch of contrast and saturation.
+    col = clamp((col - 0.5) * 1.08 + 0.5, 0.0, 1.0);
+    float luma = dot(col, vec3(0.299, 0.587, 0.114));
+    col = clamp(mix(vec3(luma), col, 1.12), 0.0, 1.0);
+
+    // Vignette toward the tube corners.
+    col *= 1.0 - 0.20 * r2;
+
+    // Subtle mains-hum flicker.
+    col *= 0.985 + 0.015 * sin(Time * 90.0);
+
+    fragColor = vec4(col * vertexColor.rgb, vertexColor.a) * ColorModulator;
+}
