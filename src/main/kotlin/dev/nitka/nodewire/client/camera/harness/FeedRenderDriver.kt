@@ -73,6 +73,16 @@ object FeedRenderDriver {
             val cullFov = maxOf(fovDeg, mc.options.fov().get().toDouble())
             lr.prepareCullFrustum(camera.position, view, gr.getProjectionMatrix(cullFov))
 
+            // Sodium clamps its visibility BFS to the CURRENT fog end distance
+            // (getSearchDistance -> RenderSystem.getShaderFogEnd), and its
+            // setupTerrain runs BEFORE the pass sets up its own fog — i.e. the
+            // cull sees whatever fog the tail of the MAIN frame left behind,
+            // which at our seam is tiny. Result: only sections a few blocks
+            // from the feed camera survived (feed showed the player + one tree
+            // in a void — CaptureDebug dump 2026-08-17). Vista's envelope has
+            // exactly this line for exactly this reason.
+            net.minecraft.client.renderer.FogRenderer.setupNoFog()
+
             lr.renderLevel(deltaTracker, false, camera, gr, gr.lightTexture(), view, proj)
         } finally {
             FeedRenderStack.end()
