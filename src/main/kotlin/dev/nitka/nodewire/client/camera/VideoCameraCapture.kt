@@ -4,6 +4,7 @@ import com.mojang.logging.LogUtils
 import dev.nitka.nodewire.client.camera.harness.CaptureDebug
 import dev.nitka.nodewire.client.camera.harness.CaptureEngine
 import dev.nitka.nodewire.client.camera.harness.CrtPostPass
+import dev.nitka.nodewire.client.camera.harness.GlStateGuard
 import dev.nitka.nodewire.client.camera.harness.NvidiumCompat
 import dev.nitka.nodewire.client.camera.harness.VistaFeedBridge
 import dev.nitka.nodewire.client.video.VideoManager
@@ -142,6 +143,10 @@ object VideoCameraCapture {
 
         // An invisible marker stands in as the camera's entity for the render.
         val marker = Marker(EntityType.MARKER, level)
+        // Everything the copy/CRT passes touch is put back afterwards — this
+        // seam runs before the main render, so leftovers reach the world AND
+        // the interface drawn over it.
+        val glGuard = runCatching { GlStateGuard.capture() }.getOrNull()
         VideoManager.beginCapture()
         VideoManager.setExternalCapture(true)
         try {
@@ -189,6 +194,7 @@ object VideoCameraCapture {
             // rewrite dropped it, which is why dumps looked perfect while
             // screens stayed blank.
             runCatching { mc.mainRenderTarget.bindWrite(true) }
+            runCatching { glGuard?.apply() }
             marker.discard()
             CaptureDebug.disarm()
             VideoManager.setExternalCapture(false)
