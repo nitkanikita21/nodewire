@@ -21,7 +21,8 @@
     "camera.MixinIrisPipelineManager",
     "camera.MixinIrisDhCompat",
     "camera.MixinIrisSystemTime",
-    "camera.MixinSodiumRenderSectionManager"
+    "camera.MixinSodiumRenderSectionManager",
+    "camera.MixinFlywheelRenderDispatcher"
   ],
   "server": [],
   "injectors": {
