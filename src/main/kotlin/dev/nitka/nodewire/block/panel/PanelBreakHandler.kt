@@ -34,6 +34,19 @@ object PanelBreakHandler {
     private val lastBreak = HashMap<UUID, Long>()
     private const val BREAK_COOLDOWN_TICKS = 6L
 
+    private val LOG = com.mojang.logging.LogUtils.getLogger()
+    private var lastTrace = 0L
+
+    /** Why a left click did NOT remove an element — rate-limited, client only
+     *  (the server sees a click at all only once the client forwards it). */
+    private fun trace(level: net.minecraft.world.level.Level, reason: String) {
+        if (!level.isClientSide) return
+        val now = System.currentTimeMillis()
+        if (now - lastTrace < 500L) return
+        lastTrace = now
+        LOG.info("[NW-PANEL] left click ignored: {}", reason)
+    }
+
     @SubscribeEvent
     fun onLeftClickBlock(event: PlayerInteractEvent.LeftClickBlock) {
         val level = event.level
@@ -44,11 +57,22 @@ object PanelBreakHandler {
 
         // Player-precise raycast (both sides) — the panel's shape includes the
         // raised element boxes, so the hit lands on the outlined element.
-        val hit = player.pick(player.blockInteractionRange(), 1f, false) as? BlockHitResult ?: return
-        if (hit.type != HitResult.Type.BLOCK || hit.blockPos != event.pos) return
-        val gh = ControlPanelBlock.gridHit(state, event.pos, hit.location) ?: return
+        val hit = player.pick(player.blockInteractionRange(), 1f, false) as? BlockHitResult
+        if (hit == null || hit.type != HitResult.Type.BLOCK || hit.blockPos != event.pos) {
+            trace(level, "raycast missed the panel")
+            return
+        }
+        val gh = ControlPanelBlock.gridHit(state, event.pos, hit.location)
+        if (gh == null) {
+            trace(level, "hit did not map to a grid cell")
+            return
+        }
         val be = level.getBlockEntity(event.pos) as? ControlPanelBlockEntity ?: return
-        val element = be.elementAt(gh.cell) ?: return // bare plate → mine the block
+        val element = be.elementAt(gh.cell)
+        if (element == null) {
+            trace(level, "cell ${gh.cell.x},${gh.cell.y} is bare plate")
+            return // bare plate → mine the block
+        }
 
         // An element is targeted: never mine the panel through it.
         event.isCanceled = true
@@ -62,6 +86,7 @@ object PanelBreakHandler {
             val last = lastBreak[player.uuid] ?: Long.MIN_VALUE
             if (now - last < BREAK_COOLDOWN_TICKS) return
             lastBreak[player.uuid] = now
+            LOG.info("[NW-PANEL] removing element at cell {},{}", gh.cell.x, gh.cell.y)
             net.neoforged.neoforge.network.PacketDistributor.sendToServer(
                 dev.nitka.nodewire.net.RemoveElementPacket(event.pos, gh.cell.x, gh.cell.y),
             )

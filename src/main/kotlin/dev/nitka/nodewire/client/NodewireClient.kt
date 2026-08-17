@@ -403,6 +403,8 @@ object NodewireClient {
 
     /** While piloting, cancel attack / use / pick so LMB/RMB feed the pins
      *  instead of breaking, placing or picking blocks. */
+    private var lastSuppressLog = 0L
+
     private fun onInteractionKey(
         event: net.neoforged.neoforge.client.event.InputEvent.InteractionKeyMappingTriggered,
     ) {
@@ -411,6 +413,17 @@ object NodewireClient {
         val controlCaptured = ControlSession.isActive() && ControlSession.mouseCaptured
         val joystickCaptured = dev.nitka.nodewire.client.panel.PanelJoystickSession.isActive()
         if (!controlCaptured && !joystickCaptured) return
+        // A swallowed click is indistinguishable from a broken feature, and a
+        // session that failed to end would eat every click for the rest of the
+        // session — say so, at most once a second.
+        val now = System.currentTimeMillis()
+        if (now - lastSuppressLog > 1000L) {
+            lastSuppressLog = now
+            LOG.info(
+                "clicks routed to a control session (control={}, joystick={}) — Shift exits, V frees the mouse",
+                controlCaptured, joystickCaptured,
+            )
+        }
         event.isCanceled = true
         event.setSwingHand(false)
     }
