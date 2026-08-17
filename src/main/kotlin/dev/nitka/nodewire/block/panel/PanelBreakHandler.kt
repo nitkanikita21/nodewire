@@ -48,27 +48,36 @@ object PanelBreakHandler {
 
     fun onLeftClickBlock(event: PlayerInteractEvent.LeftClickBlock) {
         val level = event.level
-        val state = level.getBlockState(event.pos)
-        if (state.block !is ControlPanelBlock) {
-            trace(level, "target is ${state.block.descriptionId}, not a control panel")
-            return
-        }
         val player = event.entity
         if (player.isSpectator) return
 
         // Player-precise raycast (both sides) — the panel's shape includes the
         // raised element boxes, so the hit lands on the outlined element.
-        val hit = player.pick(player.blockInteractionRange(), 1f, false) as? BlockHitResult
-        if (hit == null || hit.type != HitResult.Type.BLOCK || hit.blockPos != event.pos) {
-            trace(level, "raycast missed the panel")
+        // The player's own raycast is the source of truth, NOT event.pos:
+        // on a Sable sub-level the two disagree (the event reported the ship's
+        // armour while the crosshair was on the panel), and the pick is what
+        // the outline the player sees is drawn from.
+        val hit = player.pick(player.blockInteractionRange(), 1f, false) as? BlockHitResult ?: return
+        if (hit.type != HitResult.Type.BLOCK) return
+        val pos = hit.blockPos
+        val state = level.getBlockState(pos)
+        if (state.block !is ControlPanelBlock) {
+            // Log both targets: if the crosshair is on a panel yet neither
+            // position is one, the ray is passing THROUGH it into whatever it
+            // is mounted on, which is a shape problem rather than an event one.
+            trace(
+                level,
+                "event=${level.getBlockState(event.pos).block.descriptionId}@${event.pos.toShortString()} " +
+                    "pick=${state.block.descriptionId}@${pos.toShortString()}",
+            )
             return
         }
-        val gh = ControlPanelBlock.gridHit(state, event.pos, hit.location)
+        val gh = ControlPanelBlock.gridHit(state, pos, hit.location)
         if (gh == null) {
             trace(level, "hit did not map to a grid cell")
             return
         }
-        val be = level.getBlockEntity(event.pos) as? ControlPanelBlockEntity ?: return
+        val be = level.getBlockEntity(pos) as? ControlPanelBlockEntity ?: return
         val element = be.elementAt(gh.cell)
         if (element == null) {
             trace(level, "cell ${gh.cell.x},${gh.cell.y} is bare plate")
@@ -89,7 +98,7 @@ object PanelBreakHandler {
             lastBreak[player.uuid] = now
             LOG.info("[NW-PANEL] removing element at cell {},{}", gh.cell.x, gh.cell.y)
             net.neoforged.neoforge.network.PacketDistributor.sendToServer(
-                dev.nitka.nodewire.net.RemoveElementPacket(event.pos, gh.cell.x, gh.cell.y),
+                dev.nitka.nodewire.net.RemoveElementPacket(pos, gh.cell.x, gh.cell.y),
             )
             return
         }
@@ -101,7 +110,7 @@ object PanelBreakHandler {
 
         val removed = be.removeElementAt(gh.cell) ?: return
         if (!player.abilities.instabuild) {
-            dropElementItem(level, event.pos, removed, player)
+            dropElementItem(level, pos, removed, player)
         }
     }
 
