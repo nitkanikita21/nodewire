@@ -4,6 +4,7 @@ import dev.nitka.nodewire.client.video.VideoManager;
 import it.unimi.dsi.fastutil.objects.Reference2ReferenceOpenHashMap;
 import net.caffeinemc.mods.sodium.client.gl.device.MultiDrawBatch;
 import net.caffeinemc.mods.sodium.client.model.quad.properties.ModelQuadFacing;
+import net.caffeinemc.mods.sodium.client.render.chunk.lists.ChunkRenderList;
 import net.caffeinemc.mods.sodium.client.render.chunk.region.RenderRegion;
 import net.caffeinemc.mods.sodium.client.render.chunk.terrain.TerrainRenderPass;
 import org.spongepowered.asm.mixin.Mixin;
@@ -47,9 +48,33 @@ public abstract class MixinRenderRegion {
     private final Map<TerrainRenderPass, MultiDrawBatch> nodewire$captureBatches =
             new Reference2ReferenceOpenHashMap<>();
 
+    /** The feed's own visible-section list for this region — the second half
+     *  of the same fix. Sodium stores one list per region, which is what
+     *  Immersive Portals had to multiply for portal layers: a feed cull would
+     *  otherwise reset and refill the very list the main view is described by. */
+    @Unique
+    private ChunkRenderList nodewire$captureList;
+
+    @Unique
+    private static boolean nodewire$logged;
+
+    @Inject(method = "getRenderList", at = @At("HEAD"), cancellable = true, require = 0)
+    private void nodewire$isolateCaptureList(CallbackInfoReturnable<ChunkRenderList> cir) {
+        if (!VideoManager.isCapturing()) return;
+        if (nodewire$captureList == null) {
+            nodewire$captureList = new ChunkRenderList((RenderRegion) (Object) this);
+        }
+        cir.setReturnValue(nodewire$captureList);
+    }
+
     @Inject(method = "getCachedBatch", at = @At("HEAD"), cancellable = true, require = 0)
     private void nodewire$isolateCaptureBatch(TerrainRenderPass pass, CallbackInfoReturnable<MultiDrawBatch> cir) {
         if (!VideoManager.isCapturing()) return;
+        if (!nodewire$logged) {
+            nodewire$logged = true;
+            com.mojang.logging.LogUtils.getLogger()
+                    .info("[NW-CAMERA] Sodium per-feed render list + draw batches engaged");
+        }
         MultiDrawBatch batch = nodewire$captureBatches.get(pass);
         if (batch == null) {
             // Same capacity Sodium uses for its own batches: one command per
