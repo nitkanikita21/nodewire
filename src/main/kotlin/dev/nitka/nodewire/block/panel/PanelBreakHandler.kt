@@ -40,18 +40,20 @@ object PanelBreakHandler {
     /** Why a left click did NOT remove an element — rate-limited, client only
      *  (the server sees a click at all only once the client forwards it). */
     private fun trace(level: net.minecraft.world.level.Level, reason: String) {
-        if (!level.isClientSide) return
         val now = System.currentTimeMillis()
         if (now - lastTrace < 500L) return
         lastTrace = now
-        LOG.info("[NW-PANEL] left click ignored: {}", reason)
+        LOG.info("[NW-PANEL] {} left click ignored: {}", if (level.isClientSide) "client" else "server", reason)
     }
 
     @SubscribeEvent
     fun onLeftClickBlock(event: PlayerInteractEvent.LeftClickBlock) {
         val level = event.level
         val state = level.getBlockState(event.pos)
-        if (state.block !is ControlPanelBlock) return
+        if (state.block !is ControlPanelBlock) {
+            trace(level, "target is ${state.block.descriptionId}, not a control panel")
+            return
+        }
         val player = event.entity
         if (player.isSpectator) return
 
