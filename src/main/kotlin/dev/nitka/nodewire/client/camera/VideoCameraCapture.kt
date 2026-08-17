@@ -76,6 +76,11 @@ object VideoCameraCapture {
     /** Iris present → the harness parks its pipeline around capture batches. */
     private val IRIS: Boolean by lazy { net.neoforged.fml.ModList.get().isLoaded("iris") }
 
+    /** Veil present → feeds render through [VeilLevelPerspectiveRenderer] (the
+     *  pack-native perspective API with its own Sodium/Iris/Sable compat)
+     *  instead of our hand-rolled envelope. */
+    private val VEIL: Boolean by lazy { net.neoforged.fml.ModList.get().isLoaded("veil") }
+
     /** Capture cadence, decoupled from the client frame rate (wall-clock gated). */
     private const val FPS_CAP = 24
     private const val FRAME_INTERVAL = 1.0 / FPS_CAP
@@ -167,6 +172,54 @@ object VideoCameraCapture {
      * fabulous/transparency target nulling, the IN-PLACE section snapshot with
      * the allChanged firewall, and the no-Sodium per-feed occlusion graph.
      */
+    /**
+     * Veil-native capture path: each feed renders through
+     * `VeilLevelPerspectiveRenderer` — Veil handles the framebuffer swap,
+     * window/viewport, Sodium render-list backup, Iris pipeline field, fog,
+     * matrices, and flips `renderingPerspective` so every Veil-aware mod
+     * (Sable ships above all) treats the pass as a secondary perspective.
+     * Our own envelope shrinks to: recursion guard + per-feed pose/fov.
+     */
+    private fun veilCapture(
+        mc: Minecraft,
+        level: net.minecraft.client.multiplayer.ClientLevel,
+        active: List<CameraFeed>,
+        deltaTracker: DeltaTracker,
+        now: Double,
+    ) {
+        mc.renderBuffers().bufferSource().endBatch()
+        VideoManager.beginCapture()
+        try {
+            dev.nitka.nodewire.client.camera.harness.VeilFeedRenderer.prune(
+                active.mapTo(HashSet()) { it.handle },
+            )
+            val distChunks = Math.min(mc.options.renderDistance().get().toDouble(), MAX_CAPTURE_DISTANCE / 16.0).toFloat()
+            for (feed in active) {
+                try {
+                    val target = feed.renderTarget() ?: continue
+                    val (wpos, yawPitch) = feed.worldPose(level, deltaTracker) ?: continue
+                    val ok = dev.nitka.nodewire.client.camera.harness.VeilFeedRenderer.render(
+                        feed.handle, target, wpos, yawPitch[0], yawPitch[1],
+                        feed.fovDeg().toFloat(), distChunks, deltaTracker,
+                    )
+                    if (ok) {
+                        feed.lastActiveTimeSec = now
+                        if (feed.renderFailures != 0) {
+                            LOG.info("[NW-CAMERA] feed {} recovered after {} failures", feed.handle, feed.renderFailures)
+                            feed.renderFailures = 0
+                        }
+                    }
+                } catch (t: Throwable) {
+                    if (feed.renderFailures++ % 100 == 0) {
+                        LOG.warn("[NW-CAMERA] feed {} veil render failed (attempt {})", feed.handle, feed.renderFailures, t)
+                    }
+                }
+            }
+        } finally {
+            VideoManager.endCapture()
+        }
+    }
+
     private fun harnessCapture(
         mc: Minecraft,
         level: net.minecraft.client.multiplayer.ClientLevel,
@@ -174,6 +227,10 @@ object VideoCameraCapture {
         deltaTracker: DeltaTracker,
         now: Double,
     ) {
+        if (VEIL) {
+            veilCapture(mc, level, active, deltaTracker, now)
+            return
+        }
         val lr = mc.levelRenderer
         val window = mc.window
 

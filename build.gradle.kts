@@ -287,6 +287,16 @@ dependencies {
     // ModList-gated at runtime; nothing bundled.
     compileOnly("maven.modrinth:distanthorizons:3.2.0-b-1.21.1")
 
+    // --- Veil 4.3.0 (via Modrinth maven) ---
+    // compileOnly for VeilLevelPerspectiveRenderer: the ecosystem-native
+    // "render the level from another camera" API. Veil ships its OWN
+    // perspective-gated Sodium (RenderSectionManager/OcclusionCuller) and
+    // Iris (PipelineManager) mixins, and Sable keys its ship rendering off
+    // isRenderingPerspective() — so feeds rendered through it inherit the
+    // whole pack's tested compat. ModList-gated at runtime (VeilFeedRenderer
+    // is only classloaded when Veil is present).
+    compileOnly("maven.modrinth:veil:4.3.0")
+
     // --- Synaxis 1.5.0 (via Modrinth maven) ---
     // Cimulink plant ports: the SynaxisIntegration PinPorts adapter wraps any
     // Synaxis-claimable BE (motors, actuators, propellers, jets, flaps, chair,
