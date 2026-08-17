@@ -30,6 +30,8 @@ object NvidiumCompat {
 
     private var resolved = false
     private var config: Any? = null
+    private var enabledField: Field? = null
+    private var warned = false
 
     /**
      * Options that assume a single viewpoint per frame:
@@ -59,6 +61,7 @@ object NvidiumCompat {
             fields = OPTION_NAMES.mapNotNull { name ->
                 runCatching { cfg.javaClass.getField(name) }.getOrNull()
             }
+            enabledField = runCatching { nvidium.getField("IS_ENABLED") }.getOrNull()
             LOG.info(
                 "[NW-CAMERA] Nvidium detected — {} single-viewpoint option(s) will be paused while camera feeds are live",
                 fields.size,
@@ -67,6 +70,37 @@ object NvidiumCompat {
             config = null
             fields = emptyList()
         }
+    }
+
+    /**
+     * True when Nvidium is actually drawing the terrain. It replaces Sodium's
+     * renderer outright — build results are uploaded into ITS memory, so
+     * Sodium's own geometry arenas sit empty and cannot be used as a fallback
+     * for a second viewpoint — and it keeps a single stored viewport per
+     * frame. Camera feeds therefore cannot be drawn correctly while it is on.
+     * It turns itself off for Iris shaderpacks, which is why feeds look right
+     * with shaders enabled.
+     */
+    fun rendererActive(): Boolean {
+        resolveOnce()
+        val f = enabledField ?: return false
+        return runCatching { f.getBoolean(null) }.getOrDefault(false)
+    }
+
+    /** One-shot, player-facing explanation — silence beats a broken picture. */
+    fun warnOnce() {
+        if (warned || !rendererActive()) return
+        warned = true
+        val mc = net.minecraft.client.Minecraft.getInstance()
+        mc.player?.displayClientMessage(
+            net.minecraft.network.chat.Component.literal(
+                "[Nodewire] Nvidium/Acedium is rendering terrain: it draws one viewpoint per frame, " +
+                    "so camera feeds stay incomplete. Disable that mod, or enable a shaderpack " +
+                    "(Nvidium turns itself off for those).",
+            ),
+            false,
+        )
+        LOG.warn("[NW-CAMERA] Nvidium is active — camera feeds cannot render terrain correctly")
     }
 
     /** Called while feeds exist. */

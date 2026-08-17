@@ -85,6 +85,9 @@ object VideoCameraCapture {
         // Nvidium reuses the previous frame's visibility, which a second
         // viewpoint invalidates — the chunk flicker. Pause it while feeds live.
         NvidiumCompat.suppress()
+        // ...and if it is still the active terrain renderer, say so once:
+        // feeds cannot be complete while it draws.
+        NvidiumCompat.warnOnce()
         if (VideoManager.isCapturing()) return
         if (!CaptureEngine.enabled) return
 
