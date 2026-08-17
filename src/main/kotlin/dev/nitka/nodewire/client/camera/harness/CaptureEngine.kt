@@ -34,6 +34,16 @@ object CaptureEngine {
     @Volatile
     var noFogEnabled: Boolean = true
 
+    /** Full Sodium freeze during captures (default): the feed draws the
+     *  player's current visible set and Sodium is never touched — the only
+     *  configuration with a provably blink-free main view (feed culls write
+     *  into Sodium's SHARED per-region render lists; there is no clean way to
+     *  cull per-feed without a Veil-style region extension). `/nodewire
+     *  capture freecull` re-enables honest per-feed culling for experiments. */
+    @JvmStatic
+    @Volatile
+    var fullFreeze: Boolean = true
+
     fun setMode(m: Mode) {
         mode = m
         saveMode(m)
@@ -77,6 +87,18 @@ object CaptureEngine {
             Commands.literal("nofog").executes { ctx ->
                 noFogEnabled = !noFogEnabled
                 ctx.source.sendSystemMessage(Component.literal("Feed setupNoFog: " + if (noFogEnabled) "ON" else "OFF"))
+                1
+            },
+        )
+        root.then(
+            Commands.literal("freecull").executes { ctx ->
+                fullFreeze = !fullFreeze
+                ctx.source.sendSystemMessage(
+                    Component.literal(
+                        if (fullFreeze) "Sodium full freeze: ON (feed uses player's visible set)"
+                        else "Sodium full freeze: OFF (honest per-feed culling — may blink)",
+                    ),
+                )
                 1
             },
         )

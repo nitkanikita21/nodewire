@@ -54,4 +54,29 @@ public abstract class MixinSodiumRenderSectionManager {
         // entities but no terrain.
         if (VideoManager.isCapturing() && !VideoManager.isVeilCapture()) ci.cancel();
     }
+
+    @Inject(
+            method = {
+                    "update",
+                    "prepareFrame",
+                    "finalizeRenderLists",
+                    "markGraphDirty",
+            },
+            at = @At("HEAD"),
+            cancellable = true,
+            require = 0
+    )
+    private void nodewire$freezeCullDuringCapture(CallbackInfo ci) {
+        // Full-freeze mode (default): the cull path is frozen too, so a feed
+        // pass draws the player's CURRENT visible set and never writes into
+        // Sodium's shared per-region render lists. Honest per-feed culling
+        // (`/nodewire capture freecull`) refills those shared lists and the
+        // main view blinks at the feed's visibility boundary — kept only as
+        // an experiment toggle until a per-feed region list exists.
+        if (VideoManager.isCapturing()
+                && !VideoManager.isVeilCapture()
+                && dev.nitka.nodewire.client.camera.harness.CaptureEngine.getFullFreeze()) {
+            ci.cancel();
+        }
+    }
 }
