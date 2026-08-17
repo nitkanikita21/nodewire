@@ -52,7 +52,21 @@ object PanelBreakHandler {
 
         // An element is targeted: never mine the panel through it.
         event.isCanceled = true
-        if (level.isClientSide) return
+
+        // Cancelling on the CLIENT stops the attack packet from ever being
+        // sent, so the server-side half of this event never fires and the
+        // element was never actually removed. Ask for the removal explicitly
+        // instead — the same packet the Panel Key uses, validated server-side.
+        if (level.isClientSide) {
+            val now = level.gameTime
+            val last = lastBreak[player.uuid] ?: Long.MIN_VALUE
+            if (now - last < BREAK_COOLDOWN_TICKS) return
+            lastBreak[player.uuid] = now
+            net.neoforged.neoforge.network.PacketDistributor.sendToServer(
+                dev.nitka.nodewire.net.RemoveElementPacket(event.pos, gh.cell.x, gh.cell.y),
+            )
+            return
+        }
 
         val now = level.gameTime
         val last = lastBreak[player.uuid] ?: Long.MIN_VALUE
