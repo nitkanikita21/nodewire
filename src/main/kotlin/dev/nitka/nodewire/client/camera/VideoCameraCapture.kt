@@ -215,6 +215,14 @@ object VideoCameraCapture {
             dev.nitka.nodewire.client.camera.harness.SodiumPostCaptureKick.save()
         } else null
 
+        // Sodium bakes a camera-dependent face mask into its cached per-region
+        // draw commands; a feed pass would leave batches missing exactly the
+        // faces that point at the player. Culling off => feeds write a
+        // superset, safe for whoever reuses the batch.
+        val prevFaceCulling = if (SODIUM && dev.nitka.nodewire.client.camera.harness.CaptureEngine.isolateBatches) {
+            dev.nitka.nodewire.client.camera.harness.SodiumFaceCulling.disableForCapture()
+        } else null
+
         val marker = Marker(EntityType.MARKER, level)
         val camera = net.minecraft.client.Camera()
 
@@ -335,6 +343,7 @@ object VideoCameraCapture {
             lr.translucentTarget = oldTranslucent
             lr.itemEntityTarget = oldItemEntity
             lr.weatherTarget = oldWeather
+            dev.nitka.nodewire.client.camera.harness.SodiumFaceCulling.restore(prevFaceCulling)
             runCatching { rsGuard?.apply() }
             // Restore Sodium's last-camera fields (kills the fake camera
             // teleport that churned translucency sorting) and force the next
