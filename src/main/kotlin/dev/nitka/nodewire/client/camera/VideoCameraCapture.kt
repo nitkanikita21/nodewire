@@ -241,12 +241,18 @@ object VideoCameraCapture {
                     }
                 }
             }
-            // Iris: park the shaderpack pipeline + guard its temporal state for
-            // the whole batch (the class only loads when Iris is present).
+            // Compat fences, innermost-first: Sodium's visibility snapshot,
+            // then Iris' pipeline parking (each only loads with its mod).
+            val sodiumFenced: () -> Unit =
+                if (SODIUM) {
+                    { dev.nitka.nodewire.client.camera.harness.SodiumFeedCompat.aroundCaptureBatch(batch) }
+                } else {
+                    batch
+                }
             if (IRIS) {
-                dev.nitka.nodewire.client.camera.harness.IrisFeedCompat.aroundCaptureBatch(mc, batch)
+                dev.nitka.nodewire.client.camera.harness.IrisFeedCompat.aroundCaptureBatch(mc, sodiumFenced)
             } else {
-                batch()
+                sodiumFenced()
             }
         } finally {
             // --- RESTORE ---
