@@ -28,8 +28,29 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(targets = "net.caffeinemc.mods.sodium.client.render.chunk.RenderSectionManager", remap = false)
 public abstract class MixinSodiumRenderSectionManager {
 
-    @Inject(method = {"update", "prepareFrame"}, at = @At("HEAD"), cancellable = true, require = 0)
+    @Inject(
+            method = {
+                    "update",
+                    "prepareFrame",
+                    "updateChunks",
+                    "uploadChunks",
+                    "finalizeRenderLists",
+                    "cleanupAndFlip",
+                    "markGraphDirty",
+                    "processGFNIMovement",
+                    "tickVisibleRenders",
+            },
+            at = @At("HEAD"),
+            cancellable = true,
+            require = 0
+    )
     private void nodewire$freezeDuringCapture(CallbackInfo ci) {
+        // Full freeze: every state-mutating entry is cancelled while a capture
+        // runs. finalizeRenderLists would regenerate the lists against the FEED
+        // viewport and cleanupAndFlip would double-flip the list buffers — both
+        // showed up as main-view chunk flicker even after update/prepareFrame
+        // were frozen. renderLayer/isSectionVisible (pure reads) stay live, so
+        // the feed still draws the player's current visible set.
         if (VideoManager.isCapturing()) ci.cancel();
     }
 }
