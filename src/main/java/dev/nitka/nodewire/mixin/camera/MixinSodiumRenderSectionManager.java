@@ -33,6 +33,12 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(targets = "net.caffeinemc.mods.sodium.client.render.chunk.RenderSectionManager", remap = false)
 public abstract class MixinSodiumRenderSectionManager {
 
+    @org.spongepowered.asm.mixin.Unique
+    private static boolean nodewire$loggedGpuFreeze;
+
+    @org.spongepowered.asm.mixin.Unique
+    private static boolean nodewire$loggedCullFreeze;
+
     @Inject(
             method = {
                     "updateChunks",
@@ -45,12 +51,6 @@ public abstract class MixinSodiumRenderSectionManager {
             cancellable = true,
             require = 0
     )
-    @org.spongepowered.asm.mixin.Unique
-    private static boolean nodewire$loggedGpuFreeze;
-
-    @org.spongepowered.asm.mixin.Unique
-    private static boolean nodewire$loggedCullFreeze;
-
     private void nodewire$freezeDuringCapture(CallbackInfo ci) {
         // Veil path: hands off. Veil's perspective mixins own Sodium during a
         // perspective render (dedicated collector, render-list backup/restore)
