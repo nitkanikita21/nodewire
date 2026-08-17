@@ -25,6 +25,13 @@ object PanelElementConfig {
             Field("min", "Min", FieldKind.DOUBLE, "0"),
             Field("max", "Max", FieldKind.DOUBLE, "1"),
         )
+        // The lever's 16 detents map onto this range, so it can drive a value
+        // that is not a redstone level — a camera FOV of 30..110, a motor rpm,
+        // a setpoint. Defaults keep the old behaviour (a plain 0..15 signal).
+        "lever" -> listOf(
+            Field("min", "Min", FieldKind.DOUBLE, "0"),
+            Field("max", "Max", FieldKind.DOUBLE, "15"),
+        )
         "bulb" -> listOf(Field("on_color", "Colour", FieldKind.COLOR, "FFFF3333"))
         "seven_segment" -> listOf(
             Field("decimals", "Decimals", FieldKind.INT, "0"),

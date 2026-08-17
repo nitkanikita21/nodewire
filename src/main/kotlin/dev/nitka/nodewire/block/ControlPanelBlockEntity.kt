@@ -141,6 +141,13 @@ class ControlPanelBlockEntity(pos: BlockPos, state: BlockState) :
         })
     }
 
+    /** Configured output range of a lever (defaults to a 0..15 redstone level). */
+    private fun leverRange(cfg: net.minecraft.nbt.CompoundTag): Pair<Double, Double> {
+        val min = if (cfg.contains("min")) cfg.getDouble("min") else 0.0
+        val max = if (cfg.contains("max")) cfg.getDouble("max") else 15.0
+        return min to max
+    }
+
     // ── element editing (server) ──────────────────────────────────────────
     fun elements(): List<PlacedElement> = store.all()
 
@@ -412,7 +419,12 @@ class ControlPanelBlockEntity(pos: BlockPos, state: BlockState) :
         return when {
             name == "" -> when (e.typeId) {
                 "switch", "key_switch", "momentary" -> PinReading(PinValue.Bool(e.value != 0.0))
-                "push_button", "lever" -> PinReading(PinValue.Int(e.value.toInt()))
+                "push_button" -> PinReading(PinValue.Int(e.value.toInt()))
+                "lever" -> {
+                    val (min, max) = leverRange(e.config)
+                    val frac = (e.value.coerceIn(0.0, 15.0)) / 15.0
+                    PinReading(PinValue.Float((min + frac * (max - min)).toFloat()))
+                }
                 "emergency" -> PinReading(PinValue.Bool(e.value.toInt() and 1 != 0))
                 "knob" -> {
                     val cfg = e.config
@@ -459,7 +471,11 @@ class ControlPanelBlockEntity(pos: BlockPos, state: BlockState) :
             "set" -> numeric(value)?.let { v ->
                 when (e.typeId) {
                     "switch" -> setElementValue(anchor, if (v != 0.0) 1.0 else 0.0)
-                    "lever" -> setElementValue(anchor, v.coerceIn(0.0, 15.0))
+                    "lever" -> {
+                        val (min, max) = leverRange(e.config)
+                        val frac = if (max == min) 0.0 else ((v - min) / (max - min)).coerceIn(0.0, 1.0)
+                        setElementValue(anchor, frac * 15.0)
+                    }
                     "knob" -> {
                         val cfg = e.config
                         val min = if (cfg.contains("min")) cfg.getDouble("min") else 0.0

@@ -49,7 +49,10 @@ object PanelElements {
         PanelElementType("key_switch", 2, 2, listOf(out("", PinType.BOOL))),
         // Cover is pin-driven (open), the big button is the output.
         PanelElementType("emergency", 4, 4, listOf(out("", PinType.BOOL), inp("open", PinType.BOOL))),
-        PanelElementType("lever", 3, 5, listOf(out("", PinType.INT), inp("set", PinType.INT))),
+        // Output is FLOAT because the 16 detents are mapped onto a configured
+        // min..max range (see PanelElementConfig); with the default 0..15 it
+        // still reads as a plain redstone level.
+        PanelElementType("lever", 3, 5, listOf(out("", PinType.FLOAT), inp("set", PinType.FLOAT))),
         PanelElementType("knob", 2, 2, listOf(out("", PinType.FLOAT), inp("set", PinType.FLOAT))),
         PanelElementType(
             "joystick", 4, 4,
