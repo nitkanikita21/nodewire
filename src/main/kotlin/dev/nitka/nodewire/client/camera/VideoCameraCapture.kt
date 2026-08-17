@@ -405,6 +405,15 @@ object VideoCameraCapture {
         if (active.isEmpty()) return
         lastFrameRenderedSec = now
 
+        // A/B diagnostic: `/nodewire capture off` disables captures entirely
+        // (feeds freeze at the last frame) — separates "captures cause it"
+        // from pack-inherent artifacts.
+        if (dev.nitka.nodewire.client.camera.harness.CaptureEngine.mode ==
+            dev.nitka.nodewire.client.camera.harness.CaptureEngine.Mode.OFF
+        ) {
+            return
+        }
+
         // Phase 2 harness path: its own (smaller) envelope + a dummy camera —
         // the game's main camera, camera type, eye heights, render flags and
         // GameRenderer are never touched.

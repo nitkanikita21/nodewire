@@ -20,7 +20,7 @@ import java.nio.file.Files
  */
 object CaptureEngine {
 
-    enum class Mode { LEGACY, HARNESS }
+    enum class Mode { LEGACY, HARNESS, OFF }
 
     var mode: Mode = loadMode()
         private set
