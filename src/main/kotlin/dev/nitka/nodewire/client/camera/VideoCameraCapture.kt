@@ -172,79 +172,6 @@ object VideoCameraCapture {
      * fabulous/transparency target nulling, the IN-PLACE section snapshot with
      * the allChanged firewall, and the no-Sodium per-feed occlusion graph.
      */
-    /**
-     * Veil-native capture path: each feed renders through
-     * `VeilLevelPerspectiveRenderer` — Veil handles the framebuffer swap,
-     * window/viewport, Sodium render-list backup, Iris pipeline field, fog,
-     * matrices, and flips `renderingPerspective` so every Veil-aware mod
-     * (Sable ships above all) treats the pass as a secondary perspective.
-     * Our own envelope shrinks to: recursion guard + per-feed pose/fov.
-     */
-    /** Session kill-switch: a throw INSIDE Veil's perspective render unwinds
-     *  past Veil's FramebufferStack bookkeeping — after 16 leaked pushes the
-     *  stack overflows and the client dies with a black screen. One failure =
-     *  captures off for the session (fail-safe beats a dead client). */
-    @Volatile
-    private var veilDead = false
-
-    private fun veilCapture(
-        mc: Minecraft,
-        level: net.minecraft.client.multiplayer.ClientLevel,
-        active: List<CameraFeed>,
-        deltaTracker: DeltaTracker,
-        now: Double,
-    ) {
-        if (veilDead) return
-        mc.renderBuffers().bufferSource().endBatch()
-        VideoManager.beginCapture()
-        VideoManager.setVeilCapture(true)
-        try {
-            dev.nitka.nodewire.client.camera.harness.VeilFeedRenderer.prune(
-                active.mapTo(HashSet()) { it.handle },
-            )
-            val distChunks = Math.min(mc.options.renderDistance().get().toDouble(), MAX_CAPTURE_DISTANCE / 16.0).toFloat()
-            val batch = {
-                for (feed in active) {
-                    try {
-                        val target = feed.renderTarget() ?: continue
-                        val (wpos, yawPitch) = feed.worldPose(level, deltaTracker) ?: continue
-                        val ok = dev.nitka.nodewire.client.camera.harness.VeilFeedRenderer.render(
-                            feed.handle, target, wpos, yawPitch[0], yawPitch[1],
-                            feed.fovDeg().toFloat(), distChunks, deltaTracker,
-                        )
-                        if (ok) {
-                            feed.lastActiveTimeSec = now
-                            if (feed.renderFailures != 0) {
-                                LOG.info("[NW-CAMERA] feed {} recovered after {} failures", feed.handle, feed.renderFailures)
-                                feed.renderFailures = 0
-                            }
-                        }
-                    } catch (t: Throwable) {
-                        veilDead = true
-                        LOG.error(
-                            "[NW-CAMERA] Veil feed render threw — captures DISABLED for this session " +
-                                "(a throw inside Veil's perspective render leaks framebuffer-stack state; " +
-                                "retrying would crash the client)",
-                            t,
-                        )
-                        break
-                    }
-                }
-            }
-            // The feed renders with the pack's own per-perspective pipeline
-            // (Veil's Iris mixin) — but CapturedRenderingState is global, so
-            // snapshot/restore it around the batch and keep the shadow pass off.
-            if (IRIS) {
-                dev.nitka.nodewire.client.camera.harness.IrisFeedCompat.aroundVeilBatch(batch)
-            } else {
-                batch()
-            }
-        } finally {
-            VideoManager.setVeilCapture(false)
-            VideoManager.endCapture()
-        }
-    }
-
     private fun harnessCapture(
         mc: Minecraft,
         level: net.minecraft.client.multiplayer.ClientLevel,
@@ -252,10 +179,6 @@ object VideoCameraCapture {
         deltaTracker: DeltaTracker,
         now: Double,
     ) {
-        if (VEIL) {
-            veilCapture(mc, level, active, deltaTracker, now)
-            return
-        }
         val lr = mc.levelRenderer
         val window = mc.window
 
@@ -332,11 +255,16 @@ object VideoCameraCapture {
             // feed re-culls for its camera and the NEXT main frame re-culls for
             // the player before drawing (camera-move -> markGraphDirty -> sync
             // BFS). MixinSodiumRenderSectionManager only freezes the entries
-            // that free/upload GPU data mid-capture. Iris parking wraps the batch.
+            // that free/upload GPU data mid-capture.
+            // Veil guard innermost (global CameraMatrices UBO every Veil shader
+            // — Sable ships! — reads), Iris parking wraps outermost.
+            val inner: () -> Unit = if (VEIL) {
+                { dev.nitka.nodewire.client.camera.harness.VeilStateCompat.aroundCaptureBatch(batch) }
+            } else batch
             if (IRIS) {
-                dev.nitka.nodewire.client.camera.harness.IrisFeedCompat.aroundCaptureBatch(mc, batch)
+                dev.nitka.nodewire.client.camera.harness.IrisFeedCompat.aroundCaptureBatch(mc, inner)
             } else {
-                batch()
+                inner()
             }
         } finally {
             // --- RESTORE ---
