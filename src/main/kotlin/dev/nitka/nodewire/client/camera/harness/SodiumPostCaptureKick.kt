@@ -128,7 +128,7 @@ object SodiumPostCaptureKick {
             // Tripwire: with the full cull freeze active, a capture batch must
             // NOT be able to replace the render lists. If it did, the freeze
             // mixin is not actually applied (or a new mutation path exists).
-            if (saved != null && saved.renderListsIdentity != 0) {
+            if (saved != null && saved.renderListsIdentity != 0 && CaptureEngine.fullFreeze) {
                 val nowId = runCatching {
                     renderListsField?.get(rsm)?.let { System.identityHashCode(it) }
                 }.getOrNull() ?: 0

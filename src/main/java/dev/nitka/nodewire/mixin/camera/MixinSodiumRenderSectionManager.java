@@ -46,6 +46,7 @@ public abstract class MixinSodiumRenderSectionManager {
                     "uploadChunks",
                     "processGFNIMovement",
                     "tickVisibleRenders",
+                    "prepareFrame",
             },
             at = @At("HEAD"),
             cancellable = true,
@@ -58,6 +59,13 @@ public abstract class MixinSodiumRenderSectionManager {
         // cleanupAndFlip here left Veil's nulled lastSectionCollector in place,
         // finalizeRenderLists produced empty lists, and feeds rendered sky+
         // entities but no terrain.
+        // prepareFrame is in this group even though feeds DO cull: it is pure
+        // per-frame bookkeeping — it bumps `frame`, stamps cameraPosition, and
+        // measures frame duration from nanoTime deltas. Letting feeds call it
+        // halved the measured frame time, and that average drives the chunk
+        // UPLOAD budget (max(avgFrameDuration * 0.1, 2ms)) — starved uploads
+        // meant freshly built sections (i.e. the ones at the render-distance
+        // frontier) took several frames to appear: the last blinking chunks.
         if (VideoManager.isCapturing() && !VideoManager.isVeilCapture()) {
             if (!nodewire$loggedGpuFreeze) {
                 nodewire$loggedGpuFreeze = true;
@@ -70,7 +78,6 @@ public abstract class MixinSodiumRenderSectionManager {
     @Inject(
             method = {
                     "update",
-                    "prepareFrame",
                     "finalizeRenderLists",
                     "markGraphDirty",
                     "cleanupAndFlip",
