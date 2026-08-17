@@ -1,6 +1,6 @@
 package dev.nitka.nodewire.mixin.sodium;
 
-import dev.nitka.nodewire.client.video.VideoManager;
+import dev.nitka.nodewire.client.video.SecondaryView;
 import it.unimi.dsi.fastutil.objects.Reference2ReferenceOpenHashMap;
 import net.caffeinemc.mods.sodium.client.gl.device.MultiDrawBatch;
 import net.caffeinemc.mods.sodium.client.model.quad.properties.ModelQuadFacing;
@@ -38,8 +38,11 @@ import java.util.Map;
  * command-buffer refill per region per feed pass; Sodium pays the same
  * whenever the player moves.
  *
- * <p>The guard is {@link VideoManager#isCapturing()}, which brackets the feed
- * render regardless of who performs it — our own path or Vista's.
+ * <p>The guard is {@link SecondaryView#active()}: our captures, and also
+ * Vista's own live feeds, whose cameras show the identical flicker in this
+ * pack with no Nodewire camera involved. The isolation is additive — the
+ * second view gets private structures and writes nothing the main view
+ * reads — so covering both is strictly better than covering ours alone.
  */
 @Mixin(value = RenderRegion.class, remap = false)
 public abstract class MixinRenderRegion {
@@ -58,9 +61,10 @@ public abstract class MixinRenderRegion {
     @Unique
     private static boolean nodewire$logged;
 
+
     @Inject(method = "getRenderList", at = @At("HEAD"), cancellable = true, require = 0)
     private void nodewire$isolateCaptureList(CallbackInfoReturnable<ChunkRenderList> cir) {
-        if (!VideoManager.isCapturing()) return;
+        if (!SecondaryView.active()) return;
         if (nodewire$captureList == null) {
             nodewire$captureList = new ChunkRenderList((RenderRegion) (Object) this);
         }
@@ -69,11 +73,11 @@ public abstract class MixinRenderRegion {
 
     @Inject(method = "getCachedBatch", at = @At("HEAD"), cancellable = true, require = 0)
     private void nodewire$isolateCaptureBatch(TerrainRenderPass pass, CallbackInfoReturnable<MultiDrawBatch> cir) {
-        if (!VideoManager.isCapturing()) return;
+        if (!SecondaryView.active()) return;
         if (!nodewire$logged) {
             nodewire$logged = true;
             com.mojang.logging.LogUtils.getLogger()
-                    .info("[NW-CAMERA] Sodium per-feed render list + draw batches engaged");
+                    .info("[NW-CAMERA] Sodium secondary-view isolation engaged (private render list + draw batches)");
         }
         MultiDrawBatch batch = nodewire$captureBatches.get(pass);
         if (batch == null) {
