@@ -32,7 +32,10 @@ void main() {
     vec2 texSize = vec2(textureSize(Sampler0, 0));
 
     // Deconvergence: R/B sampled slightly off-centre, growing to the edges.
-    vec2 ab = c * (1.2 / texSize);
+    // Kept well under a texel — a feed is only 256px and is displayed large,
+    // so a full-texel split turns every high-contrast edge (treeline against
+    // sky) into saturated red and magenta fringes rather than a soft glow.
+    vec2 ab = c * (0.3 / texSize);
     float rC = texture(Sampler0, uv + ab).r;
     float gC = texture(Sampler0, uv).g;
     float bC = texture(Sampler0, uv - ab).b;
@@ -56,7 +59,7 @@ void main() {
     col = clamp(col * 1.25, 0.0, 1.0);
     col = clamp((col - 0.5) * 1.06 + 0.5, 0.0, 1.0);
     float luma = dot(col, vec3(0.299, 0.587, 0.114));
-    col = clamp(mix(vec3(luma), col, 1.12), 0.0, 1.0);
+    col = clamp(mix(vec3(luma), col, 1.05), 0.0, 1.0);
 
     // Vignette toward the tube corners.
     col *= 1.0 - 0.08 * r2;
