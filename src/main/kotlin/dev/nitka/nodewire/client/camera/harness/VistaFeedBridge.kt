@@ -48,6 +48,7 @@ object VistaFeedBridge {
     private var renderMethod: Method? = null
     private var setupInterface: Class<*>? = null
     private var getIdMethod: Method? = null
+    private var getRenderTargetMethod: Method? = null
     private var closeMethod: Method? = null
 
     private class Entry(val texture: Any, val width: Int, val height: Int)
@@ -69,6 +70,8 @@ object VistaFeedBridge {
                 UUID::class.java,
             )
             getIdMethod = texCls.methods.firstOrNull { it.name == "getId" && it.parameterCount == 0 }
+            getRenderTargetMethod = texCls.methods
+                .firstOrNull { it.name == "getRenderTarget" && it.parameterCount == 0 }
             closeMethod = texCls.methods.firstOrNull { it.name == "close" && it.parameterCount == 0 }
             setupInterface = Class.forName("net.mehvahdjukaar.vista.client.renderer.SceneCameraSetup")
             val rendererCls = Class.forName("net.mehvahdjukaar.vista.client.renderer.VistaLevelRenderer")
@@ -111,6 +114,8 @@ object VistaFeedBridge {
         val setupIface = setupInterface ?: return -1
         val getId = getIdMethod ?: return -1
         val level = Minecraft.getInstance().level ?: return -1
+
+        val getRenderTarget = getRenderTargetMethod ?: return -1
 
         return runCatching {
             var entry = textures[handle]
@@ -162,13 +167,18 @@ object VistaFeedBridge {
 
             // (texture, token, cameraSetup, fov, applyPostChain, customProjection,
             //  bfsStartOverride, renderDistanceOverride)
+            // getId() also lazily allocates both buffers; getRenderTarget()
+            // does not, so ask for it first or Vista draws into a null target.
+            getId.invoke(entry.texture)
+
             render.invoke(null, entry.texture, handle, setup, fovDeg, false, null, null, null)
 
             if (!loggedEngaged) {
                 loggedEngaged = true
                 LOG.info("[NW-CAMERA] Vista feed bridge engaged")
             }
-            (getId.invoke(entry.texture) as? Int) ?: -1
+            val target = getRenderTarget.invoke(entry.texture) as? com.mojang.blaze3d.pipeline.RenderTarget
+            target?.colorTextureId ?: -1
         }.getOrElse {
             LOG.warn("[NW-CAMERA] Vista feed render failed, falling back: {}", it.toString())
             ok = false
