@@ -329,6 +329,10 @@ object VideoCameraCapture {
             lr.itemEntityTarget = oldItemEntity
             lr.weatherTarget = oldWeather
             runCatching { rsGuard?.apply() }
+            // Guarantee the next main frame re-culls for the player camera even
+            // if Sodium's own camera-change detection misses (rare one-frame
+            // chunk blink otherwise).
+            if (SODIUM) dev.nitka.nodewire.client.camera.harness.SodiumPostCaptureKick.kick()
             dev.nitka.nodewire.client.camera.harness.CaptureDebug.disarm()
             VideoManager.endCapture()
         }
