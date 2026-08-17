@@ -12,19 +12,9 @@
   ],
   "client": [
     "camera.MixinGameRenderer",
-    "camera.MixinVeilBlitHandler",
     "camera.MixinClientChunkCache",
     "camera.MixinClientChunkCacheStorage",
-    "camera.MixinLevelRenderer",
-    "control.MixinMouseHandler",
-    "camera.MixinDhClientApi",
-    "camera.MixinIrisPipelineManager",
-    "camera.MixinIrisDhCompat",
-    "camera.MixinIrisSystemTime",
-    "camera.MixinSodiumRenderSectionManager",
-    "camera.MixinSodiumWorldRenderer",
-    "camera.MixinSableSubLevelDispatcher",
-    "camera.MixinFlywheelRenderDispatcher"
+    "control.MixinMouseHandler"
   ],
   "server": [],
   "injectors": {

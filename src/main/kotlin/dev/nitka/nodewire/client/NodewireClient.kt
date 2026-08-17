@@ -125,15 +125,6 @@ object NodewireClient {
                 ) { dev.nitka.nodewire.client.screen.ScreenCrtShader.instance = it }
             }.onFailure { LOG.warn("screen_crt shader failed to load: {}", it.message) }
         }
-        // Distant Horizons: cancel its render during camera captures (the
-        // Vista recipe — otherwise DH's temporal state makes feeds flicker).
-        // Deferred to client setup so DH has bootstrapped its event injector.
-        bus.addListener<net.neoforged.fml.event.lifecycle.FMLClientSetupEvent> {
-            if (net.neoforged.fml.ModList.get().isLoaded("distanthorizons")) {
-                runCatching { dev.nitka.nodewire.client.video.DistantHorizonsCompat.setup() }
-                    .onFailure { e -> LOG.warn("DistantHorizons camera compat failed to attach: {}", e.message) }
-            }
-        }
         FORGE_BUS.addListener(::onClientTick)
         FORGE_BUS.addListener<RenderLevelStageEvent>(WireWorldRenderer::render)
         // Camera Cable: welding-style snap grid on the aimed face while armed.
@@ -151,13 +142,7 @@ object NodewireClient {
         FORGE_BUS.addListener<RegisterClientCommandsEvent>(ClientScriptCommand::register)
         FORGE_BUS.addListener(::onLevelUnload)
         FORGE_BUS.addListener<RegisterClientCommandsEvent>(HighlightCommand::register)
-        // `/nodewire dhfeeds …` — only meaningful (and class-loadable) with DH.
-        FORGE_BUS.addListener<RegisterClientCommandsEvent> { event ->
-            if (net.neoforged.fml.ModList.get().isLoaded("distanthorizons")) {
-                dev.nitka.nodewire.client.video.DhFeedsCommand.register(event)
-            }
-        }
-        // `/nodewire capture <legacy|harness>` — feed render engine toggle.
+        // `/nodewire capture <on|off|dump>` — capture loop controls.
         FORGE_BUS.addListener<RegisterClientCommandsEvent>(
             dev.nitka.nodewire.client.camera.harness.CaptureEngine::registerCommand,
         )
