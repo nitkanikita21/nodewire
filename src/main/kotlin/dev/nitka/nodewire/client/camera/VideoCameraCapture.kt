@@ -76,6 +76,9 @@ object VideoCameraCapture {
 
     private var warnedNoRenderer = false
 
+    /** Last FOV logged, so the value is reported only when it changes. */
+    private var lastLoggedFov: Double = Double.NaN
+
     @JvmStatic
     fun captureFeeds(deltaTracker: DeltaTracker) {
         if (CameraFeedRegistry.isEmpty()) {
@@ -161,6 +164,15 @@ object VideoCameraCapture {
                     marker.xRot = yawPitch[1]
                     marker.yRotO = yawPitch[0]
                     marker.xRotO = yawPitch[1]
+
+                    // Surface the FOV actually used: the pin is clamped to
+                    // 30..110 degrees, so a value outside that range looks like
+                    // "the setting does nothing".
+                    val fov = feed.fovDeg()
+                    if (fov != lastLoggedFov) {
+                        lastLoggedFov = fov
+                        LOG.info("[NW-CAMERA] feed {} FOV = {} deg (allowed 30..110)", feed.handle, fov)
+                    }
 
                     val texId = VistaFeedBridge.render(
                         feed.handle, target.width, target.height, marker,
