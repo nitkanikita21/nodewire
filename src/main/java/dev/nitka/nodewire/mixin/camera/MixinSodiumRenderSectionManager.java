@@ -6,6 +6,7 @@ import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
  * Sodium × feed captures, final design: "everyone culls honestly, nobody
@@ -43,7 +44,6 @@ public abstract class MixinSodiumRenderSectionManager {
             method = {
                     "updateChunks",
                     "uploadChunks",
-                    "cleanupAndFlip",
                     "processGFNIMovement",
                     "tickVisibleRenders",
             },
@@ -73,18 +73,21 @@ public abstract class MixinSodiumRenderSectionManager {
                     "prepareFrame",
                     "finalizeRenderLists",
                     "markGraphDirty",
+                    "cleanupAndFlip",
             },
             at = @At("HEAD"),
             cancellable = true,
             require = 0
     )
     private void nodewire$freezeCullDuringCapture(CallbackInfo ci) {
-        // Full-freeze mode (default): the cull path is frozen too, so a feed
-        // pass draws the player's CURRENT visible set and never writes into
-        // Sodium's shared per-region render lists. Honest per-feed culling
-        // (`/nodewire capture freecull`) refills those shared lists and the
-        // main view blinks at the feed's visibility boundary — kept only as
-        // an experiment toggle until a per-feed region list exists.
+        // The cull LIFECYCLE is all-or-nothing. Default (honest per-feed cull):
+        // update/prepareFrame/finalizeRenderLists/cleanupAndFlip all run for
+        // the feed, so each cull's collector pair stays balanced — freezing
+        // only cleanupAndFlip meant the main pass later flipped/cleaned a
+        // collector pair belonging to a FEED cull, and the sections the two
+        // culls disagreed about (the render-distance frontier) blinked.
+        // `/nodewire capture freeze` cancels the whole group instead: feeds
+        // then draw the player's visible set and Sodium is untouched.
         if (VideoManager.isCapturing()
                 && !VideoManager.isVeilCapture()
                 && dev.nitka.nodewire.client.camera.harness.CaptureEngine.getFullFreeze()) {
@@ -93,6 +96,33 @@ public abstract class MixinSodiumRenderSectionManager {
                 com.mojang.logging.LogUtils.getLogger().info("[NW-CAMERA] Sodium CULL freeze engaged (mixin live)");
             }
             ci.cancel();
+        }
+    }
+
+    @org.spongepowered.asm.mixin.Unique
+    private static float nodewire$mainSearchDistance = -1f;
+
+    /**
+     * Record the MAIN pass's BFS search radius.
+     */
+    @Inject(method = "getSearchDistance", at = @At("RETURN"), require = 0)
+    private void nodewire$recordSearchDistance(CallbackInfoReturnable<Float> cir) {
+        if (!VideoManager.isCapturing()) nodewire$mainSearchDistance = cir.getReturnValue();
+    }
+
+    /**
+     * ...and reuse it for feed culls. Sodium derives the radius from the
+     * CURRENT fog distance, and our feed pass runs with fog disabled (needed
+     * or the feed culls to a few blocks), so feeds searched noticeably
+     * FARTHER than the player. The extra frontier sections landed in the
+     * shared lists/section tree and the next player cull dropped them again:
+     * a blinking ring exactly at the render-distance edge. Same radius for
+     * both passes = the frontier agrees.
+     */
+    @Inject(method = "getSearchDistance", at = @At("HEAD"), cancellable = true, require = 0)
+    private void nodewire$clampSearchDistance(CallbackInfoReturnable<Float> cir) {
+        if (VideoManager.isCapturing() && nodewire$mainSearchDistance > 0f) {
+            cir.setReturnValue(nodewire$mainSearchDistance);
         }
     }
 }
