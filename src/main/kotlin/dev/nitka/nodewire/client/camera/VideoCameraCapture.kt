@@ -41,9 +41,10 @@ object VideoCameraCapture {
 
     private val LOG = LogUtils.getLogger()
 
-    /** Capture cadence, decoupled from the client frame rate (wall-clock gated). */
-    private const val FPS_CAP = 24
-    private const val FRAME_INTERVAL = 1.0 / FPS_CAP
+    /** Capture cadence, decoupled from the client frame rate (wall-clock
+     *  gated). Configurable via `/nodewire capture fps`. */
+    private val fpsCap: Int get() = CaptureEngine.fps
+    private val frameInterval: Double get() = 1.0 / fpsCap
 
     /** Hard ceiling on feeds rendered in a single mc frame. */
     private const val MAX_ACTIVE = 4
@@ -104,15 +105,15 @@ object VideoCameraCapture {
         val all = CameraFeedRegistry.active().filter { !it.removed }
         if (all.isEmpty()) return
         // Stagger: spread the per-feed cadence across mc frames.
-        if (now < lastFrameRenderedSec + FRAME_INTERVAL / maxOf(1, all.size)) return
+        if (now < lastFrameRenderedSec + frameInterval / maxOf(1, all.size)) return
 
         val playerFrustum = mc.levelRenderer.frustum // captured ONCE per frame
-        var budget = Mth.ceil(FPS_CAP * (all.size + 1).toDouble() / mc.fps.toDouble())
+        var budget = Mth.ceil(fpsCap * (all.size + 1).toDouble() / mc.fps.toDouble())
         val captureSq = captureDistanceSq(mc)
         val active = all.asSequence()
             // No consumer = no capture: a camera nobody watches costs nothing.
             .filter { it.hasConsumers() }
-            .filter { now >= it.lastActiveTimeSec + FRAME_INTERVAL }
+            .filter { now >= it.lastActiveTimeSec + frameInterval }
             // Distance gate (Sable-aware); unresolvable pose -> skip.
             .filter { feed ->
                 feed.worldEye(level, deltaTracker)?.let {
