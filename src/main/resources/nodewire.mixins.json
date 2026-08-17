@@ -20,7 +20,8 @@
     "camera.MixinDhClientApi",
     "camera.MixinIrisPipelineManager",
     "camera.MixinIrisDhCompat",
-    "camera.MixinIrisSystemTime"
+    "camera.MixinIrisSystemTime",
+    "camera.MixinSodiumRenderSectionManager"
   ],
   "server": [],
   "injectors": {

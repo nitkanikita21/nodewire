@@ -106,6 +106,11 @@ object VideoCameraCapture {
     @Volatile
     private var lastFrameRenderedSec: Double = 0.0
 
+    /** World-join warm-up: no captures until this wall-clock time. */
+    private const val WORLD_JOIN_WARMUP_SEC = 5.0
+    private var warmupLevel: Any? = null
+    private var warmupUntilSec: Double = 0.0
+
     /** Render-pipeline mods that aggressively wrap `renderLevel` and break our
      *  nested capture pass. When any of these is loaded we refuse to capture
      *  rather than corrupt their state.
@@ -241,18 +246,13 @@ object VideoCameraCapture {
                     }
                 }
             }
-            // Compat fences, innermost-first: Sodium's visibility snapshot,
-            // then Iris' pipeline parking (each only loads with its mod).
-            val sodiumFenced: () -> Unit =
-                if (SODIUM) {
-                    { dev.nitka.nodewire.client.camera.harness.SodiumFeedCompat.aroundCaptureBatch(batch) }
-                } else {
-                    batch
-                }
+            // Iris parking wraps the batch; Sodium is frozen at the source by
+            // MixinSodiumRenderSectionManager (update/prepareFrame cancelled
+            // while capturing — nothing to save, nothing to dangle).
             if (IRIS) {
-                dev.nitka.nodewire.client.camera.harness.IrisFeedCompat.aroundCaptureBatch(mc, sodiumFenced)
+                dev.nitka.nodewire.client.camera.harness.IrisFeedCompat.aroundCaptureBatch(mc, batch)
             } else {
-                sodiumFenced()
+                batch()
             }
         } finally {
             // --- RESTORE ---
@@ -302,6 +302,14 @@ object VideoCameraCapture {
 
         // --- FPS GATE + selection ---
         val now = GLFW.glfwGetTime()
+        // World-join warm-up: the first seconds after entering a level are a
+        // storm of chunk builds/uploads and pipeline (re)inits — capturing into
+        // that produced garbage-triangle worlds. Let the world settle first.
+        if (level !== warmupLevel) {
+            warmupLevel = level
+            warmupUntilSec = now + WORLD_JOIN_WARMUP_SEC
+        }
+        if (now < warmupUntilSec) return
         val all = CameraFeedRegistry.active().filter { !it.removed }
         if (all.isEmpty()) return
         // Stagger: spread the per-feed cadence across mc frames.
