@@ -46,13 +46,13 @@ public abstract class MixinIrisPipelineManager {
             CallbackInfoReturnable<WorldRenderingPipeline> cir
     ) {
         if (!VideoManager.isCapturing()) return;
-        // Veil path: Veil's own PipelineManagerMixin redirects the dimension id
-        // to a dedicated "veil_perspective_*" pipeline — the pack renders the
-        // feed with its OWN pipeline instance and the main pipeline's temporal
-        // state is never touched. Parking to vanilla here would preempt that
-        // (and vanilla-pass feeds under an active pack draw entities/sub-levels
-        // with mismatched programs: black ships, silhouette holes).
-        if (VideoManager.isVeilCapture()) return;
+        // NOTE: parking applies to the Veil path too. Letting Veil's
+        // per-perspective pack pipeline render the feeds was tried (2026-08-17)
+        // and rejected: two full IrisRenderingPipeline instances alternating
+        // per frame share more global state than CapturedRenderingState — the
+        // MAIN view's shader lighting broke and the feed washed out to fog.
+        // Shaderless feeds + a parked pack pipeline is the stable recipe
+        // (same trade-off Vista ships with decorateRendererWithoutShaderPacks).
         if (nodewire$feedPipeline == null) nodewire$feedPipeline = new VanillaRenderingPipeline();
         if (!nodewire$loggedEngaged) {
             nodewire$loggedEngaged = true;

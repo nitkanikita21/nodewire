@@ -104,8 +104,15 @@ object VeilFeedRenderer {
         )
 
         // The wrap shares the feed's color texture but owns its depth buffer —
-        // clear both so last frame's depth doesn't occlude this one.
+        // clear both so last frame's depth doesn't occlude this one. glClear
+        // honours the write masks, and at our seam (post-main-frame) depth
+        // writes are often left DISABLED — without forcing the masks on, the
+        // depth clear silently no-ops and stale near-depth (the player's old
+        // silhouette) blocks sky/terrain behind it forever: the "black stains
+        // where the player was" artifact.
         wrap.fbo.bind(false)
+        RenderSystem.colorMask(true, true, true, true)
+        RenderSystem.depthMask(true)
         RenderSystem.clearColor(0f, 0f, 0f, 1f)
         RenderSystem.clear(CLEAR_MASK, Minecraft.ON_OSX)
         AdvancedFbo.unbind()
