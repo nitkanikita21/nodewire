@@ -94,6 +94,9 @@ object Nodewire {
             }
         }
         FORGE_BUS.addListener(HighlightServerCommand::register)
+        // Panel elements pop off with a left click (both sides: the client
+        // forwards the removal, the server validates it).
+        FORGE_BUS.addListener(dev.nitka.nodewire.block.panel.PanelBreakHandler::onLeftClickBlock)
         FORGE_BUS.addListener(dev.nitka.nodewire.integration.tweakedcontroller.ControllerBindHandler::onRightClickItem)
         FORGE_BUS.addListener(dev.nitka.nodewire.integration.tweakedcontroller.ControllerBindHandler::onRightClickBlock)
         if (FMLEnvironment.dist == Dist.CLIENT) {

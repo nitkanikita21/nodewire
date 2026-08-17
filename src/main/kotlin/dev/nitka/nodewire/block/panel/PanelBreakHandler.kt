@@ -1,6 +1,5 @@
 package dev.nitka.nodewire.block.panel
 
-import dev.nitka.nodewire.Nodewire
 import dev.nitka.nodewire.Registry
 import dev.nitka.nodewire.block.ControlPanelBlock
 import dev.nitka.nodewire.block.ControlPanelBlockEntity
@@ -9,8 +8,6 @@ import net.minecraft.world.entity.player.Player
 import net.minecraft.world.item.ItemStack
 import net.minecraft.world.phys.BlockHitResult
 import net.minecraft.world.phys.HitResult
-import net.neoforged.bus.api.SubscribeEvent
-import net.neoforged.fml.common.EventBusSubscriber
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent
 import java.util.UUID
 
@@ -26,7 +23,10 @@ import java.util.UUID
  * dynamic shape (plate + raised element boxes), so the popped element is
  * exactly the outlined one — any approach angle.
  */
-@EventBusSubscriber(modid = Nodewire.ID)
+// Registered explicitly from Nodewire.init on the game bus. The
+// @EventBusSubscriber annotation does NOT work here: KFF's auto-subscriber
+// covers Kotlin objects on the MOD bus, so this handler was silently never
+// registered and left-clicking an element did nothing at all.
 object PanelBreakHandler {
 
     /** Server-side re-fire guard: LeftClickBlock spams while the button is
@@ -46,7 +46,6 @@ object PanelBreakHandler {
         LOG.info("[NW-PANEL] {} left click ignored: {}", if (level.isClientSide) "client" else "server", reason)
     }
 
-    @SubscribeEvent
     fun onLeftClickBlock(event: PlayerInteractEvent.LeftClickBlock) {
         val level = event.level
         val state = level.getBlockState(event.pos)
