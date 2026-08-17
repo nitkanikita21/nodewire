@@ -1,0 +1,15 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "dev.nitka.nodewire.mixin.sodium",
+  "plugin": "dev.nitka.nodewire.mixin.sodium.SodiumMixinPlugin",
+  "compatibilityLevel": "JAVA_21",
+  "refmap": "nodewire.refmap.json",
+  "client": [
+    "MixinRenderRegion"
+  ],
+  "server": [],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}

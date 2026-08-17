@@ -144,6 +144,20 @@ configurations.all {
 // ecosystem we target, so it stays in its original package.
 val shadedLibs by configurations.creating
 
+// Sodium publishes its NeoForge build as a wrapper jar whose classes live in a
+// nested META-INF/jarjar entry (same shape as Create Aeronautics), so the
+// artifact alone puts nothing on the compile classpath. Unpack the inner jar
+// and compile the Sodium mixin against that.
+val sodiumBundle by configurations.creating
+val sodiumInnerDir = layout.buildDirectory.dir("sodiumCompile")
+val sodiumInnerJar = sodiumInnerDir.map { it.file("sodium-inner.jar") }
+val extractSodiumInner = tasks.register<Copy>("extractSodiumInner") {
+    from({ zipTree(sodiumBundle.singleFile).matching { include("META-INF/jarjar/*sodium*.jar") } })
+    into(sodiumInnerDir)
+    eachFile { path = "sodium-inner.jar" }
+    includeEmptyDirs = false
+}
+
 dependencies {
     shadedLibs("org.jetbrains.compose.runtime:runtime:1.7.0") {
         exclude(group = "org.jetbrains.kotlin")
@@ -286,6 +300,18 @@ dependencies {
     // temporal state otherwise flickers both the feed and the main view).
     // ModList-gated at runtime; nothing bundled.
     compileOnly("maven.modrinth:distanthorizons:3.2.0-b-1.21.1")
+
+    // --- Sodium 0.8.12 (via Modrinth maven) ---
+    // compileOnly, for ONE mixin: RenderRegion caches a single draw-command
+    // batch per terrain pass, and any second view drawn in a frame overwrites
+    // it (Immersive Portals hit the same wall and had to give each portal
+    // layer its own ChunkRenderList; Veil does the same for its perspectives).
+    // Earlier attempts at this used @Pseudo + reflection and never applied,
+    // because the members involved are typed with classes that only exist
+    // inside Sodium's jarJar — with the real artifact on the compile classpath
+    // the injector resolves. Gated at runtime by SodiumMixinPlugin.
+    sodiumBundle("maven.modrinth:sodium:mc1.21.1-0.8.12-neoforge")
+    compileOnly(files(sodiumInnerJar) { builtBy(extractSodiumInner) })
 
     // --- Veil 4.3.0 (via Modrinth maven) ---
     // compileOnly for VeilLevelPerspectiveRenderer: the ecosystem-native

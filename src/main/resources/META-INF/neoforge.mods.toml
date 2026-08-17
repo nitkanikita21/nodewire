@@ -18,6 +18,9 @@ config="nodewire.mixins.json"
 [[mixins]]
 config="nodewire.offroad.mixins.json"
 
+[[mixins]]
+config="nodewire.sodium.mixins.json"
+
 [[dependencies.${mod_id}]]
 modId="neoforge"
 type="required"
