@@ -47,6 +47,7 @@ public abstract class MixinSodiumRenderSectionManager {
                     "processGFNIMovement",
                     "tickVisibleRenders",
                     "prepareFrame",
+                    "cleanupAndFlip",
             },
             at = @At("HEAD"),
             cancellable = true,
@@ -59,13 +60,21 @@ public abstract class MixinSodiumRenderSectionManager {
         // cleanupAndFlip here left Veil's nulled lastSectionCollector in place,
         // finalizeRenderLists produced empty lists, and feeds rendered sky+
         // entities but no terrain.
-        // prepareFrame is in this group even though feeds DO cull: it is pure
-        // per-frame bookkeeping — it bumps `frame`, stamps cameraPosition, and
-        // measures frame duration from nanoTime deltas. Letting feeds call it
-        // halved the measured frame time, and that average drives the chunk
-        // UPLOAD budget (max(avgFrameDuration * 0.1, 2ms)) — starved uploads
-        // meant freshly built sections (i.e. the ones at the render-distance
-        // frontier) took several frames to appear: the last blinking chunks.
+        // Two entries here look like cull work but are not, and both hurt if a
+        // feed pass runs them:
+        //
+        //  * prepareFrame — per-frame bookkeeping: bumps the frame counter,
+        //    stamps cameraPosition and measures frame duration from nanoTime
+        //    deltas. Feeds halved the measured frame time, and that average
+        //    sizes the chunk UPLOAD budget (max(avg * 0.1, 2ms)).
+        //  * cleanupAndFlip — despite the name it touches neither collectors
+        //    nor render lists: it is `sectionCache.cleanup()` plus
+        //    `regions.update()`, i.e. a staging-buffer FLIP, per-region GPU
+        //    update and deletion of empty regions. An extra flip per capture
+        //    swaps the double-buffered upload cycle out from under uploads the
+        //    GPU had not consumed yet, so a freshly built section renders
+        //    stale/empty until it is uploaded again — the single 16³ section
+        //    blinking at the frontier (verified against Sodium 0.8.12 source).
         if (VideoManager.isCapturing() && !VideoManager.isVeilCapture()) {
             if (!nodewire$loggedGpuFreeze) {
                 nodewire$loggedGpuFreeze = true;
@@ -80,21 +89,18 @@ public abstract class MixinSodiumRenderSectionManager {
                     "update",
                     "finalizeRenderLists",
                     "markGraphDirty",
-                    "cleanupAndFlip",
             },
             at = @At("HEAD"),
             cancellable = true,
             require = 0
     )
     private void nodewire$freezeCullDuringCapture(CallbackInfo ci) {
-        // The cull LIFECYCLE is all-or-nothing. Default (honest per-feed cull):
-        // update/prepareFrame/finalizeRenderLists/cleanupAndFlip all run for
-        // the feed, so each cull's collector pair stays balanced — freezing
-        // only cleanupAndFlip meant the main pass later flipped/cleaned a
-        // collector pair belonging to a FEED cull, and the sections the two
-        // culls disagreed about (the render-distance frontier) blinked.
-        // `/nodewire capture freeze` cancels the whole group instead: feeds
-        // then draw the player's visible set and Sodium is untouched.
+        // The CPU cull itself (visibility BFS + render-list build) runs for
+        // feeds by default, which is what gives them an honest picture; the
+        // player's state is restored right after the batch by re-running the
+        // same cull for the main camera (SodiumMainPass). `/nodewire capture
+        // freecull` cancels this group instead, and feeds then draw the
+        // player's visible set with Sodium untouched.
         if (VideoManager.isCapturing()
                 && !VideoManager.isVeilCapture()
                 && dev.nitka.nodewire.client.camera.harness.CaptureEngine.getFullFreeze()) {
