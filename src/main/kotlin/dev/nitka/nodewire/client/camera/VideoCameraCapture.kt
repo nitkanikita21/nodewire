@@ -215,6 +215,13 @@ object VideoCameraCapture {
             dev.nitka.nodewire.client.camera.harness.SodiumPostCaptureKick.save()
         } else null
 
+        // A feed camera sitting on top of geometry produces much larger merged
+        // draw ranges than the player's view, which is what pushes Sodium's
+        // shared index buffer past its high-water mark mid-frame — and growth
+        // rewrites it through an UNSYNCHRONIZED mapping while the GPU may still
+        // be reading it. Pre-grow once so captures never trigger it.
+        if (SODIUM) dev.nitka.nodewire.client.camera.harness.SodiumIndexBuffer.pregrow()
+
         // Sodium bakes a camera-dependent face mask into its cached per-region
         // draw commands; a feed pass would leave batches missing exactly the
         // faces that point at the player. Culling off => feeds write a
