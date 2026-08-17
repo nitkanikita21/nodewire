@@ -599,7 +599,16 @@ class ControlPanelBlockEntity(pos: BlockPos, state: BlockState) :
     }
 
     override fun getUpdateTag(registries: HolderLookup.Provider): CompoundTag =
-        CompoundTag().also { saveAdditional(it, registries) }
+        CompoundTag().also {
+            saveAdditional(it, registries)
+            // Vanilla drops a block-entity sync whose tag is EMPTY: the packet
+            // carries null and the client never applies it. A panel that just
+            // lost its LAST element writes nothing at all, so the removal was
+            // invisible until some other edit made the tag non-empty again —
+            // which is why placing a new element made the old one vanish. The
+            // marker keeps every sync applicable.
+            it.putBoolean(TAG_SYNC, true)
+        }
 
     override fun getUpdatePacket(): Packet<ClientGamePacketListener>? =
         ClientboundBlockEntityDataPacket.create(this)
@@ -615,6 +624,9 @@ class ControlPanelBlockEntity(pos: BlockPos, state: BlockState) :
 
     companion object {
         private const val TAG_ELEMENTS = "elements"
+
+        /** Present only in update tags — see [getUpdateTag]. */
+        private const val TAG_SYNC = "nw_sync"
         private const val TAG_PIN_LINKS = "pin_links"
         private const val TAG_VIDEO = "video_handles"
         private const val TAG_JOY = "joy_states"

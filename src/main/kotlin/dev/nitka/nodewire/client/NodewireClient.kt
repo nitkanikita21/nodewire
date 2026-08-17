@@ -408,10 +408,54 @@ object NodewireClient {
     /** While piloting, cancel attack / use / pick so LMB/RMB feed the pins
      *  instead of breaking, placing or picking blocks. */
     private var lastSuppressLog = 0L
+    private var lastElementRemoval = 0L
+
+    /**
+     * Send a removal request for the panel element under the crosshair, if
+     * there is one. Returns true when the click was consumed.
+     */
+    private fun removePanelElementUnderCrosshair(): Boolean {
+        val mc = Minecraft.getInstance()
+        if (mc.screen != null) return false
+        val player = mc.player ?: return false
+        if (player.isSpectator) return false
+        // Only bare-handed: with an element item in hand the click should
+        // still mine, and the Panel Key has its own removal.
+        if (!player.mainHandItem.isEmpty) return false
+        val hit = mc.hitResult as? net.minecraft.world.phys.BlockHitResult ?: return false
+        if (hit.type != net.minecraft.world.phys.HitResult.Type.BLOCK) return false
+        val level = mc.level ?: return false
+        val state = level.getBlockState(hit.blockPos)
+        if (state.block !is dev.nitka.nodewire.block.ControlPanelBlock) return false
+        val gh = dev.nitka.nodewire.block.ControlPanelBlock.gridHit(state, hit.blockPos, hit.location)
+            ?: return false
+        val be = level.getBlockEntity(hit.blockPos) as? dev.nitka.nodewire.block.ControlPanelBlockEntity
+            ?: return false
+        be.elementAt(gh.cell) ?: return false // bare plate → let vanilla mine the panel
+
+        val now = System.currentTimeMillis()
+        if (now - lastElementRemoval < 250L) return true // held button: consume, don't repeat
+        lastElementRemoval = now
+        net.neoforged.neoforge.network.PacketDistributor.sendToServer(
+            dev.nitka.nodewire.net.RemoveElementPacket(hit.blockPos, gh.cell.x, gh.cell.y),
+        )
+        return true
+    }
 
     private fun onInteractionKey(
         event: net.neoforged.neoforge.client.event.InputEvent.InteractionKeyMappingTriggered,
     ) {
+        // Panel elements pop off with a bare-handed attack. This has to happen
+        // at the key press: vanilla's own attack path silently declines to
+        // start breaking our panel (no LeftClickBlock event is ever fired for
+        // it, verified with /nodewire aim showing the crosshair squarely on
+        // the block), so a handler further down the chain never runs.
+        if (event.isAttack && removePanelElementUnderCrosshair()) {
+            event.isCanceled = true
+            event.setSwingHand(false)
+            return
+        }
+
         // Clicks belong to the session ONLY while its mouse capture is on —
         // with capture off the pilot interacts with the world normally.
         val controlCaptured = ControlSession.isActive() && ControlSession.mouseCaptured
