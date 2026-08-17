@@ -139,6 +139,8 @@ object VideoCameraCapture {
         if (active.isEmpty()) return
         lastFrameRenderedSec = now
 
+        if (CaptureDebug.isArmed()) CaptureDebug.logHandles()
+
         VistaFeedBridge.prune(active.mapTo(HashSet()) { it.handle })
 
         // An invisible marker stands in as the camera's entity for the render.

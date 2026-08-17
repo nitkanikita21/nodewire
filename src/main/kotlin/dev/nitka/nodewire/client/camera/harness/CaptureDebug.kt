@@ -107,6 +107,24 @@ object CaptureDebug {
         }.onFailure { LOG.warn("[NW-CAPDBG] state read failed: {}", it.toString()) }
     }
 
+    /**
+     * Log every video handle the client knows about. A camera is only
+     * captured while something consumes its handle (refs >= 2: the camera
+     * itself plus a viewer), so a Screen or panel element showing nothing is
+     * usually a handle that never reached it rather than a render fault.
+     */
+    fun logHandles() {
+        runCatching {
+            val all = dev.nitka.nodewire.client.video.VideoManager.describeAll()
+            if (all.isEmpty()) {
+                LOG.info("[NW-CAPDBG] no video handles tracked")
+            } else {
+                LOG.info("[NW-CAPDBG] video handles ({}):", all.size)
+                all.forEach { LOG.info("[NW-CAPDBG]   {}", it) }
+            }
+        }
+    }
+
     /** Save any render target as a PNG next to the feed dumps. */
     fun dumpTarget(name: String, target: RenderTarget) {
         runCatching {

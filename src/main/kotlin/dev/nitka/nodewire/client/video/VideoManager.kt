@@ -239,6 +239,16 @@ object VideoManager {
 
     fun refCount(handle: UUID): Int = entries[handle]?.refs ?: 0
 
+    /** Diagnostics: every tracked handle with its refcount and surface state. */
+    @Synchronized
+    fun describeAll(): List<String> = entries.entries.map { (h, e) ->
+        "%s refs=%d surface=%s".format(
+            h.toString().substring(0, 8),
+            e.refs,
+            e.surface?.let { "${it.width}x${it.height}" } ?: "none",
+        )
+    }
+
     fun isAllocated(handle: UUID): Boolean = entries[handle]?.surface != null
 
     fun isTracked(handle: UUID): Boolean = entries.containsKey(handle)
