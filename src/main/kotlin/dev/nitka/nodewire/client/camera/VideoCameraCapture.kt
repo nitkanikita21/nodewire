@@ -197,38 +197,50 @@ object VideoCameraCapture {
         if (veilDead) return
         mc.renderBuffers().bufferSource().endBatch()
         VideoManager.beginCapture()
+        VideoManager.setVeilCapture(true)
         try {
             dev.nitka.nodewire.client.camera.harness.VeilFeedRenderer.prune(
                 active.mapTo(HashSet()) { it.handle },
             )
             val distChunks = Math.min(mc.options.renderDistance().get().toDouble(), MAX_CAPTURE_DISTANCE / 16.0).toFloat()
-            for (feed in active) {
-                try {
-                    val target = feed.renderTarget() ?: continue
-                    val (wpos, yawPitch) = feed.worldPose(level, deltaTracker) ?: continue
-                    val ok = dev.nitka.nodewire.client.camera.harness.VeilFeedRenderer.render(
-                        feed.handle, target, wpos, yawPitch[0], yawPitch[1],
-                        feed.fovDeg().toFloat(), distChunks, deltaTracker,
-                    )
-                    if (ok) {
-                        feed.lastActiveTimeSec = now
-                        if (feed.renderFailures != 0) {
-                            LOG.info("[NW-CAMERA] feed {} recovered after {} failures", feed.handle, feed.renderFailures)
-                            feed.renderFailures = 0
+            val batch = {
+                for (feed in active) {
+                    try {
+                        val target = feed.renderTarget() ?: continue
+                        val (wpos, yawPitch) = feed.worldPose(level, deltaTracker) ?: continue
+                        val ok = dev.nitka.nodewire.client.camera.harness.VeilFeedRenderer.render(
+                            feed.handle, target, wpos, yawPitch[0], yawPitch[1],
+                            feed.fovDeg().toFloat(), distChunks, deltaTracker,
+                        )
+                        if (ok) {
+                            feed.lastActiveTimeSec = now
+                            if (feed.renderFailures != 0) {
+                                LOG.info("[NW-CAMERA] feed {} recovered after {} failures", feed.handle, feed.renderFailures)
+                                feed.renderFailures = 0
+                            }
                         }
+                    } catch (t: Throwable) {
+                        veilDead = true
+                        LOG.error(
+                            "[NW-CAMERA] Veil feed render threw — captures DISABLED for this session " +
+                                "(a throw inside Veil's perspective render leaks framebuffer-stack state; " +
+                                "retrying would crash the client)",
+                            t,
+                        )
+                        break
                     }
-                } catch (t: Throwable) {
-                    veilDead = true
-                    LOG.error(
-                        "[NW-CAMERA] Veil feed render threw — captures DISABLED for this session " +
-                            "(a throw inside Veil's perspective render leaks framebuffer-stack state; " +
-                            "retrying would crash the client)",
-                        t,
-                    )
-                    return
                 }
             }
+            // The feed renders with the pack's own per-perspective pipeline
+            // (Veil's Iris mixin) — but CapturedRenderingState is global, so
+            // snapshot/restore it around the batch and keep the shadow pass off.
+            if (IRIS) {
+                dev.nitka.nodewire.client.camera.harness.IrisFeedCompat.aroundVeilBatch(batch)
+            } else {
+                batch()
+            }
         } finally {
+            VideoManager.setVeilCapture(false)
             VideoManager.endCapture()
         }
     }

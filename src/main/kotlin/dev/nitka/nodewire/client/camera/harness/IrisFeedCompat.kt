@@ -114,6 +114,27 @@ object IrisFeedCompat {
      * No-op decoration when Iris has no active pack pipeline or resolution
      * failed — the block always runs.
      */
+    /**
+     * State-only guard for the VEIL capture path: the pipeline is NOT parked
+     * (Veil gives the perspective its own pipeline instance), but
+     * [CapturedRenderingState] is a GLOBAL singleton the feed pipeline still
+     * writes through — snapshot/restore it, and force the shadow pass off for
+     * the duration.
+     */
+    fun aroundVeilBatch(block: () -> Unit) {
+        val saved = runCatching { SavedState() }.getOrNull()
+        val oldShadowActive = runCatching { ShadowRenderer.ACTIVE }.getOrElse {
+            block(); return
+        }
+        try {
+            ShadowRenderer.ACTIVE = false
+            block()
+        } finally {
+            ShadowRenderer.ACTIVE = oldShadowActive
+            runCatching { saved?.restore() }
+        }
+    }
+
     fun aroundCaptureBatch(mc: Minecraft, block: () -> Unit) {
         resolveOnce()
         val pm = runCatching { Iris.getPipelineManager() }.getOrNull()

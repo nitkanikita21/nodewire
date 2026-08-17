@@ -63,8 +63,22 @@ object VideoManager {
     @Volatile
     private var capturing: Boolean = false
 
+    /** True while the capture batch runs through Veil's LevelPerspectiveRenderer.
+     *  Mixins that hand-hold other mods (Iris pipeline parking) must step aside
+     *  there — Veil's own perspective compat handles those mods natively. */
+    @Volatile
+    private var veilCapture: Boolean = false
+
     @JvmStatic
     fun isCapturing(): Boolean = capturing
+
+    @JvmStatic
+    fun isVeilCapture(): Boolean = veilCapture
+
+    @JvmStatic
+    fun setVeilCapture(value: Boolean) {
+        veilCapture = value
+    }
 
     @JvmStatic
     fun beginCapture() {

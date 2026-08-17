@@ -31,6 +31,12 @@ public abstract class MixinGameRenderer {
             )
     )
     private void nodewire$captureCameras(DeltaTracker deltaTracker, boolean renderLevel, CallbackInfo ci) {
+        // Capture ONLY on frames that actually rendered the level. During the
+        // world-join loading screen mc.level is already non-null but renderLevel
+        // is false — capturing there drives a renderLevel through Iris/Veil/
+        // Sable state that has never seen a real frame, and the poisoned state
+        // (ship geometry smeared across the sky) persists until a shader reload.
+        if (!renderLevel) return;
         VideoCameraCapture.captureFeeds(deltaTracker);
     }
 
