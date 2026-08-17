@@ -58,6 +58,16 @@ object CaptureEngine {
     @Volatile
     var noSableDraw: Boolean = false
 
+    /** Bisection: feeds skip the TRANSLUCENT terrain pass (`notrans`). */
+    @JvmStatic
+    @Volatile
+    var noFeedTranslucent: Boolean = false
+
+    /** Bisection: feeds skip the OPAQUE terrain passes (`noopaque`). */
+    @JvmStatic
+    @Volatile
+    var noFeedOpaque: Boolean = false
+
     fun setMode(m: Mode) {
         mode = m
         saveMode(m)
@@ -118,6 +128,24 @@ object CaptureEngine {
                 noFeedDraw = !noFeedDraw
                 ctx.source.sendSystemMessage(
                     Component.literal("Feed terrain DRAW: " + if (noFeedDraw) "SKIPPED" else "normal"),
+                )
+                1
+            },
+        )
+        root.then(
+            Commands.literal("notrans").executes { ctx ->
+                noFeedTranslucent = !noFeedTranslucent
+                ctx.source.sendSystemMessage(
+                    Component.literal("Feed TRANSLUCENT terrain: " + if (noFeedTranslucent) "SKIPPED" else "normal"),
+                )
+                1
+            },
+        )
+        root.then(
+            Commands.literal("noopaque").executes { ctx ->
+                noFeedOpaque = !noFeedOpaque
+                ctx.source.sendSystemMessage(
+                    Component.literal("Feed OPAQUE terrain: " + if (noFeedOpaque) "SKIPPED" else "normal"),
                 )
                 1
             },

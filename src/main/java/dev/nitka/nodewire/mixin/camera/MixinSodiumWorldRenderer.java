@@ -43,10 +43,24 @@ public abstract class MixinSodiumWorldRenderer {
      * "feed's draw disturbs Sodium's GPU/draw state".
      */
     @Inject(method = "drawChunkLayer", at = @At("HEAD"), cancellable = true, require = 0)
-    private void nodewire$skipFeedTerrainDraw(CallbackInfo ci) {
-        if (VideoManager.isCapturing()
-                && dev.nitka.nodewire.client.camera.harness.CaptureEngine.getNoFeedDraw()) {
+    private void nodewire$skipFeedTerrainDraw(
+            net.minecraft.client.renderer.RenderType renderType,
+            @Coerce Object matrices,
+            double camX,
+            double camY,
+            double camZ,
+            CallbackInfo ci
+    ) {
+        if (!VideoManager.isCapturing()) return;
+        var cfg = dev.nitka.nodewire.client.camera.harness.CaptureEngine.INSTANCE;
+        if (cfg.getNoFeedDraw()) {
             ci.cancel();
+            return;
         }
+        boolean translucent = renderType == net.minecraft.client.renderer.RenderType.translucent();
+        // Pass split: translucent uses indexed tessellation + GFNI sorting,
+        // opaque uses the shared quad index buffer — different machinery.
+        if (translucent && cfg.getNoFeedTranslucent()) ci.cancel();
+        if (!translucent && cfg.getNoFeedOpaque()) ci.cancel();
     }
 }
