@@ -246,17 +246,15 @@ object VideoCameraCapture {
                     }
                 }
             }
-            // Sodium v2: the GPU-mutating entries are frozen at the source by
-            // MixinSodiumRenderSectionManager, the cull path stays live so the
-            // feed re-culls for its own camera, and SodiumFeedCompat restores
-            // the visibility fields afterwards. Iris parking wraps outermost.
-            val sodiumWrapped: () -> Unit = if (SODIUM) {
-                { dev.nitka.nodewire.client.camera.harness.SodiumFeedCompat.aroundCaptureBatch(batch) }
-            } else batch
+            // Sodium: no snapshot, no restore. update() is synchronous, so the
+            // feed re-culls for its camera and the NEXT main frame re-culls for
+            // the player before drawing (camera-move -> markGraphDirty -> sync
+            // BFS). MixinSodiumRenderSectionManager only freezes the entries
+            // that free/upload GPU data mid-capture. Iris parking wraps the batch.
             if (IRIS) {
-                dev.nitka.nodewire.client.camera.harness.IrisFeedCompat.aroundCaptureBatch(mc, sodiumWrapped)
+                dev.nitka.nodewire.client.camera.harness.IrisFeedCompat.aroundCaptureBatch(mc, batch)
             } else {
-                sodiumWrapped()
+                batch()
             }
         } finally {
             // --- RESTORE ---

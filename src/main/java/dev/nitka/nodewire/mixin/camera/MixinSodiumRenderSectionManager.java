@@ -8,24 +8,26 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 /**
- * The freeze half of Sodium feed compat v2 (see {@code SodiumFeedCompat} for
- * the full design). During a capture pass:
+ * Sodium × feed captures, final design: "everyone culls honestly, nobody
+ * frees mid-capture, nothing is snapshotted".
  *
- * <ul>
- *   <li><b>Frozen</b> — everything that moves chunk data on the GPU or flips
- *       per-frame buffers: {@code updateChunks}/{@code uploadChunks} (region
- *       re-uploads would dangle the restored render lists → garbage
- *       triangles), {@code cleanupAndFlip} (extra collector flip per feed →
- *       alternate-frame chunk flicker), {@code processGFNIMovement}
- *       (translucency re-sorts for a camera that "teleports" every frame),
- *       {@code tickVisibleRenders} (sprite animation double-tick).</li>
- *   <li><b>Live</b> — the cull path: {@code update}, {@code prepareFrame},
- *       {@code finalizeRenderLists}, {@code markGraphDirty}. The feed re-culls
- *       for its OWN camera, so it sees geometry the player's frustum dropped
- *       (no black trails). {@code SodiumFeedCompat} snapshots and restores the
- *       visibility fields around the whole batch — safe exactly because the
- *       GPU side is frozen here.</li>
- * </ul>
+ * <p>Sodium 0.8's {@code update()} is fully synchronous (OcclusionCuller BFS
+ * on the render thread), so alternating cameras are inherently safe on the
+ * cull side: the feed pass re-culls for the feed camera (sees geometry the
+ * player's frustum dropped — no black trails), and the next MAIN frame's
+ * {@code setupTerrain} detects the camera change, marks the graph dirty and
+ * re-culls for the player BEFORE anything draws. Two BFS per frame while a
+ * feed is live — the honest price of two viewpoints.
+ *
+ * <p>Both snapshot-restore designs died the same death (restored refs +
+ * anything freeing GPU/arena data = garbage triangles), so restore is gone.
+ * What remains frozen during a capture is exactly the set that frees or
+ * uploads data someone else still references, plus per-frame side clocks:
+ * {@code cleanupAndFlip} (frees the collector the main view's current lists
+ * still point at — THE original chunk-flicker), {@code updateChunks}/
+ * {@code uploadChunks} (GPU region churn mid-capture; they run every main
+ * frame anyway), {@code processGFNIMovement} (translucency re-sorts for a
+ * teleporting camera), {@code tickVisibleRenders} (sprite double-tick).</p>
  */
 @Pseudo
 @Mixin(targets = "net.caffeinemc.mods.sodium.client.render.chunk.RenderSectionManager", remap = false)
