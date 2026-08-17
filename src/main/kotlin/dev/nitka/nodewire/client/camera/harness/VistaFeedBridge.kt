@@ -178,6 +178,11 @@ object VistaFeedBridge {
                 LOG.info("[NW-CAMERA] Vista feed bridge engaged")
             }
             val target = getRenderTarget.invoke(entry.texture) as? com.mojang.blaze3d.pipeline.RenderTarget
+            if (target != null && CaptureDebug.isArmed()) {
+                // Saved BEFORE our copy: separates "Vista drew nothing" from
+                // "we failed to bring its picture across".
+                CaptureDebug.dumpTarget("vista-source", target)
+            }
             target?.colorTextureId ?: -1
         }.getOrElse {
             LOG.warn("[NW-CAMERA] Vista feed render failed, falling back: {}", it.toString())

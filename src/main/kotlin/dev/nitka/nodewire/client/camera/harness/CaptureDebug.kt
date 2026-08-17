@@ -107,6 +107,19 @@ object CaptureDebug {
         }.onFailure { LOG.warn("[NW-CAPDBG] state read failed: {}", it.toString()) }
     }
 
+    /** Save any render target as a PNG next to the feed dumps. */
+    fun dumpTarget(name: String, target: RenderTarget) {
+        runCatching {
+            val dir = FMLPaths.GAMEDIR.get().resolve("screenshots").resolve("nodewire-debug")
+            Files.createDirectories(dir)
+            val stamp = System.currentTimeMillis()
+            Screenshot.takeScreenshot(target).use { img ->
+                img.writeToFile(dir.resolve("$name-$stamp.png").toFile())
+            }
+            LOG.info("[NW-CAPDBG] {} {}x{} saved", name, target.width, target.height)
+        }.onFailure { LOG.warn("[NW-CAPDBG] {} dump failed: {}", name, it.toString()) }
+    }
+
     fun dumpFeed(handle: UUID, target: RenderTarget) {
         runCatching {
             val dir = FMLPaths.GAMEDIR.get().resolve("screenshots").resolve("nodewire-debug")
