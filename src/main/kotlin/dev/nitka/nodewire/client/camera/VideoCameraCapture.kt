@@ -180,6 +180,13 @@ object VideoCameraCapture {
      * (Sable ships above all) treats the pass as a secondary perspective.
      * Our own envelope shrinks to: recursion guard + per-feed pose/fov.
      */
+    /** Session kill-switch: a throw INSIDE Veil's perspective render unwinds
+     *  past Veil's FramebufferStack bookkeeping — after 16 leaked pushes the
+     *  stack overflows and the client dies with a black screen. One failure =
+     *  captures off for the session (fail-safe beats a dead client). */
+    @Volatile
+    private var veilDead = false
+
     private fun veilCapture(
         mc: Minecraft,
         level: net.minecraft.client.multiplayer.ClientLevel,
@@ -187,6 +194,7 @@ object VideoCameraCapture {
         deltaTracker: DeltaTracker,
         now: Double,
     ) {
+        if (veilDead) return
         mc.renderBuffers().bufferSource().endBatch()
         VideoManager.beginCapture()
         try {
@@ -210,9 +218,14 @@ object VideoCameraCapture {
                         }
                     }
                 } catch (t: Throwable) {
-                    if (feed.renderFailures++ % 100 == 0) {
-                        LOG.warn("[NW-CAMERA] feed {} veil render failed (attempt {})", feed.handle, feed.renderFailures, t)
-                    }
+                    veilDead = true
+                    LOG.error(
+                        "[NW-CAMERA] Veil feed render threw — captures DISABLED for this session " +
+                            "(a throw inside Veil's perspective render leaks framebuffer-stack state; " +
+                            "retrying would crash the client)",
+                        t,
+                    )
+                    return
                 }
             }
         } finally {

@@ -67,9 +67,14 @@ object VeilFeedRenderer {
         var wrap = wraps[handle]
         if (wrap == null || wrap.tex != target.colorTextureId || wrap.w != target.width || wrap.h != target.height) {
             wrap?.let { runCatching { it.fbo.free() } }
+            // Depth MUST be a texture attachment: Sable's sub-level layers run
+            // Veil shader programs whose samplers read the bound framebuffer's
+            // depth TEXTURE (getDepthTextureAttachment throws on a renderbuffer
+            // -> every capture failed -> Veil FramebufferStack overflow -> black
+            // screen; seen live 2026-08-17).
             val fbo = AdvancedFbo.withSize(target.width, target.height)
                 .addColorTextureWrapper(target.colorTextureId)
-                .setDepthRenderBuffer()
+                .setDepthTextureBuffer()
                 .setDebugLabel("nodewire_feed")
                 .build(true)
             wrap = Wrap(fbo, target.colorTextureId, target.width, target.height)
