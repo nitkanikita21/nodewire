@@ -45,6 +45,12 @@ public abstract class MixinSodiumRenderSectionManager {
             cancellable = true,
             require = 0
     )
+    @org.spongepowered.asm.mixin.Unique
+    private static boolean nodewire$loggedGpuFreeze;
+
+    @org.spongepowered.asm.mixin.Unique
+    private static boolean nodewire$loggedCullFreeze;
+
     private void nodewire$freezeDuringCapture(CallbackInfo ci) {
         // Veil path: hands off. Veil's perspective mixins own Sodium during a
         // perspective render (dedicated collector, render-list backup/restore)
@@ -52,7 +58,13 @@ public abstract class MixinSodiumRenderSectionManager {
         // cleanupAndFlip here left Veil's nulled lastSectionCollector in place,
         // finalizeRenderLists produced empty lists, and feeds rendered sky+
         // entities but no terrain.
-        if (VideoManager.isCapturing() && !VideoManager.isVeilCapture()) ci.cancel();
+        if (VideoManager.isCapturing() && !VideoManager.isVeilCapture()) {
+            if (!nodewire$loggedGpuFreeze) {
+                nodewire$loggedGpuFreeze = true;
+                com.mojang.logging.LogUtils.getLogger().info("[NW-CAMERA] Sodium GPU freeze engaged (mixin live)");
+            }
+            ci.cancel();
+        }
     }
 
     @Inject(
@@ -76,6 +88,10 @@ public abstract class MixinSodiumRenderSectionManager {
         if (VideoManager.isCapturing()
                 && !VideoManager.isVeilCapture()
                 && dev.nitka.nodewire.client.camera.harness.CaptureEngine.getFullFreeze()) {
+            if (!nodewire$loggedCullFreeze) {
+                nodewire$loggedCullFreeze = true;
+                com.mojang.logging.LogUtils.getLogger().info("[NW-CAMERA] Sodium CULL freeze engaged (mixin live)");
+            }
             ci.cancel();
         }
     }

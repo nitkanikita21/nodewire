@@ -340,13 +340,15 @@ object VideoCameraCapture {
             // teleport that churned translucency sorting) and force the next
             // main frame to re-cull visibility for the player regardless.
             if (SODIUM) {
-                dev.nitka.nodewire.client.camera.harness.SodiumPostCaptureKick.restoreAndKick(
-                    sodiumCamState,
-                    dev.nitka.nodewire.client.camera.harness.CaptureEngine.kickEnabled,
-                )
+                dev.nitka.nodewire.client.camera.harness.SodiumPostCaptureKick.restore(sodiumCamState)
             }
             dev.nitka.nodewire.client.camera.harness.CaptureDebug.disarm()
             VideoManager.endCapture()
+            // AFTER endCapture: the full-freeze mixin cancels markGraphDirty
+            // while capturing, so kicking inside the batch was a silent no-op.
+            if (SODIUM && dev.nitka.nodewire.client.camera.harness.CaptureEngine.kickEnabled) {
+                dev.nitka.nodewire.client.camera.harness.SodiumPostCaptureKick.kick()
+            }
         }
     }
 

@@ -33,7 +33,11 @@ object SodiumPostCaptureKick {
     class Saved(
         val swrValues: Array<Any?>?,
         val taskLists: Any?,
+        val renderListsIdentity: Int,
     )
+
+    private var renderListsField: Field? = null
+    private var lastTripwireLogMs: Long = 0
 
     /** SodiumWorldRenderer last-camera fields. Feed passes overwrite them, and
      *  the next MAIN setupTerrain then sees a fake camera teleport
@@ -72,6 +76,9 @@ object SodiumPostCaptureKick {
             taskListsField = runCatching {
                 rsm.getDeclaredField("taskLists").also { it.isAccessible = true }
             }.getOrNull()
+            renderListsField = runCatching {
+                rsm.getDeclaredField("renderLists").also { it.isAccessible = true }
+            }.getOrNull()
             LOG.info(
                 "[NW-CAMERA] Sodium post-capture guard armed ({} SWR fields, taskLists={})",
                 swrFields.size, taskListsField != null,
@@ -97,11 +104,14 @@ object SodiumPostCaptureKick {
         }
         val rsm = runCatching { rsmField?.get(swr) }.getOrNull()
         val taskLists = runCatching { rsm?.let { taskListsField?.get(it) } }.getOrNull()
-        return Saved(swrValues, taskLists)
+        val listsId = runCatching {
+            rsm?.let { renderListsField?.get(it) }?.let { System.identityHashCode(it) }
+        }.getOrNull() ?: 0
+        return Saved(swrValues, taskLists, listsId)
     }
 
-    /** Restore the snapshot; optionally force a visibility re-cull next frame. */
-    fun restoreAndKick(saved: Saved?, kick: Boolean) {
+    /** Restore the snapshot. Call BEFORE endCapture. */
+    fun restore(saved: Saved?) {
         resolveOnce()
         runCatching {
             val swr = instanceNullable?.invoke(null) ?: return
@@ -115,9 +125,37 @@ object SodiumPostCaptureKick {
             if (saved?.taskLists != null) {
                 runCatching { taskListsField?.set(rsm, saved.taskLists) }
             }
-            if (kick) {
-                markGraphDirty?.invoke(rsm)
+            // Tripwire: with the full cull freeze active, a capture batch must
+            // NOT be able to replace the render lists. If it did, the freeze
+            // mixin is not actually applied (or a new mutation path exists).
+            if (saved != null && saved.renderListsIdentity != 0) {
+                val nowId = runCatching {
+                    renderListsField?.get(rsm)?.let { System.identityHashCode(it) }
+                }.getOrNull() ?: 0
+                if (nowId != 0 && nowId != saved.renderListsIdentity) {
+                    val now = System.currentTimeMillis()
+                    if (now - lastTripwireLogMs > 1000) {
+                        lastTripwireLogMs = now
+                        LOG.warn(
+                            "[NW-CAMERA] TRIPWIRE: Sodium renderLists CHANGED across a capture batch " +
+                                "({} -> {}) — the freeze mixin is not holding!",
+                            saved.renderListsIdentity, nowId,
+                        )
+                    }
+                }
             }
+        }
+    }
+
+    /** Force a visibility re-cull next frame. Call AFTER endCapture — the
+     *  full-freeze mixin cancels markGraphDirty while capturing, so calling
+     *  it inside the batch was a silent no-op. */
+    fun kick() {
+        resolveOnce()
+        runCatching {
+            val swr = instanceNullable?.invoke(null) ?: return
+            val rsm = rsmField?.get(swr) ?: return
+            markGraphDirty?.invoke(rsm)
         }
     }
 }
