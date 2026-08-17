@@ -27,6 +27,13 @@ object SodiumPostCaptureKick {
     private var rsmField: Field? = null
     private var markGraphDirty: Method? = null
     private var swrFields: List<Field> = emptyList()
+    private var taskListsField: Field? = null
+
+    /** Snapshot taken before a capture batch. */
+    class Saved(
+        val swrValues: Array<Any?>?,
+        val taskLists: Any?,
+    )
 
     /** SodiumWorldRenderer last-camera fields. Feed passes overwrite them, and
      *  the next MAIN setupTerrain then sees a fake camera teleport
@@ -57,7 +64,18 @@ object SodiumPostCaptureKick {
             swrFields = SWR_FIELD_NAMES.mapNotNull { name ->
                 runCatching { swr.getDeclaredField(name).also { it.isAccessible = true } }.getOrNull()
             }
-            LOG.info("[NW-CAMERA] Sodium post-capture guard armed ({} SWR fields)", swrFields.size)
+            // Feed culls fill the task queues with sort/rebuild work for
+            // sections near the FEED camera; the next main updateChunks then
+            // executes it, churning those sections' GPU buffers forever
+            // (mid-replacement frames = "chunks blink near the camera").
+            // Restoring the pre-batch reference drops the feed-scheduled work.
+            taskListsField = runCatching {
+                rsm.getDeclaredField("taskLists").also { it.isAccessible = true }
+            }.getOrNull()
+            LOG.info(
+                "[NW-CAMERA] Sodium post-capture guard armed ({} SWR fields, taskLists={})",
+                swrFields.size, taskListsField != null,
+            )
         } catch (t: Throwable) {
             LOG.warn("[NW-CAMERA] Sodium post-capture kick failed to resolve: {}", t.toString())
         }
@@ -70,28 +88,34 @@ object SodiumPostCaptureKick {
         else -> v
     }
 
-    /** Snapshot SWR's last-camera fields before a capture batch. */
-    fun save(): Array<Any?>? {
+    /** Snapshot SWR's last-camera fields + the task-queue reference. */
+    fun save(): Saved? {
         resolveOnce()
         val swr = runCatching { instanceNullable?.invoke(null) }.getOrNull() ?: return null
-        if (swrFields.isEmpty()) return null
-        return Array(swrFields.size) { i ->
+        val swrValues = if (swrFields.isEmpty()) null else Array(swrFields.size) { i ->
             runCatching { snapshotValue(swrFields[i].get(swr)) }.getOrNull()
         }
+        val rsm = runCatching { rsmField?.get(swr) }.getOrNull()
+        val taskLists = runCatching { rsm?.let { taskListsField?.get(it) } }.getOrNull()
+        return Saved(swrValues, taskLists)
     }
 
     /** Restore the snapshot; optionally force a visibility re-cull next frame. */
-    fun restoreAndKick(saved: Array<Any?>?, kick: Boolean) {
+    fun restoreAndKick(saved: Saved?, kick: Boolean) {
         resolveOnce()
         runCatching {
             val swr = instanceNullable?.invoke(null) ?: return
-            if (saved != null) {
+            val swrValues = saved?.swrValues
+            if (swrValues != null) {
                 for ((i, f) in swrFields.withIndex()) {
-                    runCatching { f.set(swr, saved[i]) }
+                    runCatching { f.set(swr, swrValues[i]) }
                 }
             }
+            val rsm = rsmField?.get(swr) ?: return
+            if (saved?.taskLists != null) {
+                runCatching { taskListsField?.set(rsm, saved.taskLists) }
+            }
             if (kick) {
-                val rsm = rsmField?.get(swr) ?: return
                 markGraphDirty?.invoke(rsm)
             }
         }
