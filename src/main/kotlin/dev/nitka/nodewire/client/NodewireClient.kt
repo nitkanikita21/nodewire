@@ -142,6 +142,9 @@ object NodewireClient {
         FORGE_BUS.addListener<RegisterClientCommandsEvent>(ClientScriptCommand::register)
         FORGE_BUS.addListener(::onLevelUnload)
         FORGE_BUS.addListener<RegisterClientCommandsEvent>(HighlightCommand::register)
+        FORGE_BUS.addListener<RegisterClientCommandsEvent>(
+            dev.nitka.nodewire.client.command.AimCommand::register,
+        )
         // `/nodewire capture <on|off|dump>` — capture loop controls.
         FORGE_BUS.addListener<RegisterClientCommandsEvent>(
             dev.nitka.nodewire.client.camera.harness.CaptureEngine::registerCommand,
@@ -178,6 +181,7 @@ object NodewireClient {
         // Pillar 2 Stage A — publish far-camera chunk zones + request streaming
         // (no-ops without far cameras; sends only on change).
         dev.nitka.nodewire.camerachunk.CameraChunkClient.tick()
+        dev.nitka.nodewire.client.command.AimCommand.tick()
         // Stream the pilot's input while a Control Block session is active.
         ControlSession.update()
         // Panel joystick hold session: liveness + state streaming.
