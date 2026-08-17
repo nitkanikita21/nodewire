@@ -236,15 +236,21 @@ object VideoCameraCapture {
                         marker.yRotO = yawPitch[0]
                         marker.xRotO = yawPitch[1]
 
-                        // RenderTarget.clear honours the GL write masks, and at
-                        // our seam (after the main frame's final composite,
-                        // especially with Iris) depth writes are often left
-                        // DISABLED — the depth clear then silently no-ops and
-                        // stale near-depth (the player's old silhouette) keeps
+                        // RenderTarget.clear honours the GL write masks AND the
+                        // scissor test, and at our seam (after the main frame's
+                        // final composite + GUI, especially with Iris) depth
+                        // writes may be left DISABLED and the chat's scissor
+                        // rect may still be active — the clear then silently
+                        // no-ops (or clips to the chat rect) and stale
+                        // near-depth (the player's old silhouette) keeps
                         // rejecting sky/terrain behind it: the persistent
-                        // "player trail" in feeds. Force the masks on first.
+                        // "player trail" / patchy feeds. Force clean state.
+                        if (dev.nitka.nodewire.client.camera.harness.CaptureDebug.isArmed()) {
+                            dev.nitka.nodewire.client.camera.harness.CaptureDebug.logGlState("pre-clear feed=${feed.handle}")
+                        }
                         com.mojang.blaze3d.systems.RenderSystem.colorMask(true, true, true, true)
                         com.mojang.blaze3d.systems.RenderSystem.depthMask(true)
+                        com.mojang.blaze3d.systems.RenderSystem.disableScissor()
                         target.clear(Minecraft.ON_OSX)
                         target.bindWrite(true)
                         mc.mainRenderTarget = target
@@ -254,6 +260,10 @@ object VideoCameraCapture {
                         dev.nitka.nodewire.client.camera.harness.FeedRenderDriver.render(
                             mc, camera, marker, feed.fovDeg(), DeltaTracker.ONE,
                         )
+
+                        if (dev.nitka.nodewire.client.camera.harness.CaptureDebug.isArmed()) {
+                            dev.nitka.nodewire.client.camera.harness.CaptureDebug.dumpFeed(feed.handle, target)
+                        }
 
                         feed.lastActiveTimeSec = now
                         if (feed.renderFailures != 0) {
@@ -312,6 +322,7 @@ object VideoCameraCapture {
             lr.itemEntityTarget = oldItemEntity
             lr.weatherTarget = oldWeather
             runCatching { rsGuard?.apply() }
+            dev.nitka.nodewire.client.camera.harness.CaptureDebug.disarm()
             VideoManager.endCapture()
         }
     }

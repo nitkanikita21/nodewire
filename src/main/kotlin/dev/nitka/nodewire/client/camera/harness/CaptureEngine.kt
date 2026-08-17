@@ -45,6 +45,17 @@ object CaptureEngine {
                 },
             )
         }
+        root.then(
+            Commands.literal("dump").executes { ctx ->
+                CaptureDebug.request()
+                ctx.source.sendSystemMessage(
+                    Component.literal(
+                        "Capture debug armed: next capture logs GL state + saves feed PNGs to screenshots/nodewire-debug/",
+                    ),
+                )
+                1
+            },
+        )
         event.dispatcher.register(Commands.literal("nodewire").then(root))
     }
 
