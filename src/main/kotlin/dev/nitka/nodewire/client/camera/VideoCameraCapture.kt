@@ -352,6 +352,10 @@ object VideoCameraCapture {
             if (SODIUM && dev.nitka.nodewire.client.camera.harness.CaptureEngine.kickEnabled) {
                 dev.nitka.nodewire.client.camera.harness.SodiumPostCaptureKick.kick()
                 dev.nitka.nodewire.client.camera.harness.SodiumMainPass.recompute()
+                // Cached per-region draw batches bake in the camera used to
+                // build them; Sodium's own invalidation check can't tell a
+                // feed camera from the player for distant regions.
+                dev.nitka.nodewire.client.camera.harness.SodiumMainPass.clearRegionBatches()
             }
         }
     }

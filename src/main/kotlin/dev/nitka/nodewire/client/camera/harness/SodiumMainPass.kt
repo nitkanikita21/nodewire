@@ -44,7 +44,11 @@ object SodiumMainPass {
     private var rsmField: java.lang.reflect.Field? = null
     private var updateMethod: Method? = null
     private var finalizeMethod: Method? = null
+    private var regionsField: java.lang.reflect.Field? = null
+    private var getLoadedRegions: Method? = null
+    private var clearAllCachedBatches: Method? = null
     private var loggedEngaged = false
+    private var loggedBatches = false
 
     @JvmStatic
     fun record(camera: Camera, viewport: Any?, spectator: Boolean) {
@@ -64,6 +68,11 @@ object SodiumMainPass {
             val rsm = Class.forName("net.caffeinemc.mods.sodium.client.render.chunk.RenderSectionManager")
             updateMethod = rsm.methods.firstOrNull { it.name == "update" && it.parameterCount == 3 }
             finalizeMethod = rsm.methods.firstOrNull { it.name == "finalizeRenderLists" && it.parameterCount == 1 }
+            regionsField = runCatching { rsm.getDeclaredField("regions").also { it.isAccessible = true } }.getOrNull()
+            val rrm = Class.forName("net.caffeinemc.mods.sodium.client.render.chunk.region.RenderRegionManager")
+            getLoadedRegions = runCatching { rrm.getMethod("getLoadedRegions") }.getOrNull()
+            val region = Class.forName("net.caffeinemc.mods.sodium.client.render.chunk.region.RenderRegion")
+            clearAllCachedBatches = runCatching { region.getMethod("clearAllCachedBatches") }.getOrNull()
         } catch (t: Throwable) {
             LOG.warn("[NW-CAMERA] Sodium main-pass recompute failed to resolve: {}", t.toString())
         }
@@ -91,6 +100,47 @@ object SodiumMainPass {
         }.onFailure {
             LOG.warn("[NW-CAMERA] Sodium player re-cull failed: {}", it.toString())
             updateMethod = null // don't spam every frame
+        }
+    }
+
+    /**
+     * Invalidate every region's CACHED draw-command batch.
+     *
+     * Sodium caches the multi-draw command buffer per region and only refills
+     * it when [ChunkRenderList.prepareForRender] notices a change — and that
+     * check compares only the section-geometry bitmap and the camera's
+     * REGION-RELATIVE section coords, which are clamped to [-1, 8]. For any
+     * region the viewer sits outside of (every distant region — i.e. the whole
+     * render-distance frontier), the player camera and a feed camera clamp to
+     * the SAME relative coords, so after a feed pass the check saw "nothing
+     * changed" and the main frame reused command buffers built for the FEED
+     * camera. Those buffers bake in per-section block-face culling, so the
+     * affected sections lost faces / vanished for a frame: the sub-chunks
+     * that kept blinking no matter how much cull state we restored.
+     *
+     * Clearing the caches after a capture costs one refill pass — the same
+     * work Sodium does on any frame where the camera moves.
+     */
+    fun clearRegionBatches() {
+        resolveOnce()
+        val regionsF = regionsField ?: return
+        val loaded = getLoadedRegions ?: return
+        val clear = clearAllCachedBatches ?: return
+        runCatching {
+            val swr = instanceNullable?.invoke(null) ?: return
+            val rsm = rsmField?.get(swr) ?: return
+            val rrm = regionsF.get(rsm) ?: return
+            val regions = loaded.invoke(rrm) as? Collection<*> ?: return
+            for (r in regions) {
+                if (r != null) clear.invoke(r)
+            }
+            if (!loggedBatches) {
+                loggedBatches = true
+                LOG.info("[NW-CAMERA] Sodium region draw-batch invalidation engaged ({} regions)", regions.size)
+            }
+        }.onFailure {
+            LOG.warn("[NW-CAMERA] Sodium batch invalidation failed: {}", it.toString())
+            clearAllCachedBatches = null
         }
     }
 }
