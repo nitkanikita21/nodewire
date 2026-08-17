@@ -123,6 +123,15 @@ object CaptureEngine {
             },
         )
         root.then(
+            Commands.literal("blink").executes { ctx ->
+                CaptureDebug.armBlinkDiag(600)
+                ctx.source.sendSystemMessage(
+                    Component.literal("Blink sampler armed for 600 frames — reproduce the blink now, then check the log"),
+                )
+                1
+            },
+        )
+        root.then(
             Commands.literal("nosable").executes { ctx ->
                 noSableDraw = !noSableDraw
                 ctx.source.sendSystemMessage(

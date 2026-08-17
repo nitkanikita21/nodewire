@@ -34,6 +34,48 @@ object CaptureDebug {
         armed = true
     }
 
+    // ── blink sampler ─────────────────────────────────────────────────────
+    // Logs Sodium's visible-section count per frame and flags dips, so we can
+    // tell "sections vanish from the render lists" from "sections are in the
+    // lists but drawn wrong" — the two halves the blink could still live in.
+
+    @Volatile
+    private var blinkFramesLeft: Int = 0
+    private var blinkAvg: Double = 0.0
+    private var blinkCapturedThisFrame = false
+
+    fun armBlinkDiag(frames: Int) {
+        blinkFramesLeft = frames
+        blinkAvg = 0.0
+    }
+
+    fun blinkArmed(): Boolean = blinkFramesLeft > 0
+
+    fun noteCaptureThisFrame() {
+        blinkCapturedThisFrame = true
+    }
+
+    fun sampleFrame(count: Int) {
+        if (blinkFramesLeft <= 0 || count < 0) {
+            blinkCapturedThisFrame = false
+            return
+        }
+        blinkFramesLeft -= 1
+        if (blinkAvg == 0.0) blinkAvg = count.toDouble()
+        val dip = count < blinkAvg * 0.85
+        if (dip) {
+            LOG.warn(
+                "[NW-CAPDBG] visible sections DIP: {} (avg {}) capturedLastFrame={}",
+                count, blinkAvg.toInt(), blinkCapturedThisFrame,
+            )
+        }
+        blinkAvg = blinkAvg * 0.9 + count * 0.1
+        if (blinkFramesLeft == 0) {
+            LOG.info("[NW-CAPDBG] blink sampler finished (avg {} sections)", blinkAvg.toInt())
+        }
+        blinkCapturedThisFrame = false
+    }
+
     fun isArmed(): Boolean = armed
 
     fun disarm() {

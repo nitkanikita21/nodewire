@@ -103,6 +103,22 @@ object SodiumMainPass {
         }
     }
 
+    private var visibleCountMethod: Method? = null
+
+    /** Sodium's own count of sections queued for drawing this frame. */
+    fun visibleSectionCount(): Int {
+        resolveOnce()
+        return runCatching {
+            val swr = instanceNullable?.invoke(null) ?: return -1
+            if (visibleCountMethod == null) {
+                visibleCountMethod = swr.javaClass.methods.firstOrNull {
+                    it.name == "getVisibleChunkCount" && it.parameterCount == 0
+                }
+            }
+            (visibleCountMethod?.invoke(swr) as? Int) ?: -1
+        }.getOrDefault(-1)
+    }
+
     /**
      * Invalidate every region's CACHED draw-command batch.
      *

@@ -369,6 +369,15 @@ object VideoCameraCapture {
 
     @JvmStatic
     fun captureFeeds(deltaTracker: DeltaTracker) {
+        // Blink sampler (armed by `/nodewire capture blink`): this seam runs
+        // once per rendered frame, right after the main level render, so it is
+        // the natural place to read Sodium's visible-section count.
+        if (dev.nitka.nodewire.client.camera.harness.CaptureDebug.blinkArmed() && SODIUM) {
+            dev.nitka.nodewire.client.camera.harness.CaptureDebug.sampleFrame(
+                dev.nitka.nodewire.client.camera.harness.SodiumMainPass.visibleSectionCount(),
+            )
+        }
+
         // --- GUARDS ---
         if (CameraFeedRegistry.isEmpty()) return
         if (VideoManager.isCapturing()) return
