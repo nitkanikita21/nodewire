@@ -20,7 +20,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(targets = "net.caffeinemc.mods.sodium.client.render.SodiumWorldRenderer", remap = false)
 public abstract class MixinSodiumWorldRenderer {
 
-    @Inject(method = "setupTerrain", at = @At("HEAD"), require = 0)
+    @Inject(method = "setupTerrain", at = @At("HEAD"), cancellable = true, require = 0)
     private void nodewire$recordMainPass(
             Camera camera,
             @Coerce Object viewport,
@@ -28,6 +28,25 @@ public abstract class MixinSodiumWorldRenderer {
             boolean updateChunksImmediately,
             CallbackInfo ci
     ) {
-        if (!VideoManager.isCapturing()) SodiumMainPass.record(camera, viewport, spectator);
+        if (!VideoManager.isCapturing()) {
+            SodiumMainPass.record(camera, viewport, spectator);
+            return;
+        }
+        // Bisection: `/nodewire capture nocull` stops feeds from running
+        // Sodium's terrain setup at all.
+        if (dev.nitka.nodewire.client.camera.harness.CaptureEngine.getNoFeedCull()) ci.cancel();
+    }
+
+    /**
+     * Bisection: `/nodewire capture nodraw` stops feeds from DRAWING terrain
+     * (they still cull). Splits "feed disturbs Sodium's visibility state" from
+     * "feed's draw disturbs Sodium's GPU/draw state".
+     */
+    @Inject(method = "drawChunkLayer", at = @At("HEAD"), cancellable = true, require = 0)
+    private void nodewire$skipFeedTerrainDraw(CallbackInfo ci) {
+        if (VideoManager.isCapturing()
+                && dev.nitka.nodewire.client.camera.harness.CaptureEngine.getNoFeedDraw()) {
+            ci.cancel();
+        }
     }
 }

@@ -43,6 +43,16 @@ object CaptureEngine {
     @Volatile
     var fullFreeze: Boolean = false
 
+    /** Bisection: feeds don't run Sodium's terrain setup (`nocull`). */
+    @JvmStatic
+    @Volatile
+    var noFeedCull: Boolean = false
+
+    /** Bisection: feeds don't draw terrain (`nodraw`). */
+    @JvmStatic
+    @Volatile
+    var noFeedDraw: Boolean = false
+
     fun setMode(m: Mode) {
         mode = m
         saveMode(m)
@@ -86,6 +96,24 @@ object CaptureEngine {
             Commands.literal("nofog").executes { ctx ->
                 noFogEnabled = !noFogEnabled
                 ctx.source.sendSystemMessage(Component.literal("Feed setupNoFog: " + if (noFogEnabled) "ON" else "OFF"))
+                1
+            },
+        )
+        root.then(
+            Commands.literal("nocull").executes { ctx ->
+                noFeedCull = !noFeedCull
+                ctx.source.sendSystemMessage(
+                    Component.literal("Feed terrain CULL: " + if (noFeedCull) "SKIPPED" else "normal"),
+                )
+                1
+            },
+        )
+        root.then(
+            Commands.literal("nodraw").executes { ctx ->
+                noFeedDraw = !noFeedDraw
+                ctx.source.sendSystemMessage(
+                    Component.literal("Feed terrain DRAW: " + if (noFeedDraw) "SKIPPED" else "normal"),
+                )
                 1
             },
         )
