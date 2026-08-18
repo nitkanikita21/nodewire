@@ -218,8 +218,21 @@ object CameraGizmoOverlay {
     }
 }
 
-/** Whether the camera gizmo is drawn — toggled with `/nodewire gizmo`. */
+/** Whether the read-only camera overlay is drawn — `/nodewire gizmo`. */
 object CameraGizmoState {
     @Volatile
     var enabled: Boolean = false
+
+    /** Camera the editor should open on at the next client tick, or null. */
+    @Volatile
+    var openFor: net.minecraft.core.BlockPos? = null
+
+    /** Called each client tick: opens the editor once the chat screen is gone. */
+    fun tick() {
+        val pos = openFor ?: return
+        val mc = Minecraft.getInstance()
+        if (mc.screen != null) return
+        openFor = null
+        mc.setScreen(dev.nitka.nodewire.client.screen.CameraGizmoScreen(pos))
+    }
 }

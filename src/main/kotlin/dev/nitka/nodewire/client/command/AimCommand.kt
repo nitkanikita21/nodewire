@@ -50,12 +50,11 @@ object AimCommand {
                         )
                         return@executes 1
                     }
-                    session.open(aimed)
+                    // Opened next tick: a command runs while the chat screen is
+                    // still up, and setScreen here would be undone by its close.
+                    dev.nitka.nodewire.client.camera.CameraGizmoState.openFor = aimed
                     ctx.source.sendSystemMessage(
-                        Component.literal(
-                            "Gizmo editor: drag a handle with left click, hold Shift to snap, " +
-                                "run the command again to close",
-                        ),
+                        Component.literal("Opening gizmo editor..."),
                     )
                     1
                 },

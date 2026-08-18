@@ -47,6 +47,15 @@ object CameraGizmoSession {
     var target: BlockPos? = null
         private set
 
+    /** True while the editor owns the game camera (the orbit view). */
+    @JvmStatic
+    var viewControlled: Boolean = false
+
+    /** Which half of the gizmo is on screen — Synaxis shows one at a time. */
+    enum class Mode { MOVE, ROTATE }
+
+    var mode: Mode = Mode.MOVE
+
     /** Working copy: facing-relative offsets plus the two aim angles. */
     var right = 0.0
         private set
@@ -74,6 +83,7 @@ object CameraGizmoSession {
     /** Entry state, restored by [cancel]. */
     private var entry: DoubleArray? = null
 
+    @JvmStatic
     fun isActive(): Boolean = target != null
 
     /** Begin editing the camera at [pos]. */
@@ -108,6 +118,16 @@ object CameraGizmoSession {
             commit()
         }
         close()
+    }
+
+    /** Clear every offset and angle — a lens back at the block centre. */
+    fun reset() {
+        right = 0.0
+        up = 0.0
+        forward = 0.0
+        yaw = 0f
+        pitch = 0f
+        commit()
     }
 
     /** Send the working copy to the server. */
@@ -187,18 +207,42 @@ object CameraGizmoSession {
     fun tick() {
         if (!isActive()) return
         val mc = Minecraft.getInstance()
-        val player = mc.player ?: return close()
-        val eye = eyeWorld() ?: return
-        val origin = player.getEyePosition(1f)
-        val ray = player.getViewVector(1f).normalize()
-        val sneak = player.isShiftKeyDown
+        if (mc.player == null) return close()
+        // While the editor owns the view, aim comes from the mouse cursor over
+        // the orbit camera; otherwise from the player's own crosshair.
+        val origin: Vec3
+        val ray: Vec3
+        if (viewControlled) {
+            origin = CameraGizmoView.position()
+            ray = CameraGizmoView.rayAt(mc.mouseHandler.xpos() * mc.window.guiScaledWidth / mc.window.screenWidth,
+                mc.mouseHandler.ypos() * mc.window.guiScaledHeight / mc.window.screenHeight)
+        } else {
+            val player = mc.player ?: return
+            origin = player.getEyePosition(1f)
+            ray = player.getViewVector(1f).normalize()
+        }
+        update(origin, ray, fine())
+    }
 
+    /** Shift is the fine-snap modifier, as in Synaxis' gizmo. */
+    private fun fine(): Boolean = net.minecraft.client.gui.screens.Screen.hasShiftDown()
+
+    /** Advance hover or drag from an explicit aim ray. */
+    fun update(origin: Vec3, ray: Vec3, fine: Boolean) {
+        val eye = eyeWorld() ?: return
         val d = dragging
         if (d != null) {
-            drag(d, eye, origin, ray, sneak)
+            drag(d, eye, origin, ray, fine)
             return
         }
         hovered = pick(eye, origin, ray)
+    }
+
+    /** Grab whatever is under an explicit ray. Returns true when a drag began. */
+    fun beginDragAt(origin: Vec3, ray: Vec3): Boolean {
+        val eye = eyeWorld() ?: return false
+        hovered = pick(eye, origin, ray)
+        return beginDragFrom(eye, origin, ray)
     }
 
     /** Nearest handle under the aim, or null. */
@@ -206,28 +250,32 @@ object CameraGizmoSession {
         var best: Handle? = null
         var bestDist = PICK_TOLERANCE
 
-        for (h in listOf(Handle.RIGHT, Handle.UP, Handle.FORWARD)) {
-            val axis = axisWorld(h) ?: continue
-            val d = raySegmentDistance(origin, ray, eye, eye.add(axis.scale(AXIS_LEN)))
-            if (d < bestDist) { bestDist = d; best = h }
-        }
-        for (h in listOf(Handle.YAW, Handle.PITCH)) {
-            val n = ringNormal(h) ?: continue
-            val d = rayRingDistance(origin, ray, eye, n, RING_RADIUS)
-            if (d < bestDist) { bestDist = d; best = h }
+        if (mode == Mode.MOVE) {
+            for (h in listOf(Handle.RIGHT, Handle.UP, Handle.FORWARD)) {
+                val axis = axisWorld(h) ?: continue
+                val d = raySegmentDistance(origin, ray, eye, eye.add(axis.scale(AXIS_LEN)))
+                if (d < bestDist) { bestDist = d; best = h }
+            }
+        } else {
+            for (h in listOf(Handle.YAW, Handle.PITCH)) {
+                val n = ringNormal(h) ?: continue
+                val d = rayRingDistance(origin, ray, eye, n, RING_RADIUS)
+                if (d < bestDist) { bestDist = d; best = h }
+            }
         }
         return best
     }
 
     /** Grab the hovered handle. Returns true when a drag started. */
     fun beginDrag(): Boolean {
-        val h = hovered ?: return false
         val mc = Minecraft.getInstance()
         val player = mc.player ?: return false
         val eye = eyeWorld() ?: return false
-        val origin = player.getEyePosition(1f)
-        val ray = player.getViewVector(1f).normalize()
+        return beginDragFrom(eye, player.getEyePosition(1f), player.getViewVector(1f).normalize())
+    }
 
+    private fun beginDragFrom(eye: Vec3, origin: Vec3, ray: Vec3): Boolean {
+        val h = hovered ?: return false
         dragging = h
         dragStartValue = when (h) {
             Handle.RIGHT -> right

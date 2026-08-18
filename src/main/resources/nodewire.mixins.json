@@ -14,7 +14,9 @@
     "camera.MixinGameRenderer",
     "camera.MixinClientChunkCache",
     "camera.MixinClientChunkCacheStorage",
-    "control.MixinMouseHandler"
+    "control.MixinMouseHandler",
+    "camera.MixinGizmoCamera",
+    "camera.MixinGizmoCameraInvoker"
   ],
   "server": [],
   "injectors": {

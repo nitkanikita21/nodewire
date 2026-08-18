@@ -187,6 +187,7 @@ object NodewireClient {
         dev.nitka.nodewire.camerachunk.CameraChunkClient.tick()
         dev.nitka.nodewire.client.command.AimCommand.tick()
         dev.nitka.nodewire.client.camera.CameraGizmoSession.tick()
+        dev.nitka.nodewire.client.camera.CameraGizmoState.tick()
         // Stream the pilot's input while a Control Block session is active.
         ControlSession.update()
         // Panel joystick hold session: liveness + state streaming.
