@@ -30,10 +30,32 @@ object AimCommand {
         event.dispatcher.register(
             Commands.literal("nodewire").then(
                 Commands.literal("gizmo").executes { ctx ->
-                    val on = !dev.nitka.nodewire.client.camera.CameraGizmoState.enabled
-                    dev.nitka.nodewire.client.camera.CameraGizmoState.enabled = on
+                    val session = dev.nitka.nodewire.client.camera.CameraGizmoSession
+                    if (session.isActive()) {
+                        session.close()
+                        ctx.source.sendSystemMessage(Component.literal("Gizmo editor closed"))
+                        return@executes 1
+                    }
+                    val aimed = session.aimedCamera()
+                    if (aimed == null) {
+                        // Without a camera under the crosshair, fall back to the
+                        // read-only overlay so the aim of nearby cameras is still
+                        // visible while positioning things around them.
+                        val on = !dev.nitka.nodewire.client.camera.CameraGizmoState.enabled
+                        dev.nitka.nodewire.client.camera.CameraGizmoState.enabled = on
+                        ctx.source.sendSystemMessage(
+                            Component.literal(
+                                "Aim at a camera to edit it. View overlay: " + if (on) "on" else "off",
+                            ),
+                        )
+                        return@executes 1
+                    }
+                    session.open(aimed)
                     ctx.source.sendSystemMessage(
-                        Component.literal("Camera gizmo: " + if (on) "on (lens, view ray, axes)" else "off"),
+                        Component.literal(
+                            "Gizmo editor: drag a handle with left click, hold Shift to snap, " +
+                                "run the command again to close",
+                        ),
                     )
                     1
                 },

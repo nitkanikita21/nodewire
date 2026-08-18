@@ -186,6 +186,7 @@ object NodewireClient {
         // (no-ops without far cameras; sends only on change).
         dev.nitka.nodewire.camerachunk.CameraChunkClient.tick()
         dev.nitka.nodewire.client.command.AimCommand.tick()
+        dev.nitka.nodewire.client.camera.CameraGizmoSession.tick()
         // Stream the pilot's input while a Control Block session is active.
         ControlSession.update()
         // Panel joystick hold session: liveness + state streaming.
@@ -345,6 +346,14 @@ object NodewireClient {
         // up), swallowed so it never breaks the panel underneath. Clicks are
         // ONLY captured while the session's mouse capture is on — with capture
         // off (ctrl variant, V) the mouse behaves normally.
+        if (dev.nitka.nodewire.client.camera.CameraGizmoSession.isActive()
+            && event.button == org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT
+            && event.action == org.lwjgl.glfw.GLFW.GLFW_RELEASE
+        ) {
+            dev.nitka.nodewire.client.camera.CameraGizmoSession.endDrag()
+            event.isCanceled = true
+            return
+        }
         if (dev.nitka.nodewire.client.panel.PanelJoystickSession.isActive()
             && event.button == org.lwjgl.glfw.GLFW.GLFW_MOUSE_BUTTON_LEFT
         ) {
@@ -449,6 +458,21 @@ object NodewireClient {
     private fun onInteractionKey(
         event: net.neoforged.neoforge.client.event.InputEvent.InteractionKeyMappingTriggered,
     ) {
+        // Gizmo editor: the attack key grabs the handle under the crosshair,
+        // and use/pick are swallowed so a drag never places or breaks anything.
+        if (dev.nitka.nodewire.client.camera.CameraGizmoSession.isActive()) {
+            if (event.isAttack && dev.nitka.nodewire.client.camera.CameraGizmoSession.beginDrag()) {
+                event.isCanceled = true
+                event.setSwingHand(false)
+                return
+            }
+            if (event.isAttack || event.isUseItem || event.isPickBlock) {
+                event.isCanceled = true
+                event.setSwingHand(false)
+                return
+            }
+        }
+
         // Panel elements pop off with a bare-handed attack. This has to happen
         // at the key press: vanilla's own attack path silently declines to
         // start breaking our panel (no LeftClickBlock event is ever fired for

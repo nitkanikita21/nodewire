@@ -40,6 +40,7 @@ object CameraGizmoOverlay {
     private const val COLOR_RIGHT = 0xFFFF5555.toInt() // +right
     private const val COLOR_UP = 0xFF55FF55.toInt() // +up
     private const val COLOR_FWD = 0xFF5599FF.toInt() // +forward
+    private const val COLOR_ACTIVE = 0xFFFFFF66.toInt()
     private const val WIDTH = 1.0f / 24f
 
     private val shownKeys = HashSet<Any>()
@@ -66,6 +67,10 @@ object CameraGizmoOverlay {
     }
 
     private fun collect(mc: Minecraft, outliner: Outliner, frameKeys: MutableSet<Any>) {
+        if (CameraGizmoSession.isActive()) {
+            collectEditor(outliner, frameKeys)
+            return
+        }
         if (!CameraGizmoState.enabled) return
         val player = mc.player ?: return
         val level = mc.level ?: return
@@ -105,6 +110,87 @@ object CameraGizmoOverlay {
             line(outliner, frameKeys, "$key:ax", eye, eye.add(right.scale(AXIS_LEN)), COLOR_RIGHT)
             line(outliner, frameKeys, "$key:ay", eye, eye.add(realUp.scale(AXIS_LEN)), COLOR_UP)
             line(outliner, frameKeys, "$key:az", eye, eye.add(look.scale(AXIS_LEN)), COLOR_FWD)
+        }
+    }
+
+    /**
+     * The editing gizmo: three translation handles along the camera's own
+     * axes, two rotation rings for aim, and the view ray. The handle under
+     * the crosshair is drawn thicker and brighter, so grabbing one is a
+     * matter of pointing at it.
+     */
+    private fun collectEditor(outliner: Outliner, frameKeys: MutableSet<Any>) {
+        val eye = CameraGizmoSession.eyeWorld() ?: return
+        val look = CameraGizmoSession.lookWorld() ?: return
+        val key = "nw:gizmoedit"
+        val active = CameraGizmoSession.dragging ?: CameraGizmoSession.hovered
+
+        // View ray first, so the aim reads even while a handle is grabbed.
+        val mc = Minecraft.getInstance()
+        val level = mc.level
+        val end = eye.add(look.scale(RAY_LENGTH))
+        val target = if (level != null && mc.player != null) {
+            val clip = level.clip(
+                net.minecraft.world.level.ClipContext(
+                    eye, end,
+                    net.minecraft.world.level.ClipContext.Block.OUTLINE,
+                    net.minecraft.world.level.ClipContext.Fluid.NONE,
+                    mc.player,
+                ),
+            )
+            if (clip.type == net.minecraft.world.phys.HitResult.Type.BLOCK) clip.location else end
+        } else {
+            end
+        }
+        line(outliner, frameKeys, "$key:ray", eye, target, COLOR_RAY)
+        cross(outliner, frameKeys, "$key:target", target, HIT_MARKER, COLOR_RAY)
+        cross(outliner, frameKeys, "$key:eye", eye, EYE_MARKER, COLOR_EYE)
+
+        for (h in listOf(
+            CameraGizmoSession.Handle.RIGHT,
+            CameraGizmoSession.Handle.UP,
+            CameraGizmoSession.Handle.FORWARD,
+        )) {
+            val axis = CameraGizmoSession.axisWorld(h) ?: continue
+            val colour = if (h == active) COLOR_ACTIVE else when (h) {
+                CameraGizmoSession.Handle.RIGHT -> COLOR_RIGHT
+                CameraGizmoSession.Handle.UP -> COLOR_UP
+                else -> COLOR_FWD
+            }
+            val tip = eye.add(axis.scale(CameraGizmoSession.AXIS_LEN))
+            line(outliner, frameKeys, "$key:h:$h", eye, tip, colour)
+            // A cross at the tip doubles as the grab target.
+            cross(outliner, frameKeys, "$key:t:$h", tip, if (h == active) 0.08 else 0.05, colour)
+        }
+
+        for (h in listOf(CameraGizmoSession.Handle.YAW, CameraGizmoSession.Handle.PITCH)) {
+            val n = CameraGizmoSession.ringNormal(h) ?: continue
+            val colour = if (h == active) COLOR_ACTIVE else if (h == CameraGizmoSession.Handle.YAW) COLOR_UP else COLOR_RIGHT
+            ring(outliner, frameKeys, "$key:r:$h", eye, n, CameraGizmoSession.RING_RADIUS, colour)
+        }
+    }
+
+    /** A ring drawn as a closed loop of short segments. */
+    private fun ring(
+        outliner: Outliner,
+        frameKeys: MutableSet<Any>,
+        key: String,
+        centre: Vec3,
+        normal: Vec3,
+        radius: Double,
+        color: Int,
+    ) {
+        val (u, v) = CameraGizmoSession.ringBasis(normal)
+        val steps = 24
+        var prev: Vec3? = null
+        for (i in 0..steps) {
+            val a = i.toDouble() / steps * Math.PI * 2.0
+            val p = centre
+                .add(u.scale(Math.cos(a) * radius))
+                .add(v.scale(Math.sin(a) * radius))
+            val last = prev
+            if (last != null) line(outliner, frameKeys, "$key:$i", last, p, color)
+            prev = p
         }
     }
 
