@@ -131,6 +131,10 @@ object NodewireClient {
         FORGE_BUS.addListener<RenderLevelStageEvent>(
             dev.nitka.nodewire.client.camera.CameraCableOverlay::render,
         )
+        // Camera gizmo: lens marker + the ray the camera actually looks along.
+        FORGE_BUS.addListener<RenderLevelStageEvent>(
+            dev.nitka.nodewire.client.camera.CameraGizmoOverlay::render,
+        )
         // Control Panel: outline only the ELEMENT under the crosshair.
         FORGE_BUS.addListener<net.neoforged.neoforge.client.event.RenderHighlightEvent.Block>(
             dev.nitka.nodewire.client.panel.PanelHighlightRenderer::onHighlight,

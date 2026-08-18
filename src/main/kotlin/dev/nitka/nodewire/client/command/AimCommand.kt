@@ -29,6 +29,15 @@ object AimCommand {
     fun register(event: RegisterClientCommandsEvent) {
         event.dispatcher.register(
             Commands.literal("nodewire").then(
+                Commands.literal("gizmo").executes { ctx ->
+                    val on = !dev.nitka.nodewire.client.camera.CameraGizmoState.enabled
+                    dev.nitka.nodewire.client.camera.CameraGizmoState.enabled = on
+                    ctx.source.sendSystemMessage(
+                        Component.literal("Camera gizmo: " + if (on) "on (lens, view ray, axes)" else "off"),
+                    )
+                    1
+                },
+            ).then(
                 Commands.literal("aim").executes { ctx ->
                     samplesLeft = 10
                     ctx.source.sendSystemMessage(
