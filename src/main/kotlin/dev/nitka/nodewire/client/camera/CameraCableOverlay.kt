@@ -60,12 +60,17 @@ object CameraCableOverlay {
 
         val pos = hit.blockPos
         val face = hit.direction
-        val points = CameraCableItem.snapPointsLocal(face)
-            .map { CameraCableItem.localToWorld(level, pos, it) }
-        val nearest = points.minByOrNull { it.distanceToSqr(hit.location) }
+        // Which point is nearest is decided in BLOCK-LOCAL space: the raycast
+        // reports plot coordinates on a Sable sub-level while the drawn points
+        // are at the ship's rendered position, so comparing the two spaces let
+        // one point win every time and the grid never appeared to react.
+        val local = CameraCableItem.snapPointsLocal(face)
+        val localHit = hit.location.subtract(pos.x.toDouble(), pos.y.toDouble(), pos.z.toDouble())
+        val nearestIndex = local.indices.minByOrNull { local[it].distanceToSqr(localHit) }
+        val points = local.map { CameraCableItem.localToWorld(level, pos, it) }
 
         for ((i, p) in points.withIndex()) {
-            val hovered = p === nearest
+            val hovered = i == nearestIndex
             val r = if (hovered) HOVER_MARKER else MARKER
             val color = if (hovered) HOVER_COLOR else GRID_COLOR
             cross(outliner, frameKeys, "nw:cable:$i", p, r, color)

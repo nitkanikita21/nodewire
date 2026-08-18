@@ -167,11 +167,21 @@ class CameraCableItem(props: Properties) : Item(props) {
             return center.add(ref.worldDirection(level, rel) ?: rel)
         }
 
-        /** Nearest snap point of ([pos], [face]) to the world-space [hit]. */
-        fun nearestSnapWorld(level: Level, pos: BlockPos, face: net.minecraft.core.Direction, hit: Vec3): Vec3 =
-            snapPointsLocal(face)
-                .map { localToWorld(level, pos, it) }
-                .minByOrNull { it.distanceToSqr(hit) } ?: hit
+        /**
+         * Nearest snap point of ([pos], [face]) to the raycast [hit].
+         *
+         * Comparison happens in BLOCK-LOCAL space. On a Sable sub-level the
+         * raycast reports plot coordinates (millions of blocks out) while
+         * [localToWorld] returns the ship's rendered position, so measuring
+         * world points against a raw hit made every distance essentially the
+         * offset between the two spaces — the same point always won, and the
+         * grid looked frozen.
+         */
+        fun nearestSnapWorld(level: Level, pos: BlockPos, face: net.minecraft.core.Direction, hit: Vec3): Vec3 {
+            val localHit = hit.subtract(pos.x.toDouble(), pos.y.toDouble(), pos.z.toDouble())
+            val nearest = snapPointsLocal(face).minByOrNull { it.distanceToSqr(localHit) } ?: return hit
+            return localToWorld(level, pos, nearest)
+        }
 
         /** The point the cable's second click binds: the highlighted snap. */
         fun snappedEyeWorld(level: Level, pos: BlockPos, face: net.minecraft.core.Direction, hit: Vec3): Vec3 =
